@@ -8,6 +8,21 @@
 
 ---
 
+## v1.4.1（2026-10-12）
+
+缺陷修复：Pane 分割线不可见 + 十字星跟随鼠标。
+
+### 变更（KLineChartController.ts）
+- **Pane 分割线**：`layout.panes.separatorColor / separatorHoverColor`
+  设置为当前主题背景色（视觉上 pane 之间无分割线），主题切换时同步跟随；
+- **十字星**：`crosshair.mode = CrosshairMode.Normal`，横向 / 竖向十字线
+  自由跟随鼠标位置（不再吸附数据点）。
+
+### 验证
+- vitest 17 项全绿；vue-tsc 类型检查通过；未运行 / 未截图（按用户偏好）。
+
+---
+
 ## v1.4.0（2026-10-12）
 
 新增**顶部空 Pane**（pane0），K 线主图下移至 pane1。

@@ -30,6 +30,7 @@ import {
   CandlestickSeries,
   LineSeries,
   ColorType,
+  CrosshairMode,
   type ISeriesApi,
   type ISeriesPrimitive,
   type IPrimitivePaneView,
@@ -159,7 +160,14 @@ export class KLineChartController {
         attributionLogo: false,
         panes: {
           enableResize: false, // Pane 高度不可拖拽（由代码固定比例）
+          // 分隔线颜色 = 背景色（视觉上不设置分割线）
+          separatorColor: c0.background,
+          separatorHoverColor: c0.background,
         },
+      },
+      // 十字星：Normal 模式 = 横竖线自由跟随鼠标（不吸附数据点）
+      crosshair: {
+        mode: CrosshairMode.Normal,
       },
       // 栅格化关闭：纵向 / 横向栅格线全部隐藏
       grid: {
@@ -270,6 +278,11 @@ export class KLineChartController {
       layout: {
         background: { type: ColorType.Solid, color: c.background },
         textColor: c.textColor,
+        panes: {
+          // 分隔线颜色跟随背景（保持分割线不可见）
+          separatorColor: c.background,
+          separatorHoverColor: c.background,
+        },
       },
       // 栅格保持关闭
       grid: {
