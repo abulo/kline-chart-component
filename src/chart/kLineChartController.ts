@@ -65,21 +65,19 @@ import {
 } from './layout'
 import { TestLabelPrimitive } from './testLabelPrimitive'
 import { VolumeBarPrimitive } from './volumeBarPrimitive'
-import { calcMacd } from './indicators/macd'
+import { MacdBarPrimitive } from './macdBarPrimitive'
+import { calcMacd, type MacdPoint } from './indicators/macd'
 
 /**
  * MACD 指标配色（东方财富风格，深浅系通用不随主题变化）：
- *   DIF / DEA 线、MACD 柱红涨绿跌（柱 > 0 红、< 0 绿）
+ *   DIF / DEA 线固定配色；柱体红绿由 MacdBarPrimitive 自绘
+ *   （取主题 upColor / downColor，红涨绿跌，与 pane1 / pane3 一致）
  */
 const MACD_COLORS = {
   /** DIF 线 */
   difLine: '#A0A0A0',
   /** DEA 线 */
   deaLine: '#F4AA0A',
-  /** MACD 柱上涨（> 0）红 */
-  macdUp: '#FF0000',
-  /** MACD 柱下跌（< 0）绿 */
-  macdDown: '#008000',
 } as const
 
 /**
@@ -106,6 +104,8 @@ export class KLineChartController {
 
   /* ===== 数据 ===== */
   private readonly bars: BasicBar[]
+  /** MACD 指标点缓存（applyData 计算一次，自绘 primitive 与 series 共用） */
+  private macdPoints: MacdPoint[] = []
 
   /* ===== series（pane0/pane2/pane4 空线 = 文字载体；pane1 K 线；pane3 成交量；pane5 指标） ===== */
   private klineSeries: ISeriesApi<'Candlestick'>
@@ -300,8 +300,10 @@ export class KLineChartController {
     ).attachPrimitive(new TestLabelPrimitive('测试', () => themeColors(this.theme).textColor))
 
     /* pane5：MACD 指标（DIF / DEA 线 + 红绿柱，高度与 pane3 一致）
-     * 库原生 series 渲染：
-     *  - indicatorsBarSeries（Histogram，指标通用柱）：柱 > 0 红、< 0 绿（红涨绿跌，数据级 color）；
+     * 柱体自绘（MacdBarPrimitive，复用成交量 candlestickBarWidth，
+     * 宽度 / 间隔与 pane1 蜡烛柱绝对一致）：
+     *  - indicatorsBarSeries（Histogram）仅作 scale 锚点：color = 背景色（不可见）；
+     *  - 可见柱体：> 0 空心红柱（背景填充 + 红框）、< 0 绿色实心；
      *  - difSeries / deaSeries（Line）：DIF / DEA 线（固定配色，深浅系通用）。
      */
     this.indicatorsBarSeries = this.chart.addSeries(
@@ -309,10 +311,14 @@ export class KLineChartController {
       {
         priceScaleId: 'left',
         base: 0, // 柱从 0 轴绘制（正负双方向）
+        color: themeColors(this.theme).background, // 不可见（仅建 scale）
         priceLineVisible: false,
         lastValueVisible: false,
       },
       5,
+    )
+    this.indicatorsBarSeries.attachPrimitive(
+      new MacdBarPrimitive(() => this.macdPoints, () => themeColors(this.theme)),
     )
     this.difSeries = this.chart.addSeries(
       LineSeries,
@@ -391,22 +397,24 @@ export class KLineChartController {
         value: bar.volume,
       })),
     )
-    // MACD：DIF / DEA 线 + 红绿柱（柱 > 0 红、< 0 绿，数据级 color）；
-    // 仅指标开启时写入（series 关闭时已销毁，判空防误用）
+    // MACD：DIF / DEA 线 + 自绘红绿柱（柱 > 0 空心红、< 0 绿实心）。
+    // macdPoints 缓存供 MacdBarPrimitive 自绘复用；仅指标开启时写入
+    // （series 关闭时已移除，判空防误用）。
     if (this.indicatorsBarSeries && this.difSeries && this.deaSeries) {
-      const macdPoints = calcMacd(this.bars)
+      this.macdPoints = calcMacd(this.bars)
       this.indicatorsBarSeries.setData(
-        macdPoints.map((point) => ({
+        // Histogram 仅作 scale 锚点（不可见），颜色统一走 options.color（背景色），
+        // 主题切换时由 applyTheme 同步更新；可见柱体由 MacdBarPrimitive 自绘
+        this.macdPoints.map((point) => ({
           time: point.time as UTCTimestamp,
           value: point.macd,
-          color: point.macd >= 0 ? MACD_COLORS.macdUp : MACD_COLORS.macdDown,
         })),
       )
       this.difSeries.setData(
-        macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dif })),
+        this.macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dif })),
       )
       this.deaSeries.setData(
-        macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dea })),
+        this.macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dea })),
       )
     }
   }
@@ -444,6 +452,8 @@ export class KLineChartController {
     })
     // 成交量锚点色跟随背景（保持不可见）；可见柱体由 primitive 动态取新主题色
     this.volumeSeries.applyOptions({ color: themeColorSet.background })
+    // MACD 锚点色跟随背景（保持不可见）；可见柱体由 MacdBarPrimitive 动态取新主题色
+    this.indicatorsBarSeries?.applyOptions({ color: themeColorSet.background })
     // 空 Pane 文字颜色在 draw 时动态取色，applyOptions 触发重绘即自动更新
   }
 

@@ -8,6 +8,29 @@
 
 ---
 
+## v1.4.18（2026-10-12）
+
+MACD 红绿柱改为自绘，宽度 / 间隔复用成交量函数（`candlestickBarWidth`），与 pane1 蜡烛柱绝对一致。
+
+### 变更
+- 新增 `macdBarPrimitive.ts` / `macdBarPaneView.ts`：MACD 柱自绘
+  （`ISeriesPrimitive` 挂载到 pane5 指标 series）——
+  柱宽 = `candlestickBarWidth(barSpacing, dpr)`（与成交量同一函数，
+  宽度 / 间隔与 pane1 绝对一致）；柱中心 = 同一逻辑索引坐标；
+  柱 > 0 **空心红柱**（背景填充 + 红框）、柱 < 0 绿色实心；柱底 = 0 轴；
+- controller：
+  - `indicatorsBarSeries`（Histogram）改为仅作 scale 锚点（color = 背景色不可见），
+    与成交量同机制；
+  - 新增 `macdPoints` 缓存字段（applyData 计算一次，primitive 与 series 共用）；
+  - `applyTheme` 同步更新锚点色（保持不可见）；
+  - 删除不再使用的 `MACD_COLORS.macdUp` / `macdDown`（自绘取主题 up/down，
+    红涨绿跌与 pane1 / pane3 一致）。
+
+### 验证
+- vue-tsc 类型检查通过；vitest 37 项全绿；未运行 / 未截图。
+
+---
+
 ## v1.4.17（2026-10-12）
 
 新增 App.vue 指标开关：指标关时 4 Pane（main : volume = 80 : 20），指标开时 6 Pane（60 : 20 : 20）。
