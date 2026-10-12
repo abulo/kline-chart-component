@@ -8,6 +8,32 @@
 
 ---
 
+## v1.4.17（2026-10-12）
+
+新增 App.vue 指标开关：指标关时 4 Pane（main : volume = 80 : 20），指标开时 6 Pane（60 : 20 : 20）。
+
+### 变更
+- App.vue：新增「指标开 / 关」按钮，调控制器 `setShowIndicator`；
+- controller：
+  - options 新增 `showIndicator?`（默认 true，指标 Pane 初始状态）；
+  - 指标 Pane（pane4 / pane5）创建提取为 `createIndicatorPanes`（仅开启时创建）；
+  - 新增 `setShowIndicator`：开 = `createIndicatorPanes` + 重算指标数据 + 重排布局；
+    关 = `removePane(4)` ×2（删 pane4 后原 pane5 顺移到 index 4，再删一次移除整组）
+    + 引用置 null。**防内存泄漏**：库 removePane 从 panes 数组 splice，pane 上
+    series（含 primitive）强引用随之断开可被 GC，控制器解除自身引用即安全；
+  - `applyStretchFactors` 参数化：指标开 3 固定空 Pane + 60:20:20，
+    指标关 2 固定空 Pane + 80:20（时间轴开 / 关一致，仅 H 不同）；
+- layout.ts：新增 `paneCountWithoutIndicator`（4）/ `fixedPaneCountWithoutIndicator`（2）/
+  `groupRatiosWithoutIndicator`（80:20）；`calcPaneHeights` 泛化接收
+  `fixedCount` 与 `ratios`，返回 4 或 6 项，空 Pane 高度扣除后内容按比例分配，
+  总高度 = 固定 + 剩余 = 可用高度（完全铺满）。
+
+### 验证
+- vitest 37 项全绿（新增指标关 80:20 分配 / 数量守恒断言）；
+- vue-tsc 类型检查通过；未运行 / 未截图。
+
+---
+
 ## v1.4.16（2026-10-12）
 
 `macdBarSeries` 重命名为 `indicatorsBarSeries`（指标通用柱，为后续扩展其他指标预留）。

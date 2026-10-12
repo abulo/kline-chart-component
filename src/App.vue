@@ -20,6 +20,8 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 const theme = ref<ChartThemeName>('dark')
 /** 时间轴开关 */
 const showTimeAxis = ref(true)
+/** 指标开关（指标 Pane pane4 / pane5，默认开启） */
+const showIndicator = ref(true)
 
 /** 主题切换：更新 html 背景 + 图表主题 */
 const toggleTheme = (): void => {
@@ -37,6 +39,12 @@ watch(theme, (name) => {
 const toggleTimeAxis = (): void => {
   showTimeAxis.value = !showTimeAxis.value
   chartRef.value?.controller?.toggleTimeAxis(showTimeAxis.value)
+}
+
+/** 指标开关：动态创建 / 删除指标 Pane（布局 60:20:20 ⇄ 80:20） */
+const toggleIndicator = (): void => {
+  showIndicator.value = !showIndicator.value
+  chartRef.value?.controller?.setShowIndicator(showIndicator.value)
 }
 
 /** 放大 / 缩小（X 轴全局） */
@@ -61,8 +69,11 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="toolbar">
-      <span class="hint">分组 60/20/20 + K线 + 量 + MACD v1.4.16</span>
+      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.17</span>
       <div class="spacer" />
+      <button class="btn" :class="{ active: showIndicator }" @click="toggleIndicator">
+        指标{{ showIndicator ? '开' : '关' }}
+      </button>
       <button class="btn" :class="{ active: showTimeAxis }" @click="toggleTimeAxis">
         时间轴{{ showTimeAxis ? '开' : '关' }}
       </button>

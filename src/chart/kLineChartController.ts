@@ -1,29 +1,31 @@
 /**
- * kLineChartController.ts —— 顶/底空 Pane + K 线 + 成交量 + 指标控制器（v1.4.14）
+ * kLineChartController.ts —— 顶/底空 Pane + K 线 + 成交量 + 指标控制器（v1.4.17）
  *
- * 布局：一个 chart 内 6 个 Pane（lightweight-charts 原生多 Pane）：
- *   pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 24px，不可拖拽）
- *   pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心）
- *   pane2：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
- *   pane3：成交量（自绘：上涨空心红柱 / 下跌绿实心，柱宽与间隔同 pane1 绝对一致）
- *   pane4：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
- *   pane5：附图指标（MACD：DIF / DEA 线 + 红绿柱，高度与 pane3 一致）
+ * 布局：一个 chart 内多 Pane（lightweight-charts 原生多 Pane，指标可开关）：
+ *   指标开启（6 Pane）：
+ *     pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 24px，不可拖拽）
+ *     pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心）
+ *     pane2：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
+ *     pane3：成交量（自绘：上涨空心红柱 / 下跌绿实心，柱宽与间隔同 pane1 绝对一致）
+ *     pane4：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
+ *     pane5：附图指标（MACD：DIF / DEA 线 + 红绿柱，高度与 pane3 一致）
+ *   指标关闭（4 Pane）：pane0..pane3（去掉 pane4 / pane5，main : volume = 80 : 20）
  *
  * 模块划分（每个 class 一个文件）：
- *  - layout.ts：布局常量（paneCount / fixedPaneCount / topPaneHeight / groupRatios）
- *    与高度算法 calcPaneHeights；
+ *  - layout.ts：布局常量（paneCount / fixedPaneCount / topPaneHeight / groupRatios
+ *    等）与高度算法 calcPaneHeights；
  *  - candlestickWidth.ts：库源码原版 optimalCandlestickWidth（柱宽，与 pane1 同源）；
  *  - volumeBarPrimitive.ts / volumeBarPaneView.ts：成交量柱自绘；
  *  - testLabelPrimitive.ts / testLabelPaneView.ts：空 Pane"测试"文字；
  *  - indicators/macd.ts：MACD 指标计算（东方财富算法，纯函数）。
  *
- * 高度算法（6 Pane 分 3 组：main / volume / indicator = 60 : 20 : 20）：
+ * 高度算法（指标开 60 : 20 : 20 / 指标关 80 : 20）：
  *   库实际可用高度 H = 容器高度 - 时间轴高度（库默认 28px，显隐按库状态）
  *                      - 分隔线总高（每 pane 间隔 1px）
- *   固定空 Pane 总高 = 3×24（pane0 / pane2 / pane4），剩余 R = H - 72：
- *     pane0 = 24px、pane1 = 0.6×R（main 组）
- *     pane2 = 24px、pane3 = 0.2×R（volume 组）
- *     pane4 = 24px、pane5 = 0.2×R（indicator 组）
+ *   固定空 Pane 总高 = 固定 Pane 数量 × 24，剩余 R = H - 固定总高：
+ *     指标开：pane0 = 24px、pane1 = 0.6×R；pane2 = 24px、pane3 = 0.2×R；
+ *             pane4 = 24px、pane5 = 0.2×R
+ *     指标关：pane0 = 24px、pane1 = 0.8×R；pane2 = 24px、pane3 = 0.2×R
  *   像素因子方案：stretchFactor 直接设为目标像素高度 → stretchPixels = 1
  *   → 非最后 pane = round(factor) 精确、最后 pane = 剩余 = 目标，无舍入误差；
  *   时间轴开 / 关仅影响 H（关时时间轴高度 = 0），组比例不变。
@@ -31,7 +33,9 @@
  * 全局控制（全部由 App.vue 提供按钮）：
  *  - 时间轴开关：控制底部时间轴（timeScale）显示 / 隐藏；
  *  - 放大 / 缩小：全局 timeScale.barSpacing（图表内禁用滚轮/触摸缩放）；
- *  - 风格切换：深系 / 浅系。
+ *  - 风格切换：深系 / 浅系；
+ *  - 指标开关：动态创建 / 删除 pane4 / pane5（setShowIndicator，防内存泄漏：
+ *    series 先 remove() 再 removePane）。
  *
  * 生命周期：实例保护（container dataset 标记防重复创建 chart）；
  * ResizeObserver 跟随容器尺寸重算 pane 高度；destroy 销毁（防内存泄漏）。
@@ -51,7 +55,12 @@ import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
 import {
   paneCount,
+  paneCountWithoutIndicator,
+  fixedPaneCount,
+  fixedPaneCountWithoutIndicator,
   topPaneHeight,
+  groupRatios,
+  groupRatiosWithoutIndicator,
   calcPaneHeights,
 } from './layout'
 import { TestLabelPrimitive } from './testLabelPrimitive'
@@ -86,6 +95,8 @@ const LIBRARY_TIME_AXIS_HEIGHT = 28
 export interface KLineChartOptions {
   /** 图表挂载容器（需有确定宽高） */
   container: HTMLElement
+  /** 指标 Pane（pane4 / pane5）初始状态：开启（默认 true）；可运行时切换 */
+  showIndicator?: boolean
 }
 
 export class KLineChartController {
@@ -96,24 +107,27 @@ export class KLineChartController {
   /* ===== 数据 ===== */
   private readonly bars: BasicBar[]
 
-  /* ===== series（pane0/pane2/pane4 空线 = 文字载体；pane1 K 线；pane3 成交量；pane5 MACD） ===== */
+  /* ===== series（pane0/pane2/pane4 空线 = 文字载体；pane1 K 线；pane3 成交量；pane5 指标） ===== */
   private klineSeries: ISeriesApi<'Candlestick'>
   private volumeSeries: ISeriesApi<'Histogram'>
-  /** pane5 MACD 柱（Histogram，正红负绿） */
-  private indicatorsBarSeries: ISeriesApi<'Histogram'>
-  /** pane5 DIF 线 */
-  private difSeries: ISeriesApi<'Line'>
-  /** pane5 DEA 线 */
-  private deaSeries: ISeriesApi<'Line'>
+  /** pane5 指标柱（Histogram，指标通用；开启时创建，关闭时销毁置 null） */
+  private indicatorsBarSeries: ISeriesApi<'Histogram'> | null = null
+  /** pane5 DIF 线（MACD 专属；开启时创建，关闭时销毁置 null） */
+  private difSeries: ISeriesApi<'Line'> | null = null
+  /** pane5 DEA 线（MACD 专属；开启时创建，关闭时销毁置 null） */
+  private deaSeries: ISeriesApi<'Line'> | null = null
 
   /* ===== 状态 ===== */
   private theme: ChartThemeName
+  /** 指标 Pane 开关状态（true = 显示 pane4 / pane5，false = 隐藏） */
+  private showIndicator: boolean
 
   /** 容器尺寸监听：尺寸变化时重算固定 Pane 高度（24px） */
   private resizeObserver: ResizeObserver | null = null
 
   constructor(options: KLineChartOptions) {
     this.container = options.container
+    this.showIndicator = options.showIndicator ?? true
     this.theme = 'dark'
 
     /* ---------- 0. 实例保护：容器打标记防重复创建 chart 实例 ----------
@@ -242,7 +256,38 @@ export class KLineChartController {
       new VolumeBarPrimitive(() => this.bars, () => themeColors(this.theme)),
     )
 
-    /* ---------- 3.3 pane4：底部空 Pane（无数据，自绘"测试"文字，设置与 pane0 一致） ---------- */
+    /* ---------- 3.3 pane4 / pane5：指标组（仅 showIndicator 开启时创建） ----------
+     * 指标开启：pane4 底部空 Pane（自绘"测试"文字，设置与 pane0 一致）+
+     *          pane5 MACD（DIF / DEA 线 + 红绿柱，高度与 pane3 一致）；
+     * 指标关闭：不创建（4 Pane：pane0..pane3，main : volume = 80 : 20）。
+     */
+    if (this.showIndicator) {
+      this.createIndicatorPanes()
+    }
+
+    /* ---------- 4. 高度分配：pane0 / pane2 / pane4 固定 24px（同一 factor，绝对相等），pane1 K 线，pane3 成交量 / pane5 指标 ---------- */
+    this.applyStretchFactors()
+
+    /* ---------- 5. 数据 + 首绘 ---------- */
+    this.bars = genMockBars(120)
+    this.applyData()
+    this.chart.timeScale().fitContent()
+
+    /* ---------- 6. 容器尺寸监听：重算固定 Pane 高度（24px） ---------- */
+    this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors())
+    this.resizeObserver.observe(this.container)
+  }
+
+  /* ===================== 布局 ===================== */
+
+  /**
+   * 创建指标组 Pane（pane4 空 Pane + pane5 指标内容 Pane）。
+   *
+   * 注意库 addSeries 行为：指定的 paneIndex 超出当前 pane 数量时，库自动
+   * 创建中间缺失的 pane（pane4 / pane5 一次性补齐）。
+   */
+  private createIndicatorPanes = (): void => {
+    /* pane4：底部空 Pane（自绘"测试"文字，设置与 pane0 一致） */
     this.chart.addSeries(
       LineSeries,
       {
@@ -254,7 +299,7 @@ export class KLineChartController {
       4,
     ).attachPrimitive(new TestLabelPrimitive('测试', () => themeColors(this.theme).textColor))
 
-    /* ---------- 3.4 pane5：MACD 指标（DIF / DEA 线 + 红绿柱，高度与 pane3 一致） ----------
+    /* pane5：MACD 指标（DIF / DEA 线 + 红绿柱，高度与 pane3 一致）
      * 库原生 series 渲染：
      *  - indicatorsBarSeries（Histogram，指标通用柱）：柱 > 0 红、< 0 绿（红涨绿跌，数据级 color）；
      *  - difSeries / deaSeries（Line）：DIF / DEA 线（固定配色，深浅系通用）。
@@ -293,42 +338,35 @@ export class KLineChartController {
       },
       5,
     )
-
-    /* ---------- 4. 高度分配：pane0 / pane2 / pane4 固定 24px（同一 factor，绝对相等），pane1 K 线，pane3 成交量 / pane5 指标 ---------- */
-    this.applyStretchFactors()
-
-    /* ---------- 5. 数据 + 首绘 ---------- */
-    this.bars = genMockBars(120)
-    this.applyData()
-    this.chart.timeScale().fitContent()
-
-    /* ---------- 6. 容器尺寸监听：重算固定 Pane 高度（24px） ---------- */
-    this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors())
-    this.resizeObserver.observe(this.container)
   }
 
-  /* ===================== 布局 ===================== */
-
   /**
-   * 重算 pane 高度（分组 60:20:20，像素因子方案）：
-   *   main 组（pane0 + pane1）      = 60%：pane0 = 24px、pane1 = 0.6R - 24
-   *   volume 组（pane2 + pane3）     = 20%：pane2 = 24px、pane3 = 0.2R - 24
-   *   indicator 组（pane4 + pane5）  = 20%：pane4 = 24px、pane5 = 0.2R - 24
-   *   R = 库可用高度 - 3×24（时间轴开 / 关一致，仅 H 不同）
+   * 重算 pane 高度（指标开 60:20:20 / 指标关 80:20，像素因子方案）：
+   *   指标开（6 Pane）：
+   *     pane0 = 24px、pane1 = 0.6R（main 组）
+   *     pane2 = 24px、pane3 = 0.2R（volume 组）
+   *     pane4 = 24px、pane5 = 0.2R（indicator 组）
+   *   指标关（4 Pane）：
+   *     pane0 = 24px、pane1 = 0.8R（main 组）
+   *     pane2 = 24px、pane3 = 0.2R（volume 组）
+   *   R = 库可用高度 - 固定空 Pane 总高（时间轴开 / 关一致，仅 H 不同）
    *
    * 像素因子精确性（库 _adjustSizeImpl）：
    *   stretchFactor 直接设为目标像素高度 → totalStretch = Σ高度 = H
    *   → stretchPixels = H / Σ = 1 → 非最后 pane = round(factor×1) = factor 精确；
-   *   最后 pane（pane5）= 剩余 = 目标高度，同样精确。无舍入误差。
+   *   最后 pane = 剩余 = 目标高度，同样精确。无舍入误差。
    */
   private applyStretchFactors = (): void => {
     const panes = this.chart.panes()
-    if (panes.length < paneCount) return
+    if (panes.length < 2) return
     // 库实际可用高度 = 容器高度 - 时间轴高度（显隐按库当前状态） - 分隔线总高（每 pane 间隔 1px）
     const timeAxisHeight = this.chart.timeScale().options().visible ? LIBRARY_TIME_AXIS_HEIGHT : 0
     const separatorHeight = panes.length - 1
     const usableHeight = this.container.clientHeight - timeAxisHeight - separatorHeight
-    const paneHeights = calcPaneHeights(usableHeight, topPaneHeight)
+    // 指标开启：3 个固定空 Pane、60:20:20；指标关闭：2 个固定空 Pane、80:20
+    const fixedCount = this.showIndicator ? fixedPaneCount : fixedPaneCountWithoutIndicator
+    const ratios = this.showIndicator ? groupRatios : groupRatiosWithoutIndicator
+    const paneHeights = calcPaneHeights(usableHeight, topPaneHeight, fixedCount, ratios)
     panes.forEach((pane, index) => pane.setStretchFactor(paneHeights[index]))
   }
 
@@ -353,21 +391,24 @@ export class KLineChartController {
         value: bar.volume,
       })),
     )
-    // MACD：DIF / DEA 线 + 红绿柱（柱 > 0 红、< 0 绿，数据级 color）
-    const macdPoints = calcMacd(this.bars)
-    this.indicatorsBarSeries.setData(
-      macdPoints.map((point) => ({
-        time: point.time as UTCTimestamp,
-        value: point.macd,
-        color: point.macd >= 0 ? MACD_COLORS.macdUp : MACD_COLORS.macdDown,
-      })),
-    )
-    this.difSeries.setData(
-      macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dif })),
-    )
-    this.deaSeries.setData(
-      macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dea })),
-    )
+    // MACD：DIF / DEA 线 + 红绿柱（柱 > 0 红、< 0 绿，数据级 color）；
+    // 仅指标开启时写入（series 关闭时已销毁，判空防误用）
+    if (this.indicatorsBarSeries && this.difSeries && this.deaSeries) {
+      const macdPoints = calcMacd(this.bars)
+      this.indicatorsBarSeries.setData(
+        macdPoints.map((point) => ({
+          time: point.time as UTCTimestamp,
+          value: point.macd,
+          color: point.macd >= 0 ? MACD_COLORS.macdUp : MACD_COLORS.macdDown,
+        })),
+      )
+      this.difSeries.setData(
+        macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dif })),
+      )
+      this.deaSeries.setData(
+        macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dea })),
+      )
+    }
   }
 
   /* ===================== 对外 API ===================== */
@@ -420,9 +461,32 @@ export class KLineChartController {
     timeScaleApi.applyOptions({ barSpacing: Math.max(barSpacing / 1.25, 2) })
   }
 
-  /** 时间轴开关：切换显隐后重算 pane 高度（时间轴高度占用随之变化，保证 pane0/pane2 仍绝对相等） */
+  /** 时间轴开关：切换显隐后重算 pane 高度（时间轴高度占用随之变化，保证固定空 Pane 仍绝对相等） */
   toggleTimeAxis = (visible: boolean): void => {
     this.chart.timeScale().applyOptions({ visible })
+    this.applyStretchFactors()
+  }
+
+  /** 指标开关：动态创建 / 删除 indicator 组（pane4 / pane5），布局随之切换 60:20:20 ⇄ 80:20 */
+  setShowIndicator = (visible: boolean): void => {
+    if (this.showIndicator === visible) return
+    this.showIndicator = visible
+    if (visible) {
+      // 开：重建 pane4 / pane5（addSeries 指定 paneIndex 自动补齐缺失 pane），重算指标数据
+      this.createIndicatorPanes()
+      this.applyData()
+    } else {
+      // 关：移除 indicator 组两个 Pane（pane4 / pane5）。
+      // 库 removePane 从 panes 数组 splice，pane 上 series（含 primitive）的强引用
+      // 随之断开可被 GC；控制器再置 null 解除自身引用，保证反复开关无内存泄漏。
+      // removePane(4) 两次：删 pane4 后原 pane5 顺移到 index 4，再删一次即移除整组。
+      this.chart.removePane(4)
+      this.chart.removePane(4)
+      this.indicatorsBarSeries = null
+      this.difSeries = null
+      this.deaSeries = null
+    }
+    // 布局重排：pane 数量变化后按新比例分配（指标开 60:20:20 / 指标关 80:20）
     this.applyStretchFactors()
   }
 
