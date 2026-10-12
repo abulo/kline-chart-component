@@ -8,6 +8,47 @@
 
 ---
 
+## v1.4.5（2026-10-12）
+
+时间轴恢复系统默认 + pane0/pane2 绝对等高 + 清理未用文件。
+
+### 变更
+- **时间轴采用系统默认设置**：删除自绘时间轴 primitive
+  （`TimeAxisCenteredLabelsPrimitive.ts` 整文件移除），时间轴文字 / tick /
+  高度全部恢复库默认渲染；高度计算仍按库默认时间轴高度（25px）从可用高度扣除；
+- **pane0 与 pane2 高度绝对相等**：两者使用**同一个** stretchFactor
+  （`calcFixedEdgeFactor`），库按相同比例分配，无任何额外偏移；
+- 清理未使用引用：控制器移除 `TimeAxisCenteredLabelsPrimitive` import 与挂载代码；
+  全仓库 grep 确认无 `formatTradeDate` / `calcFixedTopFactor` 残留。
+
+### 验证
+- vitest 17 项全绿；vue-tsc 类型检查通过；未运行 / 未截图（按用户偏好）。
+
+---
+
+## v1.4.4（2026-10-12）
+
+时间轴文字垂直居中 + 底部空 Pane。
+
+### 变更
+- **时间轴文字垂直居中**（新增 `TimeAxisCenteredLabelsPrimitive.ts`）：
+  lightweight-charts v5 时间轴文字默认中心 y≈14.5px（总高 25px，偏下约 2px，
+  无公开配置项）。新增 primitive 挂载到 K 线 series，通过 `timeAxisPaneViews`
+  自绘刻度文字：背景色覆盖库默认文字（保留顶部 tick 区域）、按可见逻辑范围与
+  barSpacing 选择刻度（最小文字间隔 72px）、`coordinateToTime` 取时间戳格式化为
+  YYYY-MM-DD、垂直居中绘制（y = 高度 / 2）；颜色 / 背景跟随主题动态取色。
+- **底部空 Pane（pane2）**：设置与 pane0 完全一致（"测试"文字、24px、
+  距左 6px、垂直居中、不可拖拽）；
+- 高度算法升级：`calcFixedTopFactor` → `calcFixedEdgeFactor`（顶 / 底双固定
+  Pane：factor = fixedHeight / (totalHeight - 2 × fixedHeight)）；
+- `timeAxisHeight` 修正为 25px（v5 时间轴 cell 实际高度，按库源码常量）。
+
+### 验证
+- vitest 17 项全绿（新增 calcFixedEdgeFactor 3 项、paneCount=3）；
+- vue-tsc 类型检查通过；未运行 / 未截图（按用户偏好）。
+
+---
+
 ## v1.4.3（2026-10-12）
 
 代码结构拆分：每个 class 独立一个文件，布局常量 / 算法独立成模块。

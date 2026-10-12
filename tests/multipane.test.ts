@@ -1,16 +1,16 @@
 /**
- * multipane.test.ts —— 布局常量与数据单测（v1.4.0）
+ * multipane.test.ts —— 布局常量与数据单测（v1.4.5）
  *
- * 覆盖：paneCount 常量（顶部空 Pane + K 线）、calcFixedTopFactor 高度算法、
+ * 覆盖：paneCount 常量（顶/底空 Pane + K 线）、calcFixedEdgeFactor 高度算法、
  * K 线数据时间序列合法性。
  */
 import { describe, expect, it } from 'vitest'
-import { paneCount, topPaneHeight, calcFixedTopFactor } from '../src/chart/layout'
+import { paneCount, topPaneHeight, calcFixedEdgeFactor } from '../src/chart/layout'
 import { genMockBars } from '../src/chart/mock'
 
 describe('布局常量', () => {
-  it('Pane 总数为 2（顶部空 Pane + K 线主图）', () => {
-    expect(paneCount).toBe(2)
+  it('Pane 总数为 3（顶部空 Pane + K 线 + 底部空 Pane）', () => {
+    expect(paneCount).toBe(3)
   })
 
   it('顶部空 Pane 固定高度 24px', () => {
@@ -18,22 +18,22 @@ describe('布局常量', () => {
   })
 })
 
-describe('calcFixedTopFactor（顶部固定高度 stretchFactor）', () => {
-  it('600px 可用高度下顶部占 24px（factor = 24/576）', () => {
-    const factor = calcFixedTopFactor(600, 24)
-    expect(factor).toBeCloseTo(24 / 576, 6)
-    // 验证实际占比：f/(f+1) = 24/600
-    expect(factor / (factor + 1)).toBeCloseTo(24 / 600, 6)
+describe('calcFixedEdgeFactor（顶/底双固定 Pane stretchFactor）', () => {
+  it('600px 可用高度下每个固定 Pane 占 24px（factor = 24/552）', () => {
+    const factor = calcFixedEdgeFactor(600, 24)
+    expect(factor).toBeCloseTo(24 / 552, 6)
+    // 验证实际占比：f/(2f+1) = 24/600
+    expect(factor / (2 * factor + 1)).toBeCloseTo(24 / 600, 6)
   })
 
-  it('可用高度等于顶部高度时兜底返回 1（避免除零）', () => {
-    expect(calcFixedTopFactor(24, 24)).toBe(1)
-    expect(calcFixedTopFactor(10, 24)).toBe(1)
+  it('可用高度不足时兜底返回 1（避免除零）', () => {
+    expect(calcFixedEdgeFactor(40, 24)).toBe(1)
+    expect(calcFixedEdgeFactor(10, 24)).toBe(1)
   })
 
-  it('顶部高度增大 → factor 增大（更高占比）', () => {
-    const factor24 = calcFixedTopFactor(600, 24)
-    const factor48 = calcFixedTopFactor(600, 48)
+  it('固定高度增大 → factor 增大（更高占比）', () => {
+    const factor24 = calcFixedEdgeFactor(600, 24)
+    const factor48 = calcFixedEdgeFactor(600, 48)
     expect(factor48).toBeGreaterThan(factor24)
   })
 })
