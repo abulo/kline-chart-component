@@ -52,7 +52,7 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
         const fromIndex = Math.max(0, Math.floor(visibleRange.from))
         const toIndex = Math.ceil(visibleRange.to)
 
-        target.useMediaCoordinateSpace(({ context }) => {
+        target.useMediaCoordinateSpace(({ context, mediaSize }) => {
           const barSpacing = timeScale.options().barSpacing
           const pixelRatio = window.devicePixelRatio || 1
           // 柱宽 = 库源码原版 optimalCandlestickWidth + 奇偶修正（与 pane1 同一函数
@@ -60,10 +60,10 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
           const barWidthBitmap = candlestickBarWidth(barSpacing, pixelRatio)
           const barWidth = barWidthBitmap / pixelRatio
           const colors = this.source.getThemeColors()
-          // 成交量 Y 轴基准：0 值对应 Pane 底部（柱体紧贴底部）
-          // v5 坐标换算在 series 上：series.priceToCoordinate(price)
-          const yBase = seriesApi.priceToCoordinate(0)
-          if (yBase === null) return
+          // 柱体底部 = Pane 底部（mediaSize.height，绝对贴底）。
+          // 注意：不能用 priceToCoordinate(0)——Histogram base=0 的 autoScale
+          // 范围从 0 起，0 会映射到 Pane 底部内边距处，底部留出缝隙。
+          const yBase = mediaSize.height
           const bars = this.source.getBars()
 
           context.lineWidth = 1

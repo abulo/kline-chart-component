@@ -8,6 +8,25 @@
 
 ---
 
+## v1.4.11（2026-10-12）
+
+修复 pane3 成交量柱体底部**未贴合 Pane 底部**（底部留缝隙）。
+
+### 根因
+自绘 yBase 用的是 `series.priceToCoordinate(0)`。Histogram `base: 0` 的
+autoScale 值域从 0 起算，`priceToCoordinate(0)` 映射到的是 **Pane 底部内边距处**
+（`scaleMargins.bottom`），而非 Pane 底部 → 柱体底部留出一条内边距缝隙。
+
+### 修复
+柱体底部直接取 Pane 底部坐标 `mediaSize.height`（CSS 像素），
+与价格 scale 无关，任何缩放 / 时间轴显隐下都**绝对贴底**；
+柱顶仍用 `series.priceToCoordinate(volume)`（volume 在值域内，映射准确）。
+
+### 验证
+- vue-tsc 类型检查通过；vitest 27 项全绿；未运行 / 未截图。
+
+---
+
 ## v1.4.10（2026-10-12）
 
 修复 pane3 成交量柱体与 pane1 K 线柱体**不完全一致**（宽度偏差 1px）。
