@@ -29,7 +29,7 @@ const toggleTheme = (): void => {
 /** 主题变化 → 同步 html 背景与图表 */
 watch(theme, (name) => {
   const themeColorSet = themeColors(name)
-  document.documentElement.style.backgroundColor = themeColorSet.pageBackground
+  document.documentElement.style.backgroundColor = themeColorSet.background
   chartRef.value?.controller?.applyTheme(name)
 })
 
@@ -45,7 +45,7 @@ const zoomOut = (): void => chartRef.value?.controller?.zoomOut()
 
 /** 首次进入：设置页面背景 */
 onMounted(() => {
-  document.documentElement.style.backgroundColor = themeColors(theme.value).pageBackground
+  document.documentElement.style.backgroundColor = themeColors(theme.value).background
 })
 
 /** 卸载：恢复默认背景 */
@@ -61,7 +61,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="toolbar">
-      <span class="hint">顶部/底部空Pane + K线 v1.4.6</span>
+      <span class="hint">顶部/底部空Pane + K线 v1.4.7</span>
       <div class="spacer" />
       <button class="btn" :class="{ active: showTimeAxis }" @click="toggleTimeAxis">
         时间轴{{ showTimeAxis ? '开' : '关' }}

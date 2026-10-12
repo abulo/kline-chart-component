@@ -36,6 +36,27 @@ describe('calcFixedEdgeFactor（顶/底双固定 Pane stretchFactor）', () => {
     const factor48 = calcFixedEdgeFactor(600, 48)
     expect(factor48).toBeGreaterThan(factor24)
   })
+
+  it('库分配模拟：e = fixed/(H-2fixed) 时 pane0 与 pane2 高度绝对相等', () => {
+    // 模拟 lightweight-charts _adjustSizeImpl：非最后 pane 用 round(f×S)，
+    // 最后一个 pane = 剩余（吸收舍入误差）。数学恒等保证 pane0 === pane2。
+    const simulate = (total: number, fixed: number): [number, number, number] => {
+      const edgeFactor = calcFixedEdgeFactor(total, fixed)
+      const stretchPixels = total / (2 * edgeFactor + 1)
+      const pane0 = Math.round(edgeFactor * stretchPixels)
+      const pane1 = Math.round(stretchPixels)
+      const pane2 = total - pane0 - pane1
+      return [pane0, pane1, pane2]
+    }
+    // 覆盖时间轴开/关与多种容器高度
+    for (const total of [400, 500, 570, 598, 601, 777, 999]) {
+      const [pane0, , pane2] = simulate(total, 24)
+      expect(pane0).toBe(pane2)
+    }
+    // 且固定 Pane 恰好等于目标 24px
+    const [pane0] = simulate(570, 24)
+    expect(pane0).toBe(24)
+  })
 })
 
 describe('K 线数据', () => {

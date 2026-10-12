@@ -8,6 +8,33 @@
 
 ---
 
+## v1.4.7（2026-10-12）
+
+修复 pane0 / pane2 高度不相等（时间轴开关均精确相等）。
+
+### 背景
+v1.4.6 删除 `timeAxisHeight` 后，因子按容器全高计算；而库 `_adjustSizeImpl`
+实际可用高度 = 容器 − 时间轴默认高度(28px) − 分隔线总高(2px)，二者不匹配，
+导致 pane0 ≈ 21px、pane2 ≈ 25px（差约 4px，用户实测发现）。
+
+### 变更
+- 新增控制器私有常量 `LIBRARY_TIME_AXIS_HEIGHT = 28`（**非用户参数**）：
+  来自库源码 rendererOptions 合计（borderSize 1 + tickLength 5 + fontSize 12 +
+  paddingTop 3 + paddingBottom 3 + labelBottomOffset 4，fontSize=12 时偶数化不变），
+  仅用于布局换算；
+- `applyStretchFactors` 按**库实际可用高度**计算：
+  `usableHeight = clientHeight - 时间轴高（按库当前显隐状态） - 分隔线总高(panes.length-1)`；
+  数学恒等：`e = fixed/(H-48)` 时 `2e+1 = H/(H-48)`、`S = H-48`、`e×S = fixed`，
+  `pane2 = H - fixed - (H-2×fixed) = fixed` → pane0 与 pane2 **绝对相等**；
+- `toggleTimeAxis` 切换显隐后重算 stretchFactor（时间轴开/关均精确相等）；
+- 新增单测「库分配模拟：e = fixed/(H-2fixed) 时 pane0 与 pane2 高度绝对相等」
+  （模拟库 round/剩余分配逻辑，覆盖时间轴开/关多种容器高度）。
+
+### 验证
+- vitest 18 项全绿（新增 1 项）；vue-tsc 类型检查通过；未运行 / 未截图。
+
+---
+
 ## v1.4.6（2026-10-12）
 
 移除 timeAxisHeight 参数，时间轴完全交给库默认处理。
