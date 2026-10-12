@@ -8,6 +8,29 @@
 
 ---
 
+## v1.4.2（2026-10-12）
+
+命名规范化：全部变量改成语义化驼峰（纯字母，无下划线 / 缩写 / 特殊符号）。
+
+### 变更（全仓库）
+- 类私有成员去掉 `_` 前缀（`_chart` → `chart`、`_container` → `container`、
+  `_bars` → `bars`、`_klineSeries` → `klineSeries`、`_theme` → `theme`、
+  `_timeAxisVisible` → `timeAxisVisible`、`_resizeObserver` → `resizeObserver`、
+  `_applyStretchFactors` → `applyStretchFactors`、`_applyData` → `applyData`）；
+- primitive 内部成员：`_source` → `source`、`_text` → `text`、`_getColor` → `getColor`；
+- 缩写展开：`c0` → `initialThemeColors`、`c` → `themeColorSet`、
+  `ts` → `timeScaleApi`、`bs` → `barSpacing`、`k` → `remainingHeight`、
+  `total` → `availableHeight`、`b` → `bar`、`i` → `index`、`n` → `barCount`、
+  `d` → `dateCursor`、`f` → `factor`；
+- 常量改为驼峰：`PANE_COUNT` → `paneCount`、`TOP_PANE_HEIGHT` → `topPaneHeight`、
+  `TIME_AXIS_HEIGHT` → `timeAxisHeight`、`CHART_FONT_FAMILY` → `chartFontFamily`、
+  `DEFAULT_THEME` → `defaultTheme`（导出引用同步更新：控制器 / 测试）。
+
+### 验证
+- vitest 17 项全绿；vue-tsc 类型检查通过；未运行 / 未截图（按用户偏好）。
+
+---
+
 ## v1.4.1（2026-10-12）
 
 缺陷修复：Pane 分割线不可见 + 十字星跟随鼠标。

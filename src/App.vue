@@ -28,8 +28,8 @@ const toggleTheme = (): void => {
 
 /** 主题变化 → 同步 html 背景与图表 */
 watch(theme, (name) => {
-  const c = themeColors(name)
-  document.documentElement.style.backgroundColor = c.pageBackground
+  const themeColorSet = themeColors(name)
+  document.documentElement.style.backgroundColor = themeColorSet.pageBackground
   chartRef.value?.controller?.applyTheme(name)
 })
 

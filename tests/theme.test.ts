@@ -2,13 +2,13 @@
  * theme.test.ts —— 主题色配置单测（v1.2.1）
  */
 import { describe, expect, it } from 'vitest'
-import { chartThemes, themeColors, DEFAULT_THEME } from '../src/chart/theme'
+import { chartThemes, themeColors, defaultTheme } from '../src/chart/theme'
 
 describe('主题配置', () => {
   it('深系 / 浅系都存在且默认深系', () => {
     expect(chartThemes.dark).toBeDefined()
     expect(chartThemes.light).toBeDefined()
-    expect(DEFAULT_THEME).toBe('dark')
+    expect(defaultTheme).toBe('dark')
   })
 
   it('涨跌颜色锁定红涨绿跌（A 股习惯）', () => {
@@ -26,10 +26,10 @@ describe('主题配置', () => {
   })
 
   it('关键色值口径（深系）', () => {
-    const c = themeColors('dark')
-    expect(c.background).toBe('#131722')
-    expect(c.upColor).toBe('#FF0000')
-    expect(c.downColor).toBe('#008000')
+    const themeColorSet = themeColors('dark')
+    expect(themeColorSet.background).toBe('#131722')
+    expect(themeColorSet.upColor).toBe('#FF0000')
+    expect(themeColorSet.downColor).toBe('#008000')
   })
 
   it('清理后无 separatorColor / CHART_FONT 残留', () => {

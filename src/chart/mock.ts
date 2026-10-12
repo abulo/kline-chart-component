@@ -28,26 +28,26 @@ export interface BasicBar {
  * 注意：日期游标每次 +1 天、遇周末继续 +1，保证 time 严格递增不重复
  * （按 i×86400000 独立推算再跳周末会在跨周处产生重复日期，库断言报错）。
  */
-export const genMockBars = (n: number): BasicBar[] => {
+export const genMockBars = (barCount: number): BasicBar[] => {
   const bars: BasicBar[] = []
-  const d = new Date(2026, 0, 5) // 2026-01-05（周一）
+  const dateCursor = new Date(2026, 0, 5) // 2026-01-05（周一）
   let price = 10
-  for (let i = 0; i < n; i++) {
-    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+  for (let index = 0; index < barCount; index++) {
+    while (dateCursor.getDay() === 0 || dateCursor.getDay() === 6) dateCursor.setDate(dateCursor.getDate() + 1)
     const open = price
     const close = Math.max(1, open + (Math.random() - 0.48) * 0.4)
     const high = Math.max(open, close) * (1 + Math.random() * 0.012)
     const low = Math.min(open, close) * (1 - Math.random() * 0.012)
     price = close
     bars.push({
-      time: Math.floor(d.getTime() / 1000),
+      time: Math.floor(dateCursor.getTime() / 1000),
       open,
       high,
       low,
       close,
-      preClose: i === 0 ? open : bars[i - 1].close,
+      preClose: index === 0 ? open : bars[index - 1].close,
     })
-    d.setDate(d.getDate() + 1)
+    dateCursor.setDate(dateCursor.getDate() + 1)
   }
   return bars
 }

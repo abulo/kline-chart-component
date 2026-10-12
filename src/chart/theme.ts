@@ -10,7 +10,7 @@
  *
  * 说明：
  *  - A 股习惯"红涨绿跌"，深系与浅系保持一致（upColor / downColor 锁定）；
- *  - v1.2.1 清理：删除 CHART_FONT（未使用，保留 CHART_FONT_FAMILY 供库
+ *  - v1.2.1 清理：删除 CHART_FONT（未使用，保留 chartFontFamily 供库
  *    layout.fontFamily 使用）、删除 separatorColor（单 Pane 无分隔线 + 栅格
  *    关闭，无渲染效果）；
  *  - 后续指标 / 分时颜色在此文件扩展。
@@ -19,7 +19,7 @@
 /**
  * 全局字体（用户指定）：纯字体家族，给 lightweight-charts layout.fontFamily。
  */
-export const CHART_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif'
+export const chartFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif'
 
 /** 主题色定义 */
 export interface ChartThemeColors {
@@ -97,7 +97,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
 }
 
 /** 默认主题（首次进入深系） */
-export const DEFAULT_THEME: ChartThemeName = 'dark'
+export const defaultTheme: ChartThemeName = 'dark'
 
 /** 便捷取色：主题名 → 颜色对象 */
 export const themeColors = (name: ChartThemeName): ChartThemeColors => chartThemes[name]
