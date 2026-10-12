@@ -7,14 +7,14 @@
  *   pane2：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
  *
  * 模块划分（每个 class 一个文件）：
- *  - layout.ts：布局常量（paneCount / topPaneHeight / timeAxisHeight）与
- *    高度算法 calcFixedEdgeFactor；
+ *  - layout.ts：布局常量（paneCount / topPaneHeight）与高度算法
+ *    calcFixedEdgeFactor；
  *  - TestLabelPrimitive.ts：空 Pane"测试"文字 primitive；
  *  - TestLabelPaneView.ts：文字渲染视图（renderer）。
  *
  * 高度算法（pane0 与 pane2 使用同一 stretchFactor，绝对相等）：
- *   可用高度 = 容器高度 - 时间轴高度（显示时，时间轴采用库默认高度）
- *   pane0 : pane1 : pane2 = f : 1 : f，其中 f = 24 / (可用高度 - 48)
+ *   pane0 : pane1 : pane2 = f : 1 : f，其中 f = 24 / (容器高度 - 48)
+ *   （时间轴由库内部占位，采用系统默认高度，不持有 timeAxisHeight 参数）
  *
  * 全局控制（全部由 App.vue 提供按钮）：
  *  - 时间轴开关：控制底部时间轴（timeScale）显示 / 隐藏；
@@ -36,7 +36,7 @@ import {
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
-import { timeAxisHeight, topPaneHeight, calcFixedEdgeFactor } from './layout'
+import { topPaneHeight, calcFixedEdgeFactor } from './layout'
 import { TestLabelPrimitive } from './TestLabelPrimitive'
 
 /** 控制器选项 */
@@ -53,14 +53,13 @@ export class KLineChartController {
   /* ===== 数据 ===== */
   private readonly bars: BasicBar[]
 
-  /* ===== series（pane0 空线 = 文字载体；pane1 K 线） ===== */
+  /* ===== series（pane0/pane2 空线 = 文字载体；pane1 K 线） ===== */
   private klineSeries: ISeriesApi<'Candlestick'>
 
   /* ===== 状态 ===== */
   private theme: ChartThemeName
-  private timeAxisVisible = true
 
-  /** 容器尺寸监听：尺寸变化时重算 pane0 固定高度（24px） */
+  /** 容器尺寸监听：尺寸变化时重算固定 Pane 高度（24px） */
   private resizeObserver: ResizeObserver | null = null
 
   constructor(options: KLineChartOptions) {
@@ -184,13 +183,12 @@ export class KLineChartController {
 
   /* ===================== 布局 ===================== */
 
-  /** 重算 pane 高度：pane0 / pane2 = 24px（stretchFactor 按可用高度折算），pane1 占剩余 */
+  /** 重算 pane 高度：pane0 / pane2 = 24px（stretchFactor 按容器高度折算），pane1 占剩余 */
   private applyStretchFactors = (): void => {
     const panes = this.chart.panes()
     if (panes.length < 3) return
-    // 可用高度 = 容器高度 - 时间轴高度（显示时，v5 时间轴高度固定常量）
-    const availableHeight = this.container.clientHeight - (this.timeAxisVisible ? timeAxisHeight : 0)
-    const edgeFactor = calcFixedEdgeFactor(availableHeight, topPaneHeight)
+    // 直接基于容器高度（时间轴由库内部占位，采用系统默认高度）
+    const edgeFactor = calcFixedEdgeFactor(this.container.clientHeight, topPaneHeight)
     panes[0].setStretchFactor(edgeFactor)
     panes[1].setStretchFactor(1)
     panes[2].setStretchFactor(edgeFactor)
@@ -259,12 +257,9 @@ export class KLineChartController {
     timeScaleApi.applyOptions({ barSpacing: Math.max(barSpacing / 1.25, 2) })
   }
 
-  /** 时间轴开关：显隐时间轴并重算 pane 高度（时间轴高度释放 / 占用） */
+  /** 时间轴开关：仅切换时间轴显隐（高度由库内部处理，pane 比例不变） */
   toggleTimeAxis = (visible: boolean): void => {
-    if (this.timeAxisVisible === visible) return
-    this.timeAxisVisible = visible
     this.chart.timeScale().applyOptions({ visible })
-    this.applyStretchFactors()
   }
 
   /** 销毁：移除监听 / chart / 清除实例标记（防内存泄漏） */

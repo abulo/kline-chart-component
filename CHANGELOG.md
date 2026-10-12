@@ -8,6 +8,26 @@
 
 ---
 
+## v1.4.6（2026-10-12）
+
+移除 timeAxisHeight 参数，时间轴完全交给库默认处理。
+
+### 变更
+- `layout.ts` 删除 `timeAxisHeight` 常量（时间轴采用库系统默认高度，
+  不再持有高度参数）；
+- `KLineChartController.ts`：
+  - `applyStretchFactors` 直接基于容器高度计算
+    （`calcFixedEdgeFactor(container.clientHeight, 24)`），
+    时间轴高度由库内部占位；
+  - 删除 `timeAxisVisible` 状态与 `toggleTimeAxis` 中的重算逻辑
+    （pane 比例与时间轴显隐无关），开关仅切换 `timeScale.visible`；
+- 清理残留引用（grep 确认无 `timeAxisHeight` / `timeAxisVisible` 代码引用）。
+
+### 验证
+- vitest 17 项全绿；vue-tsc 类型检查通过；未运行 / 未截图（按用户偏好）。
+
+---
+
 ## v1.4.5（2026-10-12）
 
 时间轴恢复系统默认 + pane0/pane2 绝对等高 + 清理未用文件。
