@@ -1,17 +1,20 @@
 /**
- * KLineChartController.ts —— 单 Pane K 线控制器（v1.2.1）
+ * KLineChartController.ts —— 顶部空 Pane + K 线控制器（v1.4.0）
  *
- * 布局：一个 chart 内 1 个 Pane（lightweight-charts 原生多 Pane 的 pane0）：
- *   pane0：K 线主图（Candlestick）
+ * 布局：一个 chart 内 2 个 Pane（lightweight-charts 原生多 Pane）：
+ *   pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 24px，不可拖拽）
+ *   pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心）
  *
- * v1.2.1 变更（清理未使用参数）：
- *  - 删除 KLineChartOptions.symbol / _symbol（存入后从未读取）；
- *  - 删除 _resizeObserver（autoSize 已由库处理，空监听无实际功能）；
- *  - 删除 layout.panes 配置（单 Pane 无 pane 分隔线，参数无渲染效果）；
- *  - 删除 crosshair.mode（0 为库默认值）与 timeScale.timeVisible/secondsVisible
- *    （false 为库默认值），保留有实际效果的 borderVisible: false；
- *  - 删除无调用者的 getter（chart / theme / timeAxisVisible）与
- *    _timeAxisVisible 冗余状态，toggleTimeAxis 直接应用库选项。
+ * v1.4.0 变更：
+ *  - 新增 pane0 顶部空 Pane："测试"文字（ISeriesPrimitive 自绘），
+ *    垂直居中、距左 6px、高度固定 24px、Pane 高度不可拖拽（enableResize: false）；
+ *  - 重新引入 ResizeObserver 与 _timeAxisVisible 状态，用于在容器尺寸 /
+ *    时间轴开关变化时按绝对像素（24px）重算 pane0 的 stretchFactor。
+ *
+ * 高度算法（导出纯函数 calcFixedTopFactor 可单测）：
+ *   可用高度 = 容器高度 - 时间轴高度（显示时）
+ *   pane0 stretchFactor : pane1 stretchFactor = 24 : (可用高度 - 24)
+ *   （pane1 的 stretchFactor 固定为 1，pane0 按比例折算）
  *
  * 全局控制（全部由 App.vue 提供按钮）：
  *  - 时间轴开关：控制底部时间轴（timeScale）显示 / 隐藏；
@@ -19,14 +22,19 @@
  *  - 风格切换：深系 / 浅系。
  *
  * 生命周期：实例保护（container dataset 标记防重复创建 chart）；
- * destroy 销毁（防内存泄漏）。
+ * ResizeObserver 跟随容器尺寸重算 pane 高度；destroy 销毁（防内存泄漏）。
  */
 
 import {
   createChart,
   CandlestickSeries,
+  LineSeries,
   ColorType,
   type ISeriesApi,
+  type ISeriesPrimitive,
+  type IPrimitivePaneView,
+  type IPrimitivePaneRenderer,
+  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { themeColors, CHART_FONT_FAMILY, type ChartThemeName } from './theme'
@@ -38,8 +46,75 @@ export interface KLineChartOptions {
   container: HTMLElement
 }
 
-/** Pane 总数（仅 K 线主图） */
-export const PANE_COUNT = 1
+/** Pane 总数（pane0 顶部空 Pane + pane1 K 线） */
+export const PANE_COUNT = 2
+
+/** 顶部空 Pane 固定高度（px） */
+export const TOP_PANE_HEIGHT = 24
+
+/** 底部时间轴高度（px）：lightweight-charts v5 时间轴高度固定（无公开 API），
+ *  时间轴显示时从可用总高度中扣除 */
+export const TIME_AXIS_HEIGHT = 28
+
+/**
+ * 计算顶部固定高度 Pane 的 stretchFactor（下方 Pane 的 stretchFactor 固定为 1）。
+ * 使 pane0 实际高度 ≈ topHeight：factor / (factor + 1) × total = topHeight。
+ * @param totalHeight 可用总高度（已扣除时间轴）
+ * @param topHeight 顶部 Pane 目标高度
+ * @returns pane0 的 stretchFactor（<=0 时返回 1 兜底，避免除零）
+ */
+export const calcFixedTopFactor = (totalHeight: number, topHeight: number): number => {
+  const k = totalHeight - topHeight
+  return k > 0 ? topHeight / k : 1
+}
+
+/* ===================== 顶部空 Pane 文字 primitive ===================== */
+
+/**
+ * TestLabelPrimitive —— 在 pane0 上自绘"测试"文字。
+ * 通过 ISeriesPrimitive 挂载到空 series：paneViews 返回渲染器，
+ * draw 时取 pane 内容区尺寸，文字垂直居中、距左 6px；
+ * 颜色每次 draw 动态获取（跟随主题 textColor），主题切换无需额外刷新。
+ */
+class TestLabelPrimitive implements ISeriesPrimitive<Time> {
+  private readonly _text: string
+  private readonly _getColor: () => string
+
+  constructor(text: string, getColor: () => string) {
+    this._text = text
+    this._getColor = getColor
+  }
+
+  /** 返回本 primitive 的 pane 视图（渲染器） */
+  paneViews(): readonly IPrimitivePaneView[] {
+    return [new TestLabelPaneView(this)]
+  }
+}
+
+/** 空 Pane 文字视图：持有 primitive 引用，提供 renderer */
+class TestLabelPaneView implements IPrimitivePaneView {
+  private readonly _source: TestLabelPrimitive
+
+  constructor(source: TestLabelPrimitive) {
+    this._source = source
+  }
+
+  /** 渲染器：文字垂直居中、距左 6px（media 坐标系 = CSS 像素） */
+  renderer(): IPrimitivePaneRenderer {
+    return {
+      draw: (target) => {
+        // v5：draw 接收 CanvasRenderingTarget2D（fancy-canvas），
+        // useMediaCoordinateSpace 为回调式 API，scope 提供 context 与 mediaSize
+        target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+          context.font = `12px ${CHART_FONT_FAMILY}`
+          context.fillStyle = this._source['_getColor']()
+          context.textBaseline = 'middle'
+          context.fillText(this._source['_text'], 6, mediaSize.height / 2)
+        })
+      },
+    }
+  }
+}
 
 export class KLineChartController {
   /* ===== 图表 / 容器 ===== */
@@ -49,11 +124,15 @@ export class KLineChartController {
   /* ===== 数据 ===== */
   private readonly _bars: BasicBar[]
 
-  /* ===== series（仅 K 线） ===== */
+  /* ===== series（pane0 空线 = 文字载体；pane1 K 线） ===== */
   private _klineSeries: ISeriesApi<'Candlestick'>
 
-  /* ===== 当前主题 ===== */
+  /* ===== 状态 ===== */
   private _theme: ChartThemeName
+  private _timeAxisVisible = true
+
+  /** 容器尺寸监听：尺寸变化时重算 pane0 固定高度（24px） */
+  private _resizeObserver: ResizeObserver | null = null
 
   constructor(options: KLineChartOptions) {
     this._container = options.container
@@ -78,6 +157,9 @@ export class KLineChartController {
         fontSize: 12,
         fontFamily: CHART_FONT_FAMILY,
         attributionLogo: false,
+        panes: {
+          enableResize: false, // Pane 高度不可拖拽（由代码固定比例）
+        },
       },
       // 栅格化关闭：纵向 / 横向栅格线全部隐藏
       grid: {
@@ -106,7 +188,19 @@ export class KLineChartController {
       },
     })
 
-    /* ---------- 2. K 线主图（红涨绿跌；上涨柱体空心） ----------
+    /* ---------- 2. pane0：顶部空 Pane（无数据，自绘"测试"文字） ---------- */
+    this._chart.addSeries(
+      LineSeries,
+      {
+        priceScaleId: 'left',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      },
+      0,
+    ).attachPrimitive(new TestLabelPrimitive('测试', () => themeColors(this._theme).textColor))
+
+    /* ---------- 3. pane1：K 线主图（红涨绿跌；上涨柱体空心） ----------
      * 空心实现：上涨（up）柱体填充色 = 图表背景色（视觉空心），
      * 边框 / 影线保留红色；下跌（down）柱体绿色实心。
      */
@@ -123,13 +217,32 @@ export class KLineChartController {
         priceLineVisible: false,
         lastValueVisible: false,
       },
-      0,
+      1,
     )
 
-    /* ---------- 3. 数据 + 首绘 ---------- */
+    /* ---------- 4. 高度分配：pane0 固定 24px，pane1 占剩余 ---------- */
+    this._applyStretchFactors()
+
+    /* ---------- 5. 数据 + 首绘 ---------- */
     this._bars = genMockBars(120)
     this._applyData()
     this._chart.timeScale().fitContent()
+
+    /* ---------- 6. 容器尺寸监听：重算 pane0 固定高度（24px） ---------- */
+    this._resizeObserver = new ResizeObserver(() => this._applyStretchFactors())
+    this._resizeObserver.observe(this._container)
+  }
+
+  /* ===================== 布局 ===================== */
+
+  /** 重算 pane 高度：pane0 = 24px（stretchFactor 按可用高度折算），pane1 占剩余 */
+  private _applyStretchFactors = (): void => {
+    const panes = this._chart.panes()
+    if (panes.length < 2) return
+    // 可用高度 = 容器高度 - 时间轴高度（显示时，v5 时间轴高度固定常量）
+    const total = this._container.clientHeight - (this._timeAxisVisible ? TIME_AXIS_HEIGHT : 0)
+    panes[0].setStretchFactor(calcFixedTopFactor(total, TOP_PANE_HEIGHT))
+    panes[1].setStretchFactor(1)
   }
 
   /* ===================== 数据 ===================== */
@@ -173,6 +286,7 @@ export class KLineChartController {
       wickUpColor: c.upColor,
       wickDownColor: c.downColor,
     })
+    // 空 Pane 文字颜色在 draw 时动态取色，applyOptions 触发重绘即自动更新
   }
 
   /** 放大（X 轴 barSpacing ×1.25，限幅） */
@@ -189,13 +303,18 @@ export class KLineChartController {
     ts.applyOptions({ barSpacing: Math.max(bs / 1.25, 2) })
   }
 
-  /** 时间轴开关：底部时间轴显示 / 隐藏（库 timeScale.visible 支持） */
+  /** 时间轴开关：显隐时间轴并重算 pane 高度（时间轴高度释放 / 占用） */
   toggleTimeAxis = (show: boolean): void => {
+    if (this._timeAxisVisible === show) return
+    this._timeAxisVisible = show
     this._chart.timeScale().applyOptions({ visible: show })
+    this._applyStretchFactors()
   }
 
-  /** 销毁：移除 chart / 清除实例标记（防内存泄漏） */
+  /** 销毁：移除监听 / chart / 清除实例标记（防内存泄漏） */
   destroy = (): void => {
+    this._resizeObserver?.disconnect()
+    this._resizeObserver = null
     this._chart.remove()
     this._container.dataset.lwcMounted = 'false'
   }

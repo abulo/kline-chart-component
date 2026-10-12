@@ -8,6 +8,27 @@
 
 ---
 
+## v1.4.0（2026-10-12）
+
+新增**顶部空 Pane**（pane0），K 线主图下移至 pane1。
+
+### 变更（KLineChartController.ts）
+- 顶部空 Pane（pane0）：无数据，仅通过 `ISeriesPrimitive` 自绘"测试"文字；
+- 文字规格：垂直居中、距左 **6px**、颜色跟随主题 `textColor`（深/浅系自动适配）；
+- 高度：固定 **24px**（`TOP_PANE_HEIGHT`），Pane 高度不可拖拽
+  （`layout.panes.enableResize: false`）；
+- 高度算法：`calcFixedTopFactor(totalHeight, topHeight)`（导出纯函数可单测），
+  使 pane0 stretchFactor = 24 / (可用高度 - 24)，K 线 pane factor = 1；
+- 重新引入 `ResizeObserver` 与 `_timeAxisVisible` 状态：容器尺寸 / 时间轴开关
+  变化时重算 pane0 高度（时间轴高度按 v5 固定值 `TIME_AXIS_HEIGHT = 28` 扣除）。
+
+### 测试与验证
+- vitest 17 项全绿（新增 calcFixedTopFactor 3 项、PANE_COUNT=2、TOP_PANE_HEIGHT）；
+- vue-tsc 类型检查通过；
+- 未生成运行截图（按用户偏好仅做代码级验证）。
+
+---
+
 ## v1.3.0（2026-10-12）
 
 K 线颜色风格调整：**红涨绿跌 + 上涨柱体空心**。
