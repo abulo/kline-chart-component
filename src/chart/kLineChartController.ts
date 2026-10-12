@@ -1,26 +1,32 @@
 /**
- * kLineChartController.ts —— 顶/底空 Pane + K 线 + 成交量控制器（v1.4.9）
+ * kLineChartController.ts —— 顶/底空 Pane + K 线 + 成交量 + 指标控制器（v1.4.14）
  *
- * 布局：一个 chart 内 4 个 Pane（lightweight-charts 原生多 Pane）：
+ * 布局：一个 chart 内 6 个 Pane（lightweight-charts 原生多 Pane）：
  *   pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 24px，不可拖拽）
  *   pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心）
  *   pane2：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
  *   pane3：成交量（自绘：上涨空心红柱 / 下跌绿实心，柱宽与间隔同 pane1 绝对一致）
+ *   pane4：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
+ *   pane5：附图指标（MACD：DIF / DEA 线 + 红绿柱，高度与 pane3 一致）
  *
  * 模块划分（每个 class 一个文件）：
- *  - layout.ts：布局常量（paneCount / topPaneHeight / volumeRatio）与高度算法
- *    calcPaneFactors；
- *  - candlestickWidth.ts：官方原版 optimalCandlestickWidth（柱宽，与 pane1 同源）；
+ *  - layout.ts：布局常量（paneCount / fixedPaneCount / topPaneHeight / groupRatios）
+ *    与高度算法 calcPaneHeights；
+ *  - candlestickWidth.ts：库源码原版 optimalCandlestickWidth（柱宽，与 pane1 同源）；
  *  - volumeBarPrimitive.ts / volumeBarPaneView.ts：成交量柱自绘；
- *  - testLabelPrimitive.ts / testLabelPaneView.ts：空 Pane"测试"文字。
+ *  - testLabelPrimitive.ts / testLabelPaneView.ts：空 Pane"测试"文字；
+ *  - indicators/macd.ts：MACD 指标计算（东方财富算法，纯函数）。
  *
- * 高度算法（pane0 与 pane2 使用同一 stretchFactor，绝对相等）：
+ * 高度算法（6 Pane 分 3 组：main / volume / indicator = 60 : 20 : 20）：
  *   库实际可用高度 H = 容器高度 - 时间轴高度（库默认 28px，显隐按库状态）
  *                      - 分隔线总高（每 pane 间隔 1px）
- *   stretchPixels S = (H - 2×24) / (1 + 0.25)
- *   pane0 : pane1 : pane2 : pane3 = f : 1 : f : 0.25，f = 24 / S
- *   （数学恒等：f×S = 24，pane0 = pane2 = 24 绝对相等；
- *     K 线 round 误差由最后的成交量 Pane 吸收）
+ *   固定空 Pane 总高 = 3×24（pane0 / pane2 / pane4），剩余 R = H - 72：
+ *     pane0 = 24px、pane1 = 0.6×R（main 组）
+ *     pane2 = 24px、pane3 = 0.2×R（volume 组）
+ *     pane4 = 24px、pane5 = 0.2×R（indicator 组）
+ *   像素因子方案：stretchFactor 直接设为目标像素高度 → stretchPixels = 1
+ *   → 非最后 pane = round(factor) 精确、最后 pane = 剩余 = 目标，无舍入误差；
+ *   时间轴开 / 关仅影响 H（关时时间轴高度 = 0），组比例不变。
  *
  * 全局控制（全部由 App.vue 提供按钮）：
  *  - 时间轴开关：控制底部时间轴（timeScale）显示 / 隐藏；
@@ -43,9 +49,29 @@ import {
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
-import { paneCount, topPaneHeight, volumeRatio, calcPaneFactors } from './layout'
+import {
+  paneCount,
+  topPaneHeight,
+  calcPaneHeights,
+} from './layout'
 import { TestLabelPrimitive } from './testLabelPrimitive'
 import { VolumeBarPrimitive } from './volumeBarPrimitive'
+import { calcMacd } from './indicators/macd'
+
+/**
+ * MACD 指标配色（东方财富风格，深浅系通用不随主题变化）：
+ *   DIF / DEA 线、MACD 柱红涨绿跌（柱 > 0 红、< 0 绿）
+ */
+const MACD_COLORS = {
+  /** DIF 线 */
+  difLine: '#A0A0A0',
+  /** DEA 线 */
+  deaLine: '#F4AA0A',
+  /** MACD 柱上涨（> 0）红 */
+  macdUp: '#FF0000',
+  /** MACD 柱下跌（< 0）绿 */
+  macdDown: '#008000',
+} as const
 
 /**
  * 库系统默认时间轴高度（px）。
@@ -70,9 +96,15 @@ export class KLineChartController {
   /* ===== 数据 ===== */
   private readonly bars: BasicBar[]
 
-  /* ===== series（pane0/pane2 空线 = 文字载体；pane1 K 线；pane3 成交量） ===== */
+  /* ===== series（pane0/pane2/pane4 空线 = 文字载体；pane1 K 线；pane3 成交量；pane5 MACD） ===== */
   private klineSeries: ISeriesApi<'Candlestick'>
   private volumeSeries: ISeriesApi<'Histogram'>
+  /** pane5 MACD 柱（Histogram，正红负绿） */
+  private indicatorsBarSeries: ISeriesApi<'Histogram'>
+  /** pane5 DIF 线 */
+  private difSeries: ISeriesApi<'Line'>
+  /** pane5 DEA 线 */
+  private deaSeries: ISeriesApi<'Line'>
 
   /* ===== 状态 ===== */
   private theme: ChartThemeName
@@ -210,7 +242,59 @@ export class KLineChartController {
       new VolumeBarPrimitive(() => this.bars, () => themeColors(this.theme)),
     )
 
-    /* ---------- 4. 高度分配：pane0 / pane2 固定 24px（同一 factor，绝对相等），pane1 K 线，pane3 成交量 ---------- */
+    /* ---------- 3.3 pane4：底部空 Pane（无数据，自绘"测试"文字，设置与 pane0 一致） ---------- */
+    this.chart.addSeries(
+      LineSeries,
+      {
+        priceScaleId: 'left',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      },
+      4,
+    ).attachPrimitive(new TestLabelPrimitive('测试', () => themeColors(this.theme).textColor))
+
+    /* ---------- 3.4 pane5：MACD 指标（DIF / DEA 线 + 红绿柱，高度与 pane3 一致） ----------
+     * 库原生 series 渲染：
+     *  - indicatorsBarSeries（Histogram，指标通用柱）：柱 > 0 红、< 0 绿（红涨绿跌，数据级 color）；
+     *  - difSeries / deaSeries（Line）：DIF / DEA 线（固定配色，深浅系通用）。
+     */
+    this.indicatorsBarSeries = this.chart.addSeries(
+      HistogramSeries,
+      {
+        priceScaleId: 'left',
+        base: 0, // 柱从 0 轴绘制（正负双方向）
+        priceLineVisible: false,
+        lastValueVisible: false,
+      },
+      5,
+    )
+    this.difSeries = this.chart.addSeries(
+      LineSeries,
+      {
+        priceScaleId: 'left',
+        color: MACD_COLORS.difLine,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      },
+      5,
+    )
+    this.deaSeries = this.chart.addSeries(
+      LineSeries,
+      {
+        priceScaleId: 'left',
+        color: MACD_COLORS.deaLine,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      },
+      5,
+    )
+
+    /* ---------- 4. 高度分配：pane0 / pane2 / pane4 固定 24px（同一 factor，绝对相等），pane1 K 线，pane3 成交量 / pane5 指标 ---------- */
     this.applyStretchFactors()
 
     /* ---------- 5. 数据 + 首绘 ---------- */
@@ -226,17 +310,16 @@ export class KLineChartController {
   /* ===================== 布局 ===================== */
 
   /**
-   * 重算 pane 高度：
-   *   pane0 / pane2 = 24px（同一 stretchFactor，绝对相等）
-   *   pane1（K 线）    = 1
-   *   pane3（成交量）   = volumeRatio（0.25，相对 K 线）
+   * 重算 pane 高度（分组 60:20:20，像素因子方案）：
+   *   main 组（pane0 + pane1）      = 60%：pane0 = 24px、pane1 = 0.6R - 24
+   *   volume 组（pane2 + pane3）     = 20%：pane2 = 24px、pane3 = 0.2R - 24
+   *   indicator 组（pane4 + pane5）  = 20%：pane4 = 24px、pane5 = 0.2R - 24
+   *   R = 库可用高度 - 3×24（时间轴开 / 关一致，仅 H 不同）
    *
-   * 精确相等的数学依据（库 _adjustSizeImpl）：
-   *   库按 totalPaneHeight / Σfactor 分配，最后一个 pane 高度 = 剩余（吸收舍入）。
-   *   stretchPixels S = (H - 2×fixed) / (1 + ratio)，
-   *   fixedFactor = fixed / S → fixedFactor × S = fixed 精确，
-   *   故 pane0 = round(fixed) = fixed、pane2 = round(fixed) = fixed，绝对相等；
-   *   K 线 round 误差由最后的成交量 Pane 吸收。
+   * 像素因子精确性（库 _adjustSizeImpl）：
+   *   stretchFactor 直接设为目标像素高度 → totalStretch = Σ高度 = H
+   *   → stretchPixels = H / Σ = 1 → 非最后 pane = round(factor×1) = factor 精确；
+   *   最后 pane（pane5）= 剩余 = 目标高度，同样精确。无舍入误差。
    */
   private applyStretchFactors = (): void => {
     const panes = this.chart.panes()
@@ -245,16 +328,13 @@ export class KLineChartController {
     const timeAxisHeight = this.chart.timeScale().options().visible ? LIBRARY_TIME_AXIS_HEIGHT : 0
     const separatorHeight = panes.length - 1
     const usableHeight = this.container.clientHeight - timeAxisHeight - separatorHeight
-    const { fixedFactor, klineFactor, volumeFactor } = calcPaneFactors(usableHeight, topPaneHeight, volumeRatio)
-    panes[0].setStretchFactor(fixedFactor)
-    panes[1].setStretchFactor(klineFactor)
-    panes[2].setStretchFactor(fixedFactor)
-    panes[3].setStretchFactor(volumeFactor)
+    const paneHeights = calcPaneHeights(usableHeight, topPaneHeight)
+    panes.forEach((pane, index) => pane.setStretchFactor(paneHeights[index]))
   }
 
   /* ===================== 数据 ===================== */
 
-  /** K 线与成交量数据写入 */
+  /** K 线 / 成交量 / MACD 数据写入 */
   private applyData = (): void => {
     this.klineSeries.setData(
       this.bars.map((bar) => ({
@@ -272,6 +352,21 @@ export class KLineChartController {
         time: bar.time as UTCTimestamp,
         value: bar.volume,
       })),
+    )
+    // MACD：DIF / DEA 线 + 红绿柱（柱 > 0 红、< 0 绿，数据级 color）
+    const macdPoints = calcMacd(this.bars)
+    this.indicatorsBarSeries.setData(
+      macdPoints.map((point) => ({
+        time: point.time as UTCTimestamp,
+        value: point.macd,
+        color: point.macd >= 0 ? MACD_COLORS.macdUp : MACD_COLORS.macdDown,
+      })),
+    )
+    this.difSeries.setData(
+      macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dif })),
+    )
+    this.deaSeries.setData(
+      macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dea })),
     )
   }
 

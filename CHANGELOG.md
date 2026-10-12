@@ -8,6 +8,94 @@
 
 ---
 
+## v1.4.16（2026-10-12）
+
+`macdBarSeries` 重命名为 `indicatorsBarSeries`（指标通用柱，为后续扩展其他指标预留）。
+
+### 变更
+- controller：`macdBarSeries` → `indicatorsBarSeries`（字段 / 创建 / setData / 注释）；
+  DIF / DEA 线保留 MACD 语义（具体指标专属）。
+
+### 验证
+- vue-tsc 类型检查通过；vitest 35 项全绿；未运行 / 未截图。
+
+---
+
+## v1.4.15（2026-10-12）
+
+Pane 分组：main / volume / indicator = 60 : 20 : 20（时间轴开 / 关一致）。
+
+### 变更
+- 分组：pane0 + pane1 => main、pane2 + pane3 => volume、pane4 + pane5 => indicator；
+- `layout.ts`：删除 `calcPaneFactors` / `volumeRatio` / `indicatorRatio`（不再使用），
+  新增 `groupRatios`（main 0.6 / volume 0.2 / indicator 0.2）与 `calcPaneHeights`：
+  R = 可用高度 − 3×24（空 Pane 高度已扣除），内容 Pane 按组比例分配
+  （pane1 = 0.6R、pane3 = 0.2R、pane5 = 0.2R），空 Pane 固定 24px，
+  总高度 = R + 72 = 可用高度（完全铺满）；
+- controller：`applyStretchFactors` 改**像素因子方案**——stretchFactor 直接设为目标
+  像素高度 → 库 totalStretch = Σ高度 = H → stretchPixels = 1，非最后 Pane
+  = round(factor) 精确、最后 Pane = 剩余 = 目标，**无舍入误差**；
+  时间轴开 / 关仅影响 H（关时时间轴高度 = 0），组比例不变。
+
+### 验证
+- vitest 35 项全绿（multipane 更新：内容比例 60:20:20、总和守恒、时间轴开关
+  仅 H 不同比例不变、不足兜底）；
+- vue-tsc 类型检查通过；未运行 / 未截图。
+
+---
+
+## v1.4.14（2026-10-12）
+
+新增 pane5 指标 Pane（先实现 MACD），高度与 pane3 成交量一致。
+
+### 变更
+- 布局升级为 6 Pane：pane0 顶部空 Pane + pane1 K 线 + pane2 底部空 Pane +
+  pane3 成交量 + pane4 底部空 Pane + **pane5 指标**；
+- `layout.ts`：`paneCount = 6`，新增 `indicatorRatio = 0.25`（与成交量一致）；
+  `calcPaneFactors` 按 `S = (total - 3×24) / (1 + 0.25 + 0.25)` 计算，
+  返回 `indicatorFactor`；
+- 新增 `src/chart/indicators/macd.ts`：MACD 纯计算（东方财富算法）——
+  `EMA(close,12)` / `EMA(close,26)` → DIF，`EMA(DIF,9)` → DEA，
+  `MACD = 2×(DIF-DEA)`；
+- controller：pane5 创建 MACD（`Histogram` 红绿柱 base:0 + `Line` DIF/DEA），
+  `applyData` 计算并写入；配色固定（DIF `#A0A0A0`、DEA `#F4AA0A`、
+  柱 > 0 红 `#FF0000`、< 0 绿 `#008000`，深浅系通用）；
+- pane0 / pane2 / pane4 仍同一 fixedFactor，绝对相等（非最后 Pane = round(fixed)）；
+  pane5 为库最后 Pane，吸收舍入，与 pane3 偏差 ≤ 2px（库机制，不可配置）。
+
+### 验证
+- vitest 36 项全绿（新增 macd.test.ts 9 项：EMA 手算逐项一致 / 首值 = 0 /
+  MACD = 2×(DIF-DEA) / 单调序列 DIF > 0；multipane 更新 6 Pane 模拟，
+  断言固定 Pane 恒 24、pane3 与 pane5 偏差 ≤ 2px、高度守恒）；
+- vue-tsc 类型检查通过；未运行 / 未截图。
+
+---
+
+## v1.4.13（2026-10-12）
+
+新增 pane4（在 pane3 之后），设置与 pane0 完全一致（"测试"文字、24px、不可拖拽）。
+
+### 变更
+- 布局升级为 5 Pane：pane0 顶部空 Pane + pane1 K 线 + pane2 底部空 Pane +
+  pane3 成交量 + pane4 底部空 Pane；
+- `layout.ts`：`paneCount = 5`，新增 `fixedPaneCount = 3`；`calcPaneFactors`
+  按 3 个固定空 Pane 计算：`S = (total - 3×24) / 1.25`，三者同一 `fixedFactor`；
+- controller：新增 pane4（LineSeries + `TestLabelPrimitive('测试')`，index 4），
+  `applyStretchFactors` 给 panes[4] 同一 fixedFactor。
+
+### pane4 精确性证明（库最后 Pane = 剩余吸收者）
+库 `_adjustSizeImpl`：最后 Pane 高度 = 剩余（吸收前面 round 误差）。
+推导：`S = (total-72)/1.25 = 0.8×T`，`0.25S = 0.2×T`，记 f=frac(S)、g=frac(0.25S)，
+因 `0.8T + 0.2T = T` 为整数 → `f+g ∈ {0,1}`，二者舍入误差互补 → 最后 Pane
+`pane4 = ceil(24 + 0) = 24` 精确，与 pane0/pane2 **绝对相等**。
+
+### 验证
+- vitest 28 项全绿（multipane 库分配模拟覆盖 total ≡ 0..4 mod 5 全部情形，
+  断言 pane0 = pane2 = pane4 = 24 恒成立 + 高度总和守恒）；
+- vue-tsc 类型检查通过；未运行 / 未截图。
+
+---
+
 ## v1.4.12（2026-10-12）
 
 所有文件名统一为小驼峰命名（camelCase）。
