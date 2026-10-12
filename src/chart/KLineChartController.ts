@@ -1,22 +1,26 @@
 /**
- * KLineChartController.ts —— 顶/底空 Pane + K 线控制器（v1.4.7）
+ * KLineChartController.ts —— 顶/底空 Pane + K 线 + 成交量控制器（v1.4.9）
  *
- * 布局：一个 chart 内 3 个 Pane（lightweight-charts 原生多 Pane）：
+ * 布局：一个 chart 内 4 个 Pane（lightweight-charts 原生多 Pane）：
  *   pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 24px，不可拖拽）
  *   pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心）
  *   pane2：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
+ *   pane3：成交量（自绘：上涨空心红柱 / 下跌绿实心，柱宽与间隔同 pane1 绝对一致）
  *
  * 模块划分（每个 class 一个文件）：
- *  - layout.ts：布局常量（paneCount / topPaneHeight）与高度算法
- *    calcFixedEdgeFactor；
- *  - TestLabelPrimitive.ts：空 Pane"测试"文字 primitive；
- *  - TestLabelPaneView.ts：文字渲染视图（renderer）。
+ *  - layout.ts：布局常量（paneCount / topPaneHeight / volumeRatio）与高度算法
+ *    calcPaneFactors；
+ *  - candlestickWidth.ts：官方原版 optimalCandlestickWidth（柱宽，与 pane1 同源）；
+ *  - VolumeBarPrimitive.ts / VolumeBarPaneView.ts：成交量柱自绘；
+ *  - TestLabelPrimitive.ts / TestLabelPaneView.ts：空 Pane"测试"文字。
  *
  * 高度算法（pane0 与 pane2 使用同一 stretchFactor，绝对相等）：
  *   库实际可用高度 H = 容器高度 - 时间轴高度（库默认 28px，显隐按库状态）
  *                      - 分隔线总高（每 pane 间隔 1px）
- *   pane0 : pane1 : pane2 = f : 1 : f，其中 f = 24 / (H - 48)
- *   （数学恒等：2f + 1 = H/(H-48)，S = H-48，f×S = 24，pane2 = H-24-(H-48) = 24）
+ *   stretchPixels S = (H - 2×24) / (1 + 0.25)
+ *   pane0 : pane1 : pane2 : pane3 = f : 1 : f : 0.25，f = 24 / S
+ *   （数学恒等：f×S = 24，pane0 = pane2 = 24 绝对相等；
+ *     K 线 round 误差由最后的成交量 Pane 吸收）
  *
  * 全局控制（全部由 App.vue 提供按钮）：
  *  - 时间轴开关：控制底部时间轴（timeScale）显示 / 隐藏；
@@ -30,6 +34,7 @@
 import {
   createChart,
   CandlestickSeries,
+  HistogramSeries,
   LineSeries,
   ColorType,
   CrosshairMode,
@@ -38,8 +43,9 @@ import {
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
-import { topPaneHeight, calcFixedEdgeFactor } from './layout'
+import { paneCount, topPaneHeight, volumeRatio, calcPaneFactors } from './layout'
 import { TestLabelPrimitive } from './TestLabelPrimitive'
+import { VolumeBarPrimitive } from './VolumeBarPrimitive'
 
 /**
  * 库系统默认时间轴高度（px）。
@@ -64,8 +70,9 @@ export class KLineChartController {
   /* ===== 数据 ===== */
   private readonly bars: BasicBar[]
 
-  /* ===== series（pane0/pane2 空线 = 文字载体；pane1 K 线） ===== */
+  /* ===== series（pane0/pane2 空线 = 文字载体；pane1 K 线；pane3 成交量） ===== */
   private klineSeries: ISeriesApi<'Candlestick'>
+  private volumeSeries: ISeriesApi<'Histogram'>
 
   /* ===== 状态 ===== */
   private theme: ChartThemeName
@@ -179,7 +186,31 @@ export class KLineChartController {
       2,
     ).attachPrimitive(new TestLabelPrimitive('测试', () => themeColors(this.theme).textColor))
 
-    /* ---------- 4. 高度分配：pane0 / pane2 固定 24px（同一 factor，绝对相等），pane1 占剩余 ---------- */
+    /* ---------- 3.2 pane3：成交量（自绘柱体，视觉与 pane1 完全一致） ----------
+     * HistogramSeries 仅作数据锚点：color = 背景色（不可见），
+     * 用于建立 Y 轴（volume 值域）的 scale 范围；
+     * 可见柱体由 VolumeBarPrimitive 自绘：
+     *   上涨（close >= open）：空心红柱（背景填充 + 红框，同 pane1 上涨柱）
+     *   下跌：绿色实心（同 pane1 下跌柱）
+     *   柱宽 = optimalCandlestickWidth(barSpacing, dpr)（与 pane1 同函数，
+     *   宽度 / 间隔绝对一致）
+     */
+    this.volumeSeries = this.chart.addSeries(
+      HistogramSeries,
+      {
+        priceScaleId: 'left',
+        base: 0,
+        color: initialThemeColors.background, // 不可见（仅建 scale）
+        priceLineVisible: false,
+        lastValueVisible: false,
+      },
+      3,
+    )
+    this.volumeSeries.attachPrimitive(
+      new VolumeBarPrimitive(() => this.bars, () => themeColors(this.theme)),
+    )
+
+    /* ---------- 4. 高度分配：pane0 / pane2 固定 24px（同一 factor，绝对相等），pane1 K 线，pane3 成交量 ---------- */
     this.applyStretchFactors()
 
     /* ---------- 5. 数据 + 首绘 ---------- */
@@ -195,31 +226,35 @@ export class KLineChartController {
   /* ===================== 布局 ===================== */
 
   /**
-   * 重算 pane 高度：pane0 / pane2 = 24px（stretchFactor 按库实际可用高度折算），
-   * pane1 占剩余。
+   * 重算 pane 高度：
+   *   pane0 / pane2 = 24px（同一 stretchFactor，绝对相等）
+   *   pane1（K 线）    = 1
+   *   pane3（成交量）   = volumeRatio（0.25，相对 K 线）
    *
    * 精确相等的数学依据（库 _adjustSizeImpl）：
    *   库按 totalPaneHeight / Σfactor 分配，最后一个 pane 高度 = 剩余（吸收舍入）。
-   *   当 e = fixed/(H - 2×fixed) 时（H = 库实际可用高度 = 容器 - 时间轴 - 分隔线），
-   *   恒有 2e + 1 = H/(H - 2×fixed)，故 S = H - 2×fixed、e×S = fixed，
-   *   于是 pane0 = fixed、pane2 = H - fixed - (H - 2×fixed) = fixed，绝对相等。
+   *   stretchPixels S = (H - 2×fixed) / (1 + ratio)，
+   *   fixedFactor = fixed / S → fixedFactor × S = fixed 精确，
+   *   故 pane0 = round(fixed) = fixed、pane2 = round(fixed) = fixed，绝对相等；
+   *   K 线 round 误差由最后的成交量 Pane 吸收。
    */
   private applyStretchFactors = (): void => {
     const panes = this.chart.panes()
-    if (panes.length < 3) return
+    if (panes.length < paneCount) return
     // 库实际可用高度 = 容器高度 - 时间轴高度（显隐按库当前状态） - 分隔线总高（每 pane 间隔 1px）
     const timeAxisHeight = this.chart.timeScale().options().visible ? LIBRARY_TIME_AXIS_HEIGHT : 0
     const separatorHeight = panes.length - 1
     const usableHeight = this.container.clientHeight - timeAxisHeight - separatorHeight
-    const edgeFactor = calcFixedEdgeFactor(usableHeight, topPaneHeight)
-    panes[0].setStretchFactor(edgeFactor)
-    panes[1].setStretchFactor(1)
-    panes[2].setStretchFactor(edgeFactor)
+    const { fixedFactor, klineFactor, volumeFactor } = calcPaneFactors(usableHeight, topPaneHeight, volumeRatio)
+    panes[0].setStretchFactor(fixedFactor)
+    panes[1].setStretchFactor(klineFactor)
+    panes[2].setStretchFactor(fixedFactor)
+    panes[3].setStretchFactor(volumeFactor)
   }
 
   /* ===================== 数据 ===================== */
 
-  /** K 线数据写入 */
+  /** K 线与成交量数据写入 */
   private applyData = (): void => {
     this.klineSeries.setData(
       this.bars.map((bar) => ({
@@ -228,6 +263,14 @@ export class KLineChartController {
         high: bar.high,
         low: bar.low,
         close: bar.close,
+      })),
+    )
+    // 成交量：Histogram 仅作 scale 锚点，颜色统一走 options.color（背景色，不可见），
+    // 主题切换时由 applyTheme 同步更新；可见柱体由 VolumeBarPrimitive 按 bars 自绘
+    this.volumeSeries.setData(
+      this.bars.map((bar) => ({
+        time: bar.time as UTCTimestamp,
+        value: bar.volume,
       })),
     )
   }
@@ -263,6 +306,8 @@ export class KLineChartController {
       wickUpColor: themeColorSet.upColor,
       wickDownColor: themeColorSet.downColor,
     })
+    // 成交量锚点色跟随背景（保持不可见）；可见柱体由 primitive 动态取新主题色
+    this.volumeSeries.applyOptions({ color: themeColorSet.background })
     // 空 Pane 文字颜色在 draw 时动态取色，applyOptions 触发重绘即自动更新
   }
 

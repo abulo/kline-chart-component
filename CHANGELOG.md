@@ -8,6 +8,77 @@
 
 ---
 
+## v1.4.10（2026-10-12）
+
+修复 pane3 成交量柱体与 pane1 K 线柱体**不完全一致**（宽度偏差 1px）。
+
+### 根因
+v1.4.9 复刻的是**用户提供的插件版** `optimalCandlestickWidth`，与库源码
+（`PaneRendererCandlesticks`）存在三处差异：
+1. coeff 分母：插件版 `Math.PI`，库源码 `Math.PI * 0.5`（barSpacing=10 时柱宽差 1px）；
+2. 库源码多 `optimal = Math.min(res, floor(barSpacing×dpr))` 上限裁剪；
+3. 库渲染后还有**奇偶修正**：柱宽 ≥ 2 时与影线宽 `wickWidth = floor(dpr)` 同奇偶，
+   否则 `barWidth--`（保证十字星叠加对称）——dpr=1 时偶数柱宽会再减 1px。
+
+### 修复
+- `candlestickWidth.ts` 改为**库源码原版**：coeff 分母 `Math.PI * 0.5` + min 上限 + max 兜底；
+  新增 `candlestickBarWidth` = 原版 + 奇偶修正（渲染最终柱宽）；
+- `VolumeBarPaneView` 使用 `candlestickBarWidth`，并按库 bitmap 取整对齐柱位：
+  `left = round(center×dpr) - floor(barWidthBitmap/2)`，再转 CSS 像素
+  → 柱宽 / 间隔 / 位置与 pane1 **绝对一致**。
+
+### 验证
+- vitest 27 项全绿（candlestickWidth 扩为 7 项：与库源码**逐值断言**——
+  b=10/dpr=1→7、b=20/dpr=1→15、b=8/dpr=2→12 等，含奇偶修正用例）；
+- vue-tsc 类型检查通过；未运行 / 未截图。
+
+---
+
+## v1.4.9（2026-10-12）
+
+成交量红柱空心 + 柱宽/间隔与 pane1 绝对一致。
+
+### 变更
+- **成交量改为自绘**（新增 `VolumeBarPrimitive.ts` / `VolumeBarPaneView.ts`）：
+  HistogramSeries 仅作 Y 轴（volume 值域）scale 锚点，color = 背景色（不可见），
+  主题切换时随背景同步；
+- **上涨空心红柱**：背景色填充 + 红色边框（同 pane1 上涨柱）；**下跌绿实心**；
+- **柱宽/间隔与 pane1 绝对一致**：新增 `candlestickWidth.ts`
+  （官方原版 `optimalCandlestickWidth`，库 npm 包未随附 plugins，按官方实现复刻）——
+  自绘柱宽 = optimalCandlestickWidth(barSpacing, dpr)/dpr（与 pane1 Candlestick
+  内部同一函数同一 barSpacing），柱中心 = 同一逻辑索引坐标 → 宽度与间隔完全对齐；
+- primitive `detached` 清空引用（防内存泄漏）。
+
+### 验证
+- vitest 24 项全绿（新增 candlestickWidth 4 项：特殊区间 / 常规区间 / 兜底 / 同源一致）；
+- vue-tsc 类型检查通过；未运行 / 未截图（按用户偏好）。
+
+---
+
+## v1.4.8（2026-10-12）
+
+新增 pane3 成交量图（红涨绿跌参考 pane1）。
+
+### 变更
+- **布局扩为 4 Pane**：pane0（顶部空 Pane 24px）→ pane1（K 线）→ pane2（底部空
+  Pane 24px）→ pane3（成交量，最底部）；
+- **pane3 成交量**：`HistogramSeries`（`base: 0` 柱体紧贴 Pane 底部）；
+  颜色语义与 pane1 一致——上涨（close >= open）红 `#FF0000`、下跌绿
+  `#008000`（深浅系色值相同，无需随主题切换重设）；
+- **高度分配**：`calcFixedEdgeFactor` → `calcPaneFactors`，
+  `stretchPixels S = (H - 2×24)/(1 + 0.25)`，
+  `pane0 : pane1 : pane2 : pane3 = f : 1 : f : 0.25`（`f = 24/S`）；
+  数学恒等保证 `f×S = 24` → pane0 与 pane2 仍**绝对相等**，
+  K 线 round 误差由最后的成交量 Pane 吸收；
+- `mock.ts` 恢复 `volume` 字段（随机正整数，8000~20000）；
+- 删除 `calcFixedEdgeFactor`（被 `calcPaneFactors` 取代，无残留引用）。
+
+### 验证
+- vitest 20 项全绿（布局常量 + 库分配模拟 4 Pane + 成交量数据合法性）；
+- vue-tsc 类型检查通过；未运行 / 未截图（按用户偏好）。
+
+---
+
 ## v1.4.7（2026-10-12）
 
 修复 pane0 / pane2 高度不相等（时间轴开关均精确相等）。

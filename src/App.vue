@@ -61,7 +61,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="toolbar">
-      <span class="hint">顶部/底部空Pane + K线 v1.4.7</span>
+      <span class="hint">顶/底空Pane + K线 + 成交量(自绘) v1.4.10</span>
       <div class="spacer" />
       <button class="btn" :class="{ active: showTimeAxis }" @click="toggleTimeAxis">
         时间轴{{ showTimeAxis ? '开' : '关' }}
