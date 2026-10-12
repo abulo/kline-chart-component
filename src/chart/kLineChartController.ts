@@ -3,7 +3,7 @@
  *
  * 布局：一个 chart 内多 Pane（lightweight-charts 原生多 Pane，指标可开关）：
  *   指标开启（6 Pane）：
- *     pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 24px，不可拖拽）
+ *     pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 22px，不可拖拽）
  *     pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心）
  *     pane2：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
  *     pane3：成交量（自绘：上涨空心红柱 / 下跌绿实心，柱宽与间隔同 pane1 绝对一致）
@@ -22,10 +22,10 @@
  * 高度算法（指标开 60 : 20 : 20 / 指标关 80 : 20）：
  *   库实际可用高度 H = 容器高度 - 时间轴高度（库默认 28px，显隐按库状态）
  *                      - 分隔线总高（每 pane 间隔 1px）
- *   固定空 Pane 总高 = 固定 Pane 数量 × 24，剩余 R = H - 固定总高：
- *     指标开：pane0 = 24px、pane1 = 0.6×R；pane2 = 24px、pane3 = 0.2×R；
- *             pane4 = 24px、pane5 = 0.2×R
- *     指标关：pane0 = 24px、pane1 = 0.8×R；pane2 = 24px、pane3 = 0.2×R
+ *   固定空 Pane 总高 = 固定 Pane 数量 × 22（topPaneHeight），剩余 R = H - 固定总高：
+ *     指标开：pane0 = 22px、pane1 = 0.6×R；pane2 = 22px、pane3 = 0.2×R；
+ *             pane4 = 22px、pane5 = 0.2×R
+ *     指标关：pane0 = 22px、pane1 = 0.8×R；pane2 = 22px、pane3 = 0.2×R
  *   像素因子方案：stretchFactor 直接设为目标像素高度 → stretchPixels = 1
  *   → 非最后 pane = round(factor) 精确、最后 pane = 剩余 = 目标，无舍入误差；
  *   时间轴开 / 关仅影响 H（关时时间轴高度 = 0），组比例不变。
@@ -66,6 +66,7 @@ import {
 import { TestLabelPrimitive } from './testLabelPrimitive'
 import { VolumeBarPrimitive } from './volumeBarPrimitive'
 import { MacdBarPrimitive } from './macdBarPrimitive'
+import { PaneBorderPrimitive } from './paneBorderPrimitive'
 import { calcMacd, type MacdPoint } from './indicators/macd'
 
 /**
@@ -122,7 +123,7 @@ export class KLineChartController {
   /** 指标 Pane 开关状态（true = 显示 pane4 / pane5，false = 隐藏） */
   private showIndicator: boolean
 
-  /** 容器尺寸监听：尺寸变化时重算固定 Pane 高度（24px） */
+  /** 容器尺寸监听：尺寸变化时重算固定 Pane 高度（topPaneHeight） */
   private resizeObserver: ResizeObserver | null = null
 
   constructor(options: KLineChartOptions) {
@@ -219,6 +220,10 @@ export class KLineChartController {
       },
       1,
     )
+    // 内容 Pane 边框（pane1）：自绘 1px 矩形，颜色随主题（深浅系区分）
+    this.klineSeries.attachPrimitive(
+      new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
+    )
 
     /* ---------- 3.1 pane2：底部空 Pane（无数据，自绘"测试"文字，设置与 pane0 一致） ---------- */
     this.chart.addSeries(
@@ -255,6 +260,10 @@ export class KLineChartController {
     this.volumeSeries.attachPrimitive(
       new VolumeBarPrimitive(() => this.bars, () => themeColors(this.theme)),
     )
+    // 内容 Pane 边框（pane3）：自绘 1px 矩形，颜色随主题（深浅系区分）
+    this.volumeSeries.attachPrimitive(
+      new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
+    )
 
     /* ---------- 3.3 pane4 / pane5：指标组（仅 showIndicator 开启时创建） ----------
      * 指标开启：pane4 底部空 Pane（自绘"测试"文字，设置与 pane0 一致）+
@@ -265,7 +274,7 @@ export class KLineChartController {
       this.createIndicatorPanes()
     }
 
-    /* ---------- 4. 高度分配：pane0 / pane2 / pane4 固定 24px（同一 factor，绝对相等），pane1 K 线，pane3 成交量 / pane5 指标 ---------- */
+    /* ---------- 4. 高度分配：pane0 / pane2 / pane4 固定 topPaneHeight（同一 factor，绝对相等），pane1 K 线，pane3 成交量 / pane5 指标 ---------- */
     this.applyStretchFactors()
 
     /* ---------- 5. 数据 + 首绘 ---------- */
@@ -273,7 +282,7 @@ export class KLineChartController {
     this.applyData()
     this.chart.timeScale().fitContent()
 
-    /* ---------- 6. 容器尺寸监听：重算固定 Pane 高度（24px） ---------- */
+    /* ---------- 6. 容器尺寸监听：重算固定 Pane 高度（topPaneHeight） ---------- */
     this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors())
     this.resizeObserver.observe(this.container)
   }
@@ -320,6 +329,10 @@ export class KLineChartController {
     this.indicatorsBarSeries.attachPrimitive(
       new MacdBarPrimitive(() => this.macdPoints, () => themeColors(this.theme)),
     )
+    // 内容 Pane 边框（pane5）：自绘 1px 矩形，颜色随主题（深浅系区分）
+    this.indicatorsBarSeries.attachPrimitive(
+      new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
+    )
     this.difSeries = this.chart.addSeries(
       LineSeries,
       {
@@ -349,12 +362,12 @@ export class KLineChartController {
   /**
    * 重算 pane 高度（指标开 60:20:20 / 指标关 80:20，像素因子方案）：
    *   指标开（6 Pane）：
-   *     pane0 = 24px、pane1 = 0.6R（main 组）
-   *     pane2 = 24px、pane3 = 0.2R（volume 组）
-   *     pane4 = 24px、pane5 = 0.2R（indicator 组）
+   *     pane0 = 22px、pane1 = 0.6R（main 组）
+   *     pane2 = 22px、pane3 = 0.2R（volume 组）
+   *     pane4 = 22px、pane5 = 0.2R（indicator 组）
    *   指标关（4 Pane）：
-   *     pane0 = 24px、pane1 = 0.8R（main 组）
-   *     pane2 = 24px、pane3 = 0.2R（volume 组）
+   *     pane0 = 22px、pane1 = 0.8R（main 组）
+   *     pane2 = 22px、pane3 = 0.2R（volume 组）
    *   R = 库可用高度 - 固定空 Pane 总高（时间轴开 / 关一致，仅 H 不同）
    *
    * 像素因子精确性（库 _adjustSizeImpl）：

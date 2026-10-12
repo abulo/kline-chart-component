@@ -8,6 +8,27 @@
 
 ---
 
+## v1.4.19（2026-10-12）
+
+给内容 Pane（pane1 / pane3 / pane5）添加 1px 自绘边框，颜色区分深浅系。
+
+### 变更
+- 新增 `paneBorderPrimitive.ts` / `paneBorderPaneView.ts`：`ISeriesPrimitive`
+  自绘直角矩形边框（strokeRect(0.5, 0.5, w-1, h-1)，CSS 像素网格对齐不模糊）；
+- 挂载：pane1（K 线）→ klineSeries、pane3（成交量）→ volumeSeries、
+  pane5（指标）→ indicatorsBarSeries（指标开启时随 pane 创建）；
+  空 Pane（pane0 / pane2 / pane4）不加边框；
+- theme.ts：新增 `paneBorder`（深系 `#2A2E39` / 浅系 `#D4D8DE`），
+  主题切换 draw 动态取色自动更新；
+- 同步用户修改：`topPaneHeight` 24 → 22（layout.ts），控制器注释 24px → 22px
+  口径同步。
+
+### 验证
+- vitest 38 项全绿（新增 theme paneBorder 深浅系断言、topPaneHeight=22）；
+- vue-tsc 类型检查通过；未运行 / 未截图。
+
+---
+
 ## v1.4.18（2026-10-12）
 
 MACD 红绿柱改为自绘，宽度 / 间隔复用成交量函数（`candlestickBarWidth`），与 pane1 蜡烛柱绝对一致。

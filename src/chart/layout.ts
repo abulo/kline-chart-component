@@ -37,7 +37,7 @@ export const fixedPaneCount = 3
 export const fixedPaneCountWithoutIndicator = 2
 
 /** 空 Pane 固定高度（px，各组内顶部 / 底部一致） */
-export const topPaneHeight = 24
+export const topPaneHeight = 22
 
 /** 组高度比例（指标开启）：main : volume : indicator = 60 : 20 : 20 */
 export const groupRatios = {

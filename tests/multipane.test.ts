@@ -32,8 +32,8 @@ describe('布局常量', () => {
     expect(fixedPaneCountWithoutIndicator).toBe(2)
   })
 
-  it('顶部空 Pane 固定高度 24px', () => {
-    expect(topPaneHeight).toBe(24)
+  it('顶部空 Pane 固定高度 22px（用户指定）', () => {
+    expect(topPaneHeight).toBe(22)
   })
 
   it('指标开组比例 60 : 20 : 20 / 指标关 80 : 20', () => {

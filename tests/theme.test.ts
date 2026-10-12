@@ -32,6 +32,14 @@ describe('主题配置', () => {
     expect(themeColorSet.downColor).toBe('#008000')
   })
 
+  it('内容 Pane 边框色：深浅系区分且各自存在', () => {
+    const d = themeColors('dark')
+    const l = themeColors('light')
+    expect(d.paneBorder).toBe('#2A2E39')
+    expect(l.paneBorder).toBe('#D4D8DE')
+    expect(d.paneBorder).not.toBe(l.paneBorder)
+  })
+
   it('清理后无 separatorColor / CHART_FONT 残留', () => {
     // v1.2.1 清理验证：单 Pane 无分隔线 + 栅格关闭，这些字段/常量不应存在
     expect('separatorColor' in chartThemes.dark).toBe(false)
