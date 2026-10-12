@@ -1,5 +1,5 @@
 /**
- * VolumeBarPrimitive.ts —— 成交量柱体自绘 primitive（v1.4.9）
+ * volumeBarPrimitive.ts —— 成交量柱体自绘 primitive（v1.4.9）
  *
  * 职责：通过 ISeriesPrimitive 挂载到 pane3 成交量 series 上，自绘成交量柱。
  * 视觉与 pane1 K 线完全一致：
@@ -21,8 +21,8 @@ import {
   type Time,
 } from 'lightweight-charts'
 import type { BasicBar } from './mock'
-import type { VolumeThemeColors } from './VolumeBarPaneView'
-import { VolumeBarPaneView } from './VolumeBarPaneView'
+import type { VolumeThemeColors } from './volumeBarPaneView'
+import { VolumeBarPaneView } from './volumeBarPaneView'
 
 export class VolumeBarPrimitive implements ISeriesPrimitive<Time> {
   /** 成交量数据获取器（只读；每次 draw 现取，数据更新无需额外通知） */

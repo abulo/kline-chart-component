@@ -8,6 +8,23 @@
 
 ---
 
+## v1.4.12（2026-10-12）
+
+所有文件名统一为小驼峰命名（camelCase）。
+
+### 变更
+- `src/chart/`：`KLineChartController.ts → kLineChartController.ts`、
+  `TestLabelPrimitive.ts → testLabelPrimitive.ts`、`TestLabelPaneView.ts → testLabelPaneView.ts`、
+  `VolumeBarPrimitive.ts → volumeBarPrimitive.ts`、`VolumeBarPaneView.ts → volumeBarPaneView.ts`；
+- `src/components/`：`KLineChart.vue → kLineChart.vue`；
+- 全部 import 路径与注释同步更新；class 名保持 PascalCase（TS 类型惯例）；
+- `git mv` 保留文件历史。
+
+### 验证
+- vue-tsc 类型检查通过；vitest 27 项全绿；未运行 / 未截图。
+
+---
+
 ## v1.4.11（2026-10-12）
 
 修复 pane3 成交量柱体底部**未贴合 Pane 底部**（底部留缝隙）。

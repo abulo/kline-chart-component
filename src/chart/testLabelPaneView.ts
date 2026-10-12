@@ -1,5 +1,5 @@
 /**
- * TestLabelPaneView.ts —— 空 Pane"测试"文字渲染视图（v1.4.3）
+ * testLabelPaneView.ts —— 空 Pane"测试"文字渲染视图（v1.4.3）
  *
  * 职责：提供 IPrimitivePaneRenderer，在 draw 回调中绘制"测试"文字。
  * 绘制规格：垂直居中、距左 6px、颜色取 primitive.getColor()（跟随主题）。
@@ -9,7 +9,7 @@
  */
 import { type IPrimitivePaneView, type IPrimitivePaneRenderer } from 'lightweight-charts'
 import { chartFontFamily } from './theme'
-import type { TestLabelPrimitive } from './TestLabelPrimitive'
+import type { TestLabelPrimitive } from './testLabelPrimitive'
 
 export class TestLabelPaneView implements IPrimitivePaneView {
   /** 所属 primitive（只读，提供文字与颜色来源） */

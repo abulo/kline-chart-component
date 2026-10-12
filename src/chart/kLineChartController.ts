@@ -1,5 +1,5 @@
 /**
- * KLineChartController.ts —— 顶/底空 Pane + K 线 + 成交量控制器（v1.4.9）
+ * kLineChartController.ts —— 顶/底空 Pane + K 线 + 成交量控制器（v1.4.9）
  *
  * 布局：一个 chart 内 4 个 Pane（lightweight-charts 原生多 Pane）：
  *   pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 24px，不可拖拽）
@@ -11,8 +11,8 @@
  *  - layout.ts：布局常量（paneCount / topPaneHeight / volumeRatio）与高度算法
  *    calcPaneFactors；
  *  - candlestickWidth.ts：官方原版 optimalCandlestickWidth（柱宽，与 pane1 同源）；
- *  - VolumeBarPrimitive.ts / VolumeBarPaneView.ts：成交量柱自绘；
- *  - TestLabelPrimitive.ts / TestLabelPaneView.ts：空 Pane"测试"文字。
+ *  - volumeBarPrimitive.ts / volumeBarPaneView.ts：成交量柱自绘；
+ *  - testLabelPrimitive.ts / testLabelPaneView.ts：空 Pane"测试"文字。
  *
  * 高度算法（pane0 与 pane2 使用同一 stretchFactor，绝对相等）：
  *   库实际可用高度 H = 容器高度 - 时间轴高度（库默认 28px，显隐按库状态）
@@ -44,8 +44,8 @@ import {
 import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
 import { paneCount, topPaneHeight, volumeRatio, calcPaneFactors } from './layout'
-import { TestLabelPrimitive } from './TestLabelPrimitive'
-import { VolumeBarPrimitive } from './VolumeBarPrimitive'
+import { TestLabelPrimitive } from './testLabelPrimitive'
+import { VolumeBarPrimitive } from './volumeBarPrimitive'
 
 /**
  * 库系统默认时间轴高度（px）。

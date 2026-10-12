@@ -1,5 +1,5 @@
 /**
- * VolumeBarPaneView.ts —— 成交量柱体自绘渲染视图（v1.4.9）
+ * volumeBarPaneView.ts —— 成交量柱体自绘渲染视图（v1.4.9）
  *
  * 职责：提供 IPrimitivePaneRenderer，在 draw 回调中绘制成交量柱。
  * 绘制规格（与 pane1 K 线视觉完全一致）：
@@ -16,7 +16,7 @@ import {
   type IPrimitivePaneRenderer,
   type Logical,
 } from 'lightweight-charts'
-import type { VolumeBarPrimitive } from './VolumeBarPrimitive'
+import type { VolumeBarPrimitive } from './volumeBarPrimitive'
 import { candlestickBarWidth } from './candlestickWidth'
 
 /** 成交量主题颜色（与 K 线同源：background 用于空心填充，up/down 红绿） */

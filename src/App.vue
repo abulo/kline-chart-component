@@ -10,7 +10,7 @@
  * 所有开关操作不得破坏整体布局尺寸，仅控制可见性 / 样式。
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import KLineChart from './components/KLineChart.vue'
+import KLineChart from './components/kLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/theme'
 
 /** 图表组件 ref（访问控制器） */
@@ -61,7 +61,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="toolbar">
-      <span class="hint">顶/底空Pane + K线 + 成交量(自绘贴底) v1.4.11</span>
+      <span class="hint">顶/底空Pane + K线 + 成交量(自绘贴底) v1.4.12</span>
       <div class="spacer" />
       <button class="btn" :class="{ active: showTimeAxis }" @click="toggleTimeAxis">
         时间轴{{ showTimeAxis ? '开' : '关' }}

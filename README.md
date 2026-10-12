@@ -1,6 +1,6 @@
 # 单 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.11（2026-10-12）**
+> **当前版本：v1.4.12（2026-10-12）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、源码头部
 > `@version` 注释、CHANGELOG.md，交付 zip 文件名带版本号。
 > **交付规范**：每个版本交付时必须在回复中附带**运行截图**
