@@ -5,7 +5,7 @@
  * K 线数据时间序列合法性。
  */
 import { describe, expect, it } from 'vitest'
-import { paneCount, topPaneHeight, calcFixedTopFactor } from '../src/chart/KLineChartController'
+import { paneCount, topPaneHeight, calcFixedTopFactor } from '../src/chart/layout'
 import { genMockBars } from '../src/chart/mock'
 
 describe('布局常量', () => {

@@ -8,6 +8,29 @@
 
 ---
 
+## v1.4.3（2026-10-12）
+
+代码结构拆分：每个 class 独立一个文件，布局常量 / 算法独立成模块。
+
+### 变更（src/chart/ 目录结构）
+```
+src/chart/
+├── KLineChartController.ts   # class KLineChartController（控制器）
+├── TestLabelPrimitive.ts     # class TestLabelPrimitive（空 Pane 文字 primitive）
+├── TestLabelPaneView.ts      # class TestLabelPaneView（文字渲染视图）
+├── layout.ts                 # 布局常量（paneCount / topPaneHeight /
+│                             #   timeAxisHeight）与 calcFixedTopFactor 算法
+├── theme.ts                  # 主题色配置（无 class，保留）
+└── mock.ts                   # mock 数据（无 class，保留）
+```
+- primitive 字段改为 public readonly（text / getColor），供渲染视图跨文件访问；
+- 测试 import 同步指向 layout.ts。
+
+### 验证
+- vitest 17 项全绿；vue-tsc 类型检查通过；未运行 / 未截图（按用户偏好）。
+
+---
+
 ## v1.4.2（2026-10-12）
 
 命名规范化：全部变量改成语义化驼峰（纯字母，无下划线 / 缩写 / 特殊符号）。

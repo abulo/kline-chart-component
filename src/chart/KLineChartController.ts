@@ -1,17 +1,17 @@
 /**
- * KLineChartController.ts —— 顶部空 Pane + K 线控制器（v1.4.0）
+ * KLineChartController.ts —— 顶部空 Pane + K 线控制器（v1.4.3）
  *
  * 布局：一个 chart 内 2 个 Pane（lightweight-charts 原生多 Pane）：
  *   pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 24px，不可拖拽）
  *   pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心）
  *
- * v1.4.0 变更：
- *  - 新增 pane0 顶部空 Pane："测试"文字（ISeriesPrimitive 自绘），
- *    垂直居中、距左 6px、高度固定 24px、Pane 高度不可拖拽（enableResize: false）；
- *  - 重新引入 ResizeObserver 与 timeAxisVisible 状态，用于在容器尺寸 /
- *    时间轴开关变化时按绝对像素（24px）重算 pane0 的 stretchFactor。
+ * 模块划分（v1.4.3，每个 class 一个文件）：
+ *  - layout.ts：布局常量（paneCount / topPaneHeight / timeAxisHeight）与
+ *    高度算法 calcFixedTopFactor；
+ *  - TestLabelPrimitive.ts：顶部空 Pane"测试"文字 primitive；
+ *  - TestLabelPaneView.ts：文字渲染视图（renderer）。
  *
- * 高度算法（导出纯函数 calcFixedTopFactor 可单测）：
+ * 高度算法：
  *   可用高度 = 容器高度 - 时间轴高度（显示时）
  *   pane0 stretchFactor : pane1 stretchFactor = 24 : (可用高度 - 24)
  *   （pane1 的 stretchFactor 固定为 1，pane0 按比例折算）
@@ -32,89 +32,17 @@ import {
   ColorType,
   CrosshairMode,
   type ISeriesApi,
-  type ISeriesPrimitive,
-  type IPrimitivePaneView,
-  type IPrimitivePaneRenderer,
-  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
+import { timeAxisHeight, topPaneHeight, calcFixedTopFactor } from './layout'
+import { TestLabelPrimitive } from './TestLabelPrimitive'
 
 /** 控制器选项 */
 export interface KLineChartOptions {
   /** 图表挂载容器（需有确定宽高） */
   container: HTMLElement
-}
-
-/** Pane 总数（pane0 顶部空 Pane + pane1 K 线） */
-export const paneCount = 2
-
-/** 顶部空 Pane 固定高度（px） */
-export const topPaneHeight = 24
-
-/** 底部时间轴高度（px）：lightweight-charts v5 时间轴高度固定（无公开 API），
- *  时间轴显示时从可用总高度中扣除 */
-export const timeAxisHeight = 28
-
-/**
- * 计算顶部固定高度 Pane 的 stretchFactor（下方 Pane 的 stretchFactor 固定为 1）。
- * 使 pane0 实际高度 ≈ topHeight：factor / (factor + 1) × availableHeight = topHeight。
- * @param totalHeight 可用总高度（已扣除时间轴）
- * @param topHeight 顶部 Pane 目标高度
- * @returns pane0 的 stretchFactor（<=0 时返回 1 兜底，避免除零）
- */
-export const calcFixedTopFactor = (totalHeight: number, topHeight: number): number => {
-  const remainingHeight = totalHeight - topHeight
-  return remainingHeight > 0 ? topHeight / remainingHeight : 1
-}
-
-/* ===================== 顶部空 Pane 文字 primitive ===================== */
-
-/**
- * TestLabelPrimitive —— 在 pane0 上自绘"测试"文字。
- * 通过 ISeriesPrimitive 挂载到空 series：paneViews 返回渲染器，
- * draw 时取 pane 内容区尺寸，文字垂直居中、距左 6px；
- * 颜色每次 draw 动态获取（跟随主题 textColor），主题切换无需额外刷新。
- */
-class TestLabelPrimitive implements ISeriesPrimitive<Time> {
-  private readonly text: string
-  private readonly getColor: () => string
-
-  constructor(text: string, getColor: () => string) {
-    this.text = text
-    this.getColor = getColor
-  }
-
-  /** 返回本 primitive 的 pane 视图（渲染器） */
-  paneViews(): readonly IPrimitivePaneView[] {
-    return [new TestLabelPaneView(this)]
-  }
-}
-
-/** 空 Pane 文字视图：持有 primitive 引用，提供 renderer */
-class TestLabelPaneView implements IPrimitivePaneView {
-  private readonly source: TestLabelPrimitive
-
-  constructor(source: TestLabelPrimitive) {
-    this.source = source
-  }
-
-  /** 渲染器：文字垂直居中、距左 6px（media 坐标系 = CSS 像素） */
-  renderer(): IPrimitivePaneRenderer {
-    return {
-      draw: (target) => {
-        // v5：draw 接收 CanvasRenderingTarget2D（fancy-canvas），
-        // useMediaCoordinateSpace 为回调式 API，scope 提供 context 与 mediaSize
-        target.useMediaCoordinateSpace(({ context, mediaSize }) => {
-          context.font = `12px ${chartFontFamily}`
-          context.fillStyle = this.source['getColor']()
-          context.textBaseline = 'middle'
-          context.fillText(this.source['text'], 6, mediaSize.height / 2)
-        })
-      },
-    }
-  }
 }
 
 export class KLineChartController {
@@ -317,10 +245,10 @@ export class KLineChartController {
   }
 
   /** 时间轴开关：显隐时间轴并重算 pane 高度（时间轴高度释放 / 占用） */
-  toggleTimeAxis = (show: boolean): void => {
-    if (this.timeAxisVisible === show) return
-    this.timeAxisVisible = show
-    this.chart.timeScale().applyOptions({ visible: show })
+  toggleTimeAxis = (visible: boolean): void => {
+    if (this.timeAxisVisible === visible) return
+    this.timeAxisVisible = visible
+    this.chart.timeScale().applyOptions({ visible })
     this.applyStretchFactors()
   }
 
