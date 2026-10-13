@@ -1,13 +1,13 @@
 /**
- * kLineChartController.ts —— 顶/底空 Pane + K 线 + 成交量 + 指标控制器（v1.4.17）
+ * kLineChartController.ts —— 空 Pane + K 线 + 成交量 + 指标多 Pane 控制器（v1.4.57）
  *
  * 布局：一个 chart 内多 Pane（lightweight-charts 原生多 Pane，指标可开关）：
  *   指标开启（6 Pane）：
  *     pane0：顶部空 Pane（无数据，仅自绘"测试"文字，固定高度 22px，不可拖拽）
- *     pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心）
- *     pane2：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
+ *     pane1：K 线主图（Candlestick，红涨绿跌，上涨柱体空心；可叠加 MA/EXPMA/BOLL/SAR/BBI）
+ *     pane2：空 Pane（设置与 pane0 完全一致，高度绝对相等）
  *     pane3：成交量（自绘：上涨空心红柱 / 下跌绿实心，柱宽与间隔同 pane1 绝对一致）
- *     pane4：底部空 Pane（设置与 pane0 完全一致，高度绝对相等）
+ *     pane4：空 Pane（设置与 pane0 完全一致，高度绝对相等）
  *     pane5：附图指标（MACD：DIF / DEA 线 + 红绿柱，高度与 pane3 一致）
  *   指标关闭（4 Pane）：pane0..pane3（去掉 pane4 / pane5，main : volume = 80 : 20）
  *
@@ -15,13 +15,18 @@
  *  - layout.ts：布局常量（paneCount / fixedPaneCount / topPaneHeight / groupRatios
  *    等）与高度算法 calcPaneHeights；
  *  - candlestickWidth.ts：库源码原版 optimalCandlestickWidth（柱宽，与 pane1 同源）；
- *  - volumeBarPrimitive.ts / volumeBarPaneView.ts：成交量柱自绘；
- *  - testLabelPrimitive.ts / testLabelPaneView.ts：空 Pane"测试"文字；
- *  - indicators/macd.ts：MACD 指标计算（东方财富算法，纯函数）。
+ *  - volume/：成交量柱自绘（VolumeBarPrimitive + VolumeBarPaneView）；
+ *  - overlay/：pane0 顶层遮罩（背景色覆盖十字星竖线，实现"十字星不贯穿 pane0"）；
+ *  - testLabel/：空 Pane"测试"文字自绘；
+ *  - indicator/：东财指标库（index.ts 统一出口，主图五指标 + 附图 + 分时），
+ *    MACD 柱 / SAR 圆点由自绘 primitive（macdBarPrimitive / sarMarkerPrimitive）渲染；
+ *  - axis/：左刻度标签自绘（与栅格横线对齐）+ 十字星指示值自绘；
+ *  - grid/：固定等分栅格（竖 4 / 横按 pane 配置）自绘；
+ *  - highLow/：pane1 可视区最高 / 最低价标注（黄色 / 蓝色 + 连接线）。
  *
  * 高度算法（指标开 60 : 20 : 20 / 指标关 80 : 20）：
  *   库实际可用高度 H = 容器高度 - 时间轴高度（库默认 28px，显隐按库状态）
- *                      - 分隔线总高（每 pane 间隔 1px）
+ *                      - 分隔线总高（patch-lwc-separator.js 已将 SeparatorHeight 1→0）
  *   固定空 Pane 总高 = 固定 Pane 数量 × 22（topPaneHeight），剩余 R = H - 固定总高：
  *     指标开：pane0 = 22px、pane1 = 0.6×R；pane2 = 22px、pane3 = 0.2×R；
  *             pane4 = 22px、pane5 = 0.2×R
@@ -32,10 +37,13 @@
  *
  * 全局控制（全部由 App.vue 提供按钮）：
  *  - 时间轴开关：控制底部时间轴（timeScale）显示 / 隐藏；
- *  - 放大 / 缩小：全局 timeScale.barSpacing（图表内禁用滚轮/触摸缩放）；
- *  - 风格切换：深系 / 浅系；
+ *  - 放大 / 缩小 / 左移 / 右移：全局 timeScale 操作（图表内禁用滚轮/触摸缩放）；
+ *  - 风格切换：深系 / 浅系（theme.ts 统一配色，红涨绿跌锁定）；
+ *  - 左 / 右刻度区开关：显隐全部 Pane 的 price scale（宽度一致 72px，无边框）；
  *  - 指标开关：动态创建 / 删除 pane4 / pane5（setShowIndicator，防内存泄漏：
- *    series 先 remove() 再 removePane）。
+ *    series 先 removePane 再置 null）；
+ *  - 主图指标（互斥）：MA / EXPMA / BOLL / SAR / BBI（pane1 叠加，东财指标库，
+ *    setMainIndicator：切换时先 removeSeries 清空，SAR 用 SarMarkerPrimitive 显隐控制）。
  *
  * 生命周期：实例保护（container dataset 标记防重复创建 chart）；
  * ResizeObserver 跟随容器尺寸重算 pane 高度；destroy 销毁（防内存泄漏）。
@@ -53,7 +61,7 @@ import {
   type BarPrice,
   type MouseEventParams,
 } from 'lightweight-charts'
-import { themeColors, macdColors, chartFontFamily, chartFont, type ChartThemeName } from './theme'
+import { themeColors, macdColors, mainIndicatorColors, chartFontFamily, chartFont, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
 import {
   paneCount,
@@ -69,13 +77,29 @@ import { TestLabelPrimitive } from '../testLabel/testLabelPrimitive'
 import { TopPaneOverlayPrimitive } from '../overlay/topPaneOverlayPrimitive'
 import { HighLowMarkerPrimitive } from '../highLow/highLowMarkerPrimitive'
 import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
-import { MacdBarPrimitive } from '../indicator/macdBarPrimitive'
+import { MacdBarPrimitive, type MacdPoint } from '../indicator/macdBarPrimitive'
+import { SarMarkerPrimitive } from '../indicator/sarMarkerPrimitive'
 import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
 import { GridPrimitive } from '../grid/gridPrimitive'
-import { calcMacd, type MacdPoint } from '../indicator/macd'
+import {
+  calcMA,
+  calcEXPMA,
+  calcBOLL,
+  calcSAR,
+  calcBBI,
+  calcMACD,
+  type IndicatorLine,
+  type SarPoint,
+} from '../indicator'
 import { formatVolume, formatPrice, formatAxisSmart } from '../util/format'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+
+/**
+ * 主图指标名称（pane1 叠加线；互斥，同一时刻仅一个）：
+ *  MA / EXPMA / BOLL / SAR / BBI，null = 关闭
+ */
+export type MainIndicatorName = 'ma' | 'expma' | 'boll' | 'sar' | 'bbi'
 
 /**
  * 指标 Pane 布局说明：
@@ -131,9 +155,17 @@ export class KLineChartController {
   private deaSeries: ISeriesApi<'Line'> | null = null
   /** 各内容 Pane 的十字星左刻度指示值 primitive（pane1 / pane3 常驻，pane5 随指标开关增删） */
   private crosshairAxisLabelPrimitives: CrosshairAxisLabelPrimitive[] = []
+  /** pane1 主图指标线（当前激活指标的 LineSeries 集合；互斥，切换时清空重建） */
+  private mainIndicatorSeries: ISeriesApi<'Line'>[] = []
+  /** SAR 圆点数据缓存（SarMarkerPrimitive 自绘现取；每次开启指标时全量重算） */
+  private sarPoints: SarPoint[] = []
+  /** SAR 圆点自绘 primitive（挂在 klineSeries 上，visible 控制显隐，复用单例防泄漏） */
+  private sarMarkerPrimitive: SarMarkerPrimitive | null = null
 
   /* ===== 状态 ===== */
   private theme: ChartThemeName
+  /** 当前激活的主图指标（null = 关闭；互斥，同一时刻仅一个） */
+  private mainIndicator: MainIndicatorName | null = null
   /** 指标 Pane 开关状态（true = 显示 pane4 / pane5，false = 隐藏） */
   private showIndicator: boolean
   /** 左刻度区开关状态（true = 显示左侧刻度，false = 隐藏；默认关） */
@@ -310,6 +342,16 @@ export class KLineChartController {
         getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
       }),
     )
+    // pane1 SAR 圆点：SarMarkerPrimitive 自绘（多头红 / 空头绿，zOrder normal 不遮十字星）；
+    // 初始隐藏，由主图指标按钮开启（setMainIndicator('sar') 时 setVisible(true) + 重算数据）
+    this.sarMarkerPrimitive = new SarMarkerPrimitive(
+      this.chart,
+      this.klineSeries,
+      () => this.sarPoints,
+      themeColors(this.theme),
+    )
+    this.sarMarkerPrimitive.setVisible(false)
+    this.klineSeries.attachPrimitive(this.sarMarkerPrimitive)
 
     /* ---------- 3.1 pane2：底部空 Pane（无数据，自绘"测试"文字，设置与 pane0 一致） ---------- */
     this.chart.addSeries(
@@ -608,7 +650,15 @@ export class KLineChartController {
     // macdPoints 缓存供 MacdBarPrimitive 自绘复用；仅指标开启时写入
     // （series 关闭时已移除，判空防误用）。
     if (this.indicatorsBarSeries && this.difSeries && this.deaSeries) {
-      this.macdPoints = calcMacd(this.bars)
+      // 东财指标库：calcMACD 返回 [DIF 线, DEA 线, 柱值线] 三组 IndicatorLine，
+      // 适配为 MacdPoint 缓存（供 MacdBarPrimitive 自绘与 series Y 轴锚点共用）
+      const [difLine, deaLine, histLine] = calcMACD(this.bars)
+      this.macdPoints = difLine.map((point, index) => ({
+        time: point.time,
+        dif: point.value,
+        dea: deaLine[index].value,
+        macd: histLine[index].value,
+      }))
       this.indicatorsBarSeries.setData(
         // Histogram 仅作 scale 锚点（不可见），颜色统一走 options.color（背景色），
         // 主题切换时由 applyTheme 同步更新；可见柱体由 MacdBarPrimitive 自绘
@@ -624,6 +674,8 @@ export class KLineChartController {
         this.macdPoints.map((point) => ({ time: point.time as UTCTimestamp, value: point.dea })),
       )
     }
+    // 主图指标：数据变化时按当前激活指标重建（指标未开时为空操作）
+    this.refreshMainIndicatorData()
   }
 
   /* ===================== 对外 API ===================== */
@@ -670,6 +722,8 @@ export class KLineChartController {
     this.volumeSeries.applyOptions({ color: themeColorSet.background })
     // MACD 锚点色跟随背景（保持不可见）；可见柱体由 MacdBarPrimitive 动态取新主题色
     this.indicatorsBarSeries?.applyOptions({ color: themeColorSet.background })
+    // SAR 圆点颜色（多头红 / 空头绿）随主题更新（SarMarkerPrimitive setTheme）
+    this.sarMarkerPrimitive?.setTheme(themeColorSet)
     // 空 Pane 文字颜色在 draw 时动态取色，applyOptions 触发重绘即自动更新
   }
 
@@ -699,6 +753,100 @@ export class KLineChartController {
     const timeScaleApi = this.chart.timeScale()
     // 减小距最新 bar 的 bar 数 → 视口向左靠近最新数据（"右移"）；库内部自动钳制
     timeScaleApi.scrollToPosition(timeScaleApi.scrollPosition() - 10, false)
+  }
+
+  /* ===================== 主图指标（pane1 叠加，互斥） ===================== */
+
+  /**
+   * 主图指标开关（互斥）：
+   *  - 传入与当前相同的指标名 → 视为关闭（返回 null 语义，由 App.vue 处理）；
+   *  - 传入新指标名 → 先清空当前指标线，再按指标创建对应 LineSeries 并写入数据；
+   *  - 传入 null → 仅清空（关闭所有主图指标）。
+   */
+  setMainIndicator = (name: MainIndicatorName | null): void => {
+    this.clearMainIndicatorSeries()
+    if (name === null) {
+      this.mainIndicator = null
+      return
+    }
+    this.mainIndicator = name
+    const colors = mainIndicatorColors
+    switch (name) {
+      case 'ma': {
+        // MA5 / MA10 / MA20 / MA30 / MA60 五条线（东财标准五线）
+        const periods = [5, 10, 20, 30, 60]
+        periods.forEach((period, index) => {
+          this.appendMainIndicatorLine(calcMA(this.bars, period), colors.ma[index])
+        })
+        break
+      }
+      case 'expma': {
+        // EXPMA12 / EXPMA50 两条线（东财默认参数）
+        const periods = [12, 50]
+        periods.forEach((period, index) => {
+          this.appendMainIndicatorLine(calcEXPMA(this.bars, period), colors.expma[index])
+        })
+        break
+      }
+      case 'boll': {
+        // BOLL 上轨 / 中轨 / 下轨三条线（东财周期 20、倍数 2）
+        const [upper, mid, lower] = calcBOLL(this.bars)
+        this.appendMainIndicatorLine(upper, colors.boll[0])
+        this.appendMainIndicatorLine(mid, colors.boll[1])
+        this.appendMainIndicatorLine(lower, colors.boll[2])
+        break
+      }
+      case 'sar': {
+        // SAR：SarMarkerPrimitive 自绘圆点（多头红 / 空头绿，挂在 klineSeries 上），
+        // 无需独立 LineSeries；数据全量重算后置入缓存，setVisible(true) 内部触发重绘。
+        // 圆点颜色由 applyTheme 同步（构造时已用当前主题初始化），此处无需再 setTheme
+        this.sarPoints = calcSAR(this.bars)
+        this.sarMarkerPrimitive?.setVisible(true)
+        break
+      }
+      case 'bbi': {
+        // BBI 单线（(MA3 + MA6 + MA12 + MA24) / 4）
+        this.appendMainIndicatorLine(calcBBI(this.bars), colors.bbi)
+        break
+      }
+    }
+  }
+
+  /** 清空当前所有主图指标（LineSeries removeSeries 释放渲染；SAR primitive 仅隐藏，防内存泄漏） */
+  private clearMainIndicatorSeries = (): void => {
+    this.mainIndicatorSeries.forEach((series) => this.chart.removeSeries(series))
+    this.mainIndicatorSeries = []
+    this.sarMarkerPrimitive?.setVisible(false)
+  }
+
+  /** 在 pane1 创建一条指标 LineSeries（与 K 线同 priceScaleId 'left' → 同刻度叠加） */
+  private createMainIndicatorLine = (color: string, lineWidth: 1 | 2 | 3 | 4): ISeriesApi<'Line'> =>
+    this.chart.addSeries(
+      LineSeries,
+      {
+        priceScaleId: 'left',
+        color,
+        lineWidth,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      },
+      1,
+    )
+
+  /** 创建指标线并写入数据（颜色 / 宽度按指标配置） */
+  private appendMainIndicatorLine = (points: IndicatorLine[], color: string): void => {
+    const series = this.createMainIndicatorLine(color, 1)
+    this.mainIndicatorSeries.push(series)
+    series.setData(points.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })))
+  }
+
+  /** 数据变化时刷新当前主图指标（applyData 末尾调用；指标未开时为空操作） */
+  private refreshMainIndicatorData = (): void => {
+    if (this.mainIndicator === null) return
+    // 重建：清空当前线并重新按当前指标名写入（复用互斥逻辑）
+    const active = this.mainIndicator
+    this.setMainIndicator(active)
   }
 
   /** 时间轴开关：切换显隐后重算 pane 高度（时间轴高度占用随之变化，保证固定空 Pane 仍绝对相等） */
@@ -763,11 +911,16 @@ export class KLineChartController {
     this.applyStretchFactors()
   }
 
-  /** 销毁：移除监听 / chart / 清除实例标记（防内存泄漏） */
+  /** 销毁：移除监听 / primitive / chart / 清除实例标记（防内存泄漏） */
   destroy = (): void => {
     // 移除十字星移动监听 + 清空指示值 primitive 引用（防内存泄漏）
     this.chart.unsubscribeCrosshairMove(this.handleCrosshairMove)
     this.crosshairAxisLabelPrimitives = []
+    // 卸载 SAR 圆点 primitive（挂在 klineSeries 上，随 chart.remove 一起释放，显式 detach 更保险）
+    if (this.sarMarkerPrimitive) {
+      this.klineSeries.detachPrimitive(this.sarMarkerPrimitive)
+      this.sarMarkerPrimitive = null
+    }
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     this.chart.remove()

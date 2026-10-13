@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.52（2026-10-13）**
+> **当前版本：v1.4.59（2026-10-14）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部空 Pane（"测试"文字）、K 线主图、成交量、附图指标（MACD），指标 Pane 可动态开关。
@@ -65,7 +65,11 @@
 | 左刻度开/关 | 左刻度区显隐（所有 Pane 统一，宽度 72px，切换后 fitContent） |
 | 右刻度开/关 | 右刻度区显隐（同左） |
 | 缩小 / 放大 | X 轴 `barSpacing` 全局缩放（限幅 2~80） |
+| 左移 / 右移 | X 轴平移（`scrollToPosition` ±10 根/次） |
 | 浅系 / 深系 | 主题切换（颜色全集中在 `chart/core/theme.ts`） |
+
+底部"主图指标"容器：MA / EXPMA / BOLL / SAR / BBI 五个按钮**互斥**（点击已激活
+= 关闭），指标画在 pane1（与 K 线同价格刻度叠加）；SAR 为抛物点（圆点标记）。
 
 图表内禁止滚轮 / 双指 / 拖轴缩放（`handleScale` 全关），缩放仅由按钮控制；平移保留。
 
@@ -103,10 +107,21 @@ src/
 │   ├── volume/                # 成交量柱自绘（红涨空心 / 绿跌实心）
 │   │   ├── volumeBarPrimitive.ts
 │   │   └── volumeBarPaneView.ts
-│   ├── indicator/             # 附图指标（MACD 计算 + 柱体自绘）
-│   │   ├── macd.ts            # MACD 计算（东方财富口径，纯函数）
+│   ├── indicator/             # 东财指标库（统一出口 index.ts）：
+│   │   │                       #   K 线主图 MA/EXPMA/BOLL/SAR/BBI + 附图 10 指标 + 分时 9 指标
+│   │   ├── index.ts           # 统一出口（calcMainIndicators / calcSubIndicators 等）
+│   │   ├── types.ts           # 公共类型（IndicatorLine / K / MainIndicators / SarPoint）
+│   │   ├── utils.ts           # 共享工具（tdxSMA / ema / runningMax / toLines / toKBars）
+│   │   ├── macd.ts            # MACD（calcMACD，东财口径，纯函数）
 │   │   ├── macdBarPrimitive.ts
 │   │   └── macdBarPaneView.ts
+│   │   ├── sarMarkerPrimitive.ts # SAR 圆点自绘插件（挂 klineSeries，多头红 / 空头绿）
+│   │   ├── ma.ts              # 简单移动平均（MA5/10/20/30/60）
+│   │   ├── expma.ts           # 指数平滑（EXPMA12/50）
+│   │   ├── boll.ts            # 布林带（N=20、K=2）
+│   │   ├── sar.ts             # 抛物线转向（东财 SAR(4, 0.02, 0.2)）
+│   │   ├── bbi.ts             # 多空指标（(MA3+MA6+MA12+MA24)/4）
+│   │   └── （rsi/kdj/wr/dmi/bias/obv/cci/roc/cr/volumeMa 附图与分时指标）
 │   ├── overlay/               # pane0 顶层遮罩（遮住十字星竖线）
 │   │   ├── topPaneOverlayPrimitive.ts
 │   │   └── topPaneOverlayPaneView.ts
@@ -141,8 +156,9 @@ npm run build      # vue-tsc 类型检查 + 构建
 ## 六、内存与性能
 
 - **primitive 视图单例复用**：所有 primitive 的 `paneViews()` / `priceAxisPaneViews()` 返回构造时创建的单例视图，避免每帧 `new` 对象产生 GC 压力；
-- **渲染裁剪**：成交量 / MACD 柱自绘按可见逻辑范围（`getVisibleLogicalRange`）裁剪，仅遍历可视柱体，不遍历全量数据；
-- **生命周期**：controller `destroy()` 移除十字星监听、断开 ResizeObserver、`chart.remove()`、清除容器标记；指标关闭时 series 先 `removePane` 再置 null；primitive `detached()` 清空引用；
+- **渲染裁剪**：成交量 / MACD 柱、SAR 圆点自绘按可见逻辑范围（`getVisibleLogicalRange`）裁剪，仅遍历可视柱体，不遍历全量数据；
+- **标签缓存**：刻度标签在 `updateAllViews`（图表更新）时重建，渲染 draw 只读取缓存集合，不重复计算；
+- **生命周期**：controller `destroy()` 移除十字星监听、断开 ResizeObserver、`detachPrimitive`（SAR 圆点）、`chart.remove()`、清除容器标记；指标关闭时 series 先 `removePane` 再置 null；primitive `detached()` 清空引用；
 - **实例保护**：容器 `dataset.lwcMounted` 标记防止重复创建 chart 实例。
 
 ## 七、固定依赖版本

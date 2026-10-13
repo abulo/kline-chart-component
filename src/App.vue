@@ -12,6 +12,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import KLineChart from './components/kLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
+import type { MainIndicatorName } from './chart/core/kLineChartController'
 
 /** 图表组件 ref（访问控制器） */
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
@@ -26,6 +27,24 @@ const showIndicator = ref(true)
 const showLeftScale = ref(false)
 /** 右刻度区开关（默认关） */
 const showRightScale = ref(false)
+/** 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关） */
+const activeMainIndicator = ref<MainIndicatorName | null>(null)
+
+/** 主图指标按钮配置（名称 + 标签；互斥） */
+const mainIndicatorOptions: ReadonlyArray<{ name: MainIndicatorName; label: string }> = [
+  { name: 'ma', label: 'MA' },
+  { name: 'expma', label: 'EXPMA' },
+  { name: 'boll', label: 'BOLL' },
+  { name: 'sar', label: 'SAR' },
+  { name: 'bbi', label: 'BBI' },
+]
+
+/** 主图指标开关（互斥）：点击已激活指标 = 关闭；否则切换 */
+const toggleMainIndicator = (name: MainIndicatorName): void => {
+  const next = activeMainIndicator.value === name ? null : name
+  activeMainIndicator.value = next
+  chartRef.value?.controller?.setMainIndicator(next)
+}
 
 /** 主题切换：更新 html 背景 + 图表主题 */
 const toggleTheme = (): void => {
@@ -87,7 +106,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.52</span>
+      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.59</span>
     </div>
 
     <div class="toolbar">
@@ -115,6 +134,20 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
     <!-- 图表容器：占浏览器 80% 宽高、居中（symbol / name 在 pane0 顶部信息行显示） -->
     <div class="chart-wrap">
       <KLineChart ref="chartRef" symbol="300750" name="宁德时代" />
+    </div>
+
+    <!-- 底部容器：主图指标（MA / EXPMA / BOLL / SAR / BBI，互斥开关，画在 pane1） -->
+    <div class="main-indicator-bar">
+      <span class="hint">主图指标</span>
+      <button
+        v-for="option in mainIndicatorOptions"
+        :key="option.name"
+        class="btn"
+        :class="{ active: activeMainIndicator === option.name }"
+        @click="toggleMainIndicator(option.name)"
+      >
+        {{ option.label }}
+      </button>
     </div>
   </div>
 </template>
@@ -173,6 +206,21 @@ body,
   border-radius: 4px;
 }
 
+/* 底部容器：主图指标（MA / EXPMA / BOLL / SAR / BBI，样式与顶部工具栏一致） */
+.main-indicator-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 80%;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  background: v-bind('themeColors(theme).toolbarBackground');
+  border: 1px solid v-bind('themeColors(theme).toolbarBorder');
+  border-radius: 4px;
+}
+
 .hint {
   font-size: 12px;
   color: v-bind('themeColors(theme).hintText');
@@ -204,11 +252,11 @@ body,
   border-color: v-bind('themeColors(theme).buttonActiveColor');
 }
 
-/* 图表容器：占浏览器 80% 宽高、居中（无边框）。
+/* 图表容器：宽度 80%、高度占满剩余空间（顶部信息行 + 工具栏 + 底部指标容器之外）居中。
    背景与图表底色一致（库的 separator / 时间轴裁切处会露出此背景）。 */
 .chart-wrap {
+  flex: 1;
   width: 80%;
-  height: 80%;
   min-height: 400px;
   box-sizing: border-box;
   background: v-bind('themeColors(theme).background');

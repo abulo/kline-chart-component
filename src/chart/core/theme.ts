@@ -47,6 +47,10 @@ export interface ChartThemeColors {
   highMarkerColor: string
   /** 最低价标注颜色（蓝色系，深浅系区分保证可读性） */
   lowMarkerColor: string
+  /** SAR 多头圆点色（与 K 线上涨色一致，红涨绿跌） */
+  sarUp: string
+  /** SAR 空头圆点色（与 K 线下跌色一致，红涨绿跌） */
+  sarDown: string
 
   /* ===== 页面布局（App.vue） ===== */
   /** 页面整体背景（html 背景，跟随主题） */
@@ -86,6 +90,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     crosshairLabelText: '#D1D4DC',
     highMarkerColor: '#F4AA0A',
     lowMarkerColor: '#2962FF',
+    sarUp: '#FF0000',
+    sarDown: '#008000',
 
     pageBackground: '#0B0E13',
     toolbarBackground: '#1E222D',
@@ -110,6 +116,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     crosshairLabelText: '#33373E',
     highMarkerColor: '#B8860B',
     lowMarkerColor: '#2452CC',
+    sarUp: '#FF0000',
+    sarDown: '#008000',
 
     pageBackground: '#EDEFF3',
     toolbarBackground: '#F3F4F6',
@@ -142,4 +150,23 @@ export const macdColors = {
   difLine: '#A0A0A0',
   /** DEA 线 */
   deaLine: '#F4AA0A',
+} as const
+
+/**
+ * 主图指标配色（pane1 叠加线，深浅系通用；东方财富标准色，见各指标文件注释）：
+ *  - MA：5 / 10 / 20 / 30 / 60 五线（白 / 黄 / 粉 / 深绿 / 蓝）；
+ *  - EXPMA：12 / 50 两线（白 / 黄）；
+ *  - BOLL：上轨 / 中轨 / 下轨（黄 / 白 / 粉）；
+ *  - SAR：抛物点按趋势着色（多头 = K 线上涨色、空头 = K 线下跌色，取主题 up/down）；
+ *  - BBI：多空指标（浅蓝灰）。
+ */
+export const mainIndicatorColors = {
+  /** MA 五线（MA5 / MA10 / MA20 / MA30 / MA60） */
+  ma: ['#A0A0A0', '#DD9900', '#FF00FF', '#007130', '#0079D5'],
+  /** EXPMA 两线（EXPMA12 / EXPMA50） */
+  expma: ['#A0A0A0', '#DD9900'],
+  /** BOLL 三轨（上轨 / 中轨 / 下轨） */
+  boll: ['#FFD54F', '#FFFFFF', '#F06292'],
+  /** BBI 单线 */
+  bbi: '#B0BEC5',
 } as const

@@ -8,6 +8,134 @@
 
 ---
 
+## v1.4.59（2026-10-14）
+
+修复：反复点击 SAR 按钮无效果。
+
+### 根因
+`SarMarkerPrimitive.setVisible()` 只修改 `_visible` 标志，不会引起 lightweight-charts
+invalidate —— primitive 的 draw 由库重绘驱动，仅改标志时画面不刷新（MA/EXPMA 等
+走 addSeries+setData 会自动重绘，SAR 走 primitive 显隐因此"看不见"）。
+
+### 修复
+- `SarMarkerPrimitive` 构造时保存 chart 引用；`setVisible(v)` 在显隐变化后调用
+  `chart.applyOptions({})` —— 已核库源码：`ChartModel.applyOptions` 末尾无条件
+  `fullUpdate()`，空对象即可安全触发重绘（无任何副作用）；
+- `setTheme()` 同样补 applyOptions 触发重绘（主题切换时圆点色立即生效）；
+- controller `setMainIndicator('sar')` 移除冗余 `setTheme` 调用（构造时已初始化，
+  applyTheme 负责同步主题色），一次点击只触发一次重绘；
+- 验证：vue-tsc 通过、vitest 66/66 全绿；未运行 / 未截图。
+
+## v1.4.58（2026-10-14）
+
+全量质量审计收尾（内存 / 缓存 / 注释 / 命名 / 颜色 / 效率 / 文档 / 测试 / 清理）。
+
+### 审计结果（逐项核查，均达标）
+- **颜色收敛**：src 内除 theme.ts 外 0 处硬编码色值；SAR 圆点色（sarUp/sarDown）已入主题；
+- **内存**：订阅点（crosshairMove / ResizeObserver）destroy 全部清理；SAR primitive 显式
+  detachPrimitive；指标开关 removePane 后置 null；primitive detached() 清空引用；
+- **缓存**：刻度标签在 updateAllViews（图表更新）重建，draw 只读缓存；渲染视图 / renderer
+  构造时单例，paneViews() 不每帧 new；成交量 / MACD 柱 / SAR 圆点按可视逻辑范围裁剪；
+- **执行效率**：handleCrosshairMove 仅 O(1) 注入；栅格 / 标签 / 极值标注均按可视范围循环；
+- **命名**：全部驼峰语义化、无下划线 / 短横线；无孤儿文件（index.ts 目录索引、main.ts 入口除外）；
+- **死代码**：controller 全部私有方法均有调用；createSeriesMarkers / colors.sar 已无残留。
+
+### 变更
+- tests/theme.test.ts：新增 SAR 圆点色断言（深浅系红涨绿跌一致）+ 主图指标配色断言
+  （MA 五线 / EXPMA 两线 / BOLL 三轨 / BBI 单线），测试 64 → 66；
+- README：内存与性能章节补充标签缓存 / SAR 圆点裁剪 / detachPrimitive 说明；
+- kLineChartController.ts：头部模块注释更新至当前架构（v1.4.57，六 Pane + 主图指标 +
+  东财指标库 + 各自绘 primitive 职责）；
+- 验证：vue-tsc 通过、vitest 66/66 全绿；未运行 / 未截图。
+
+## v1.4.57（2026-10-14）
+
+修复 SAR 圆点绘制：接入用户新增的 `src/chart/indicator/sarMarkerPrimitive.ts` 自绘插件。
+
+### 变更
+- `sarMarkerPrimitive.ts` import 修正：
+  - `SarPoint`：`./indicators` → `./`（index.ts 统一出口 re-export）；
+  - 主题类型：`./theme` → `../core/theme`，统一使用 `ChartThemeColors`；
+- theme.ts 新增 `sarUp` / `sarDown` 字段（多头红 / 空头绿，与 K 线红涨绿跌一致，
+  深浅系相同）；清理未使用的 ChartTheme 别名；
+- controller：SAR 由 `createSeriesMarkers`（LineSeries 圆点标记）改为
+  `SarMarkerPrimitive`（挂 klineSeries、zOrder normal 不遮十字星）；
+  - 构造期创建单例并 attach，初始 setVisible(false)；
+  - `setMainIndicator('sar')`：全量重算 calcSAR → sarPoints 缓存 + setVisible(true)；
+  - 切换 / 关闭其他指标：setVisible(false)（不重复创建，防泄漏）；
+  - applyTheme 同步 setTheme；destroy 显式 detachPrimitive；
+- 删除 `createSeriesMarkers` 的库导入（不再使用）；
+- 验证：vue-tsc 通过、vitest 64/64 全绿；未运行 / 未截图。
+
+## v1.4.56（2026-10-14）
+
+controller 改用 `src/chart/indicator/` 东财指标库（统一出口 index.ts）。
+
+### 变更
+- 主图五指标接入库函数（输入 BasicBar[] 兼容 K[]）：
+  - MA：`calcMA`，周期改东财标准 **5/10/20/30/60** 五线；
+  - EXPMA：`calcEXPMA`，参数改东财默认 **12/50**；
+  - BOLL：`calcBOLL`（返回 [上轨, 中轨, 下轨]）；
+  - SAR：`calcSAR`（返回含 trend 的 SarPoint[]），圆点按趋势着色
+    （多头 = K 线上涨色、空头 = 下跌色）；
+  - BBI：`calcBBI`；
+- MACD 接入库：`calcMACD` 返回 [DIF, DEA, 柱值] 三线，controller 适配为
+  MacdPoint 缓存（MacdPoint 定义移入 macdBarPrimitive.ts，供自绘与 Y 轴锚点共用）；
+- theme.mainIndicatorColors 改为东财标准色（MA 白/黄/粉/深绿/蓝、EXPMA 白/黄、
+  BOLL 黄/白/粉、BBI 浅蓝灰）；删除 sar 字段（SAR 用主题 up/down）；
+- 删除无引用文件 indicatorPoint.ts（用户版指标库自带 types.ts）；
+- 测试：indicators.test.ts / macd.test.ts 重写适配新 API（64 项全绿）；
+  vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.55（2026-10-14）
+
+目录整理：`src/chart/indicator/main/` 删除，主图指标文件直接并入
+`src/chart/indicator/`（不再创建子文件夹）。
+
+### 变更
+- 移动 6 个文件（ma / expma / boll / sar / bbi / indicatorPoint）到
+  `src/chart/indicator/` 并删除 `main/` 目录；
+- 更新 controller / tests import 路径与 README 目录结构；
+- 验证：vue-tsc 通过；vitest 64 项全绿；未运行 / 未截图。
+
+## v1.4.54（2026-10-14）
+
+主图指标算法对齐**东方财富口径**（其余指标核对一致，仅 SAR 调整）。
+
+### 变更
+- **SAR 改为东财 / 通达信公式系统内置算法** `SAR(4, 0.02, 0.2)`：
+  - 前 4 根观察窗口判定方向（窗口末根收盘 ≥ 首根收盘 → 上升式）；
+  - 上升式初始 SAR = 窗口最低价、初始 EP = 窗口最高价（下降式对称）；
+  - 从窗口末根起输出初始 SAR，之后逐根递推
+    `SAR(n) = SAR(n-1) + AF × [EP(n-1) - SAR(n-1)]`；创新高 AF += 0.02
+    封顶 0.2；上升式 SAR 不高于前两期最低价（保护）；跌破/升破反转；
+- 核对确认无需调整：MA（滑动均值）、EXPMA（EMA 首值 = 首根收盘）、
+  BOLL（STD 分母 N，东财口径）、BBI（(MA3+MA6+MA12+MA24)/4）；
+- 测试：SAR 用例更新为东财窗口口径（点数 = n-3、初始 SAR = 窗口最低、
+  反转贴极值），64 项全绿；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.53（2026-10-13）
+
+App.vue 底部新增主图指标容器：MA / EXPMA / BOLL / SAR / BBI 五个互斥按钮，画在 pane1。
+
+### 变更
+- 新增主图指标计算（纯函数，每 class 一个文件，`src/chart/indicator/main/`）：
+  - `ma.ts`：简单移动平均（MA5 / 10 / 20 / 30）；
+  - `expma.ts`：指数平滑（EXPMA12 / 26，α = 2/(N+1)）；
+  - `boll.ts`：布林带（N=20、K=2，总体标准差分母 N，东财口径）；
+  - `sar.ts`：抛物线转向（Wilder 算法，AF 0.02 封顶 0.2）；
+  - `bbi.ts`：(MA3 + MA6 + MA12 + MA24) / 4，O(n) 索引对齐；
+  - `indicatorPoint.ts`：统一指标点类型。
+- theme.ts 新增 `mainIndicatorColors`（深浅系通用，东方财富风格）；
+- controller：新增 `MainIndicatorName` 类型与 `setMainIndicator(name | null)`（互斥：
+  切换时先 `chart.removeSeries` 清空当前线再重建，防内存泄漏）；SAR 用
+  `createSeriesMarkers` 圆点标记（5.x 插件 API）；指标线同 pane1
+  priceScaleId 'left' 与 K 线同刻度叠加；applyData 末尾刷新当前指标数据；
+- App.vue：底部新增"主图指标"容器（样式与顶部工具栏一致），5 按钮互斥开关
+  （点击已激活 = 关闭）；chart-wrap 改为 flex:1 占满剩余高度（容纳底部容器）；
+- 测试：新增 tests/indicators.test.ts（8 用例：MA / EXPMA / BOLL / SAR / BBI），
+  共 64 项全绿；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.52（2026-10-13）
 
 KLineChart.vue 新增 `symbol` / `name` 参数，pane0 顶部信息行显示"股票名称 [代码]"。

@@ -23,9 +23,20 @@ import {
   type IChartApiBase,
   type Time,
 } from 'lightweight-charts'
-import type { MacdPoint } from './macd'
 import type { MacdThemeColors } from './macdBarPaneView'
 import { MacdBarPaneView } from './macdBarPaneView'
+
+/** MACD 指标数据点（由 controller 从 calcMACD 三线适配而来，供柱体自绘与 Y 轴锚点共用） */
+export interface MacdPoint {
+  /** bar 时间（与 K 线一致） */
+  time: number
+  /** DIF = EMA(C,12) - EMA(C,26) */
+  dif: number
+  /** DEA = EMA(DIF,9) */
+  dea: number
+  /** 柱值 = (DIF - DEA) × 2 */
+  macd: number
+}
 
 export class MacdBarPrimitive implements ISeriesPrimitive<Time> {
   /** MACD 指标数据获取器（只读；每次 draw 现取，数据更新无需额外通知） */
