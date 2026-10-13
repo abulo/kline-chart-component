@@ -42,8 +42,12 @@ export class GridPrimitive implements ISeriesPrimitive<Time> {
   /** 挂载后的 chart 引用（预留；attached 时注入） */
   public chartApi: IChartApiBase<Time> | null = null
 
+  /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
+  private readonly paneView: GridPaneView
+
   constructor(config: GridConfig) {
     this.config = config
+    this.paneView = new GridPaneView(this)
   }
 
   /** primitive 挂载：保存 chart 引用供 draw 使用 */
@@ -56,8 +60,8 @@ export class GridPrimitive implements ISeriesPrimitive<Time> {
     this.chartApi = null
   }
 
-  /** 返回本 primitive 的 pane 视图（渲染器） */
+  /** 返回本 primitive 的 pane 视图（渲染器；单例复用，避免每帧 new 对象） */
   paneViews(): readonly IPrimitivePaneView[] {
-    return [new GridPaneView(this)]
+    return [this.paneView]
   }
 }

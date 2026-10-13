@@ -1,44 +1,72 @@
-# 单 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
+# 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.37（2026-10-13）**
-> 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、源码头部
-> `@version` 注释、CHANGELOG.md，交付 zip 文件名带版本号。
-> **交付规范**：每个版本交付时必须在回复中附带**运行截图**
-> （浏览器实拍，覆盖深系 / 浅系及关键交互状态），截图与 zip 一并呈现。
+> **当前版本：v1.4.41（2026-10-13）**
+> 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
-单 Pane K 线组件：一个 chart 内 **1 个 Pane**（K 线主图）。
-v1.2.0 在 v1.1.0（2 Pane）基础上收敛：删除成交量 Pane，仅保留 K 线主图；
-栅格化与左右刻度区保持关闭。v1.3.0 起 K 线为红涨绿跌，上涨柱体空心（填充背景色 + 红色边框/影线），下跌柱体绿色实心。
+多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部空 Pane（"测试"文字）、K 线主图、成交量、附图指标（MACD），指标 Pane 可动态开关。
 
 ---
 
 ## 一、布局结构
 
-单 chart 内 1 个 Pane（Lightweight Charts v5 多 Pane 的 pane0）：
+指标**开启**（6 Pane，`main : volume : indicator = 60 : 20 : 20`）：
 
 ```
-┌────────────────────────────────────┐
-│ pane0  K 线主图（Candlestick）      │
-└────────────────────────────────────┘
-    底部：共享时间轴（timeScale）
+┌──────────────────────────────────────┐
+│ pane0  空 Pane（"测试"文字，固定 22px） │
+│ pane1  K 线主图（Candlestick）         │  ← main 组 60%
+│ pane2  空 Pane（"测试"文字，固定 22px） │
+│ pane3  成交量（自绘红绿柱）             │  ← volume 组 20%
+│ pane4  空 Pane（"测试"文字，固定 22px） │
+│ pane5  MACD（DIF/DEA 线 + 红绿柱）      │  ← indicator 组 20%
+└──────────────────────────────────────┘
+    底部：共享时间轴（timeScale，可开关）
 ```
 
-- **无栅格线**（`grid.vertLines / horzLines` 全部隐藏）；
-- **无左右刻度区**（`leftPriceScale / rightPriceScale` 全部隐藏，数据区铺满）；
-- 高度 = 容器 100%（`autoSize` 自动适配）。
+指标**关闭**（4 Pane，`main : volume = 80 : 20`）：去掉 pane4 / pane5，pane1 / pane3 比例变为 80 : 20。
 
-## 二、全局控制（App.vue 工具栏）
+高度分配（时间轴开 / 关一致，仅库可用高度不同）：
+- 空 Pane 固定 `topPaneHeight = 22px`（同一 stretchFactor，绝对相等）；
+- 剩余高度按组比例分配（`calcPaneHeights` 纯函数，见 `chart/core/layout.ts`）；
+- 像素因子方案：`stretchFactor` 直接设为目标像素高度 → 无舍入误差，pane 完全铺满；
+- Pane 高度不可拖拽（`layout.panes.enableResize: false`）、Pane 之间无分割线（库 patch `SeparatorHeight: 1 → 0`）。
+
+## 二、视觉与交互
+
+- **红涨绿跌**：上涨 `#FF0000`、下跌 `#008000`（深浅系一致，`theme.ts` 集中管理）；
+- **上涨柱空心**：K 线 / 成交量 / MACD 柱 > 0 均为"背景色填充 + 红框"的空心红柱，下跌绿色实心；
+- **柱宽一致**：pane1 / pane3 / pane5 柱宽 = `candlestickBarWidth(barSpacing, dpr)`（库源码原版 `optimalCandlestickWidth` + 奇偶修正，见 `chart/core/candlestickWidth.ts`），宽度 / 间隔绝对一致；
+- **自绘栅格**（`GridPrimitive`，zOrder 'bottom' 位于数据之下）：
+  - 竖线：4 等分（3 条）；
+  - 横线：pane1 指标关 8 等分 / 指标开 6 等分；pane3 / pane5 2 等分（中间 1 条）；
+  - 栅格固定于 Pane 本地坐标，平移 / 缩放数据时不动；
+- **自绘左刻度标签**（`AxisLabelPrimitive` + `AxisLabelView`）：
+  - 标签位置与栅格横线完全对齐（同一等分公式），值 = 该 y 处实时价格（coordinateToPrice 反算，随平移 / 缩放变化）；
+  - 行数 = 等分数 + 1（含首尾内嵌 8px 防裁切）：pane1 = 9 / 7 个、pane3 / pane5 = 3 个；
+  - pane5 中间刻度固定 0（MACD 以 0 轴分正负）；
+- **十字星左刻度指示值**（`CrosshairAxisLabelPrimitive` + `CrosshairAxisLabelPaneView`）：
+  - 十字星移动时，在左刻度区绘制横线所在数值标签（价格 / 成交量 / MACD 值，随鼠标逐帧刷新）；
+  - 实现路径：`priceAxisPaneViews` + zOrder 'top'（价格轴 top canvas，Cursor 级重绘，流畅无卡顿）；
+  - 坐标：库 `point.y` 为 Pane 本地坐标，直接注入，不做前序 Pane 高度换算；
+  - 文字右对齐绘制（`textAlign = 'right'`），避免超出价格轴 canvas 被裁剪；
+- **十字星不贯穿 pane0**：pane0 内不触发十字星（controller 清除），pane0 顶层遮罩（`Pane0OverlayPrimitive`，zOrder 'top'）以背景色覆盖竖线；
+- **内容 Pane 边框**（`PaneBorderPrimitive`）：pane1 / pane3 / pane5 自绘 1px 直角矩形边框，颜色随主题；
+- **空 Pane "测试"文字**（`TestLabelPrimitive`）：垂直居中、距左 6px、跟随主题文字色。
+
+## 三、全局控制（App.vue 工具栏）
 
 | 按钮 | 功能 |
 |---|---|
-| 时间轴开/关 | 底部时间轴显示 / 隐藏（`timeScale.visible`） |
+| 指标开/关 | 动态创建 / 删除 pane4 / pane5（布局 60:20:20 ⇄ 80:20） |
+| 时间轴开/关 | 底部时间轴显示 / 隐藏（重算 pane 高度） |
+| 左刻度开/关 | 左刻度区显隐（所有 Pane 统一，宽度 72px，切换后 fitContent） |
+| 右刻度开/关 | 右刻度区显隐（同左） |
 | 缩小 / 放大 | X 轴 `barSpacing` 全局缩放（限幅 2~80） |
-| 浅系 / 深系 | 主题切换（颜色全集中在 `chart/theme.ts`） |
+| 浅系 / 深系 | 主题切换（颜色全集中在 `chart/core/theme.ts`） |
 
-图表内禁止滚轮 / 双指 / 拖轴缩放（`handleScale` 全关），缩放仅由按钮控制；
-平移保留。
+图表内禁止滚轮 / 双指 / 拖轴缩放（`handleScale` 全关），缩放仅由按钮控制；平移保留。
 
-## 三、目录结构
+## 四、目录结构
 
 ```
 src/
@@ -48,12 +76,18 @@ src/
 │   └── KLineChart.vue         # 图表组件（挂载控制器，expose controller）
 ├── chart/                     # 按功能分组的图表源码
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
-│   │   ├── KLineChartController.ts # 控制器：Pane 创建 / 布局 / 主题 / 数据
+│   │   ├── KLineChartController.ts # 控制器：Pane 创建 / 布局 / 主题 / 数据 / 十字星联动
 │   │   ├── layout.ts          # 布局常量与高度计算（60/20/20 ⇄ 80/20）
-│   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）
-│   │   ├── mock.ts            # mock 数据（日 K）
+│   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）+ MACD 指标配色
+│   │   ├── mock.ts            # mock 数据（日 K，纯函数可单测）
 │   │   └── candlestickWidth.ts# 蜡烛 / 柱体宽度（库原版 optimalCandlestickWidth）
-│   ├── border/                # Pane 边框自绘（内容 Pane 四边 / 空 Pane 指定边）
+│   ├── axis/                  # 左刻度标签（与栅格横线对齐）
+│   │   ├── axisLabelPrimitive.ts
+│   │   └── axisLabelView.ts
+│   ├── crosshair/             # 十字星左刻度指示值
+│   │   ├── crosshairAxisLabelPrimitive.ts
+│   │   └── crosshairAxisLabelPaneView.ts
+│   ├── border/                # 内容 Pane 边框自绘
 │   │   ├── paneBorderPrimitive.ts
 │   │   └── paneBorderPaneView.ts
 │   ├── grid/                  # 固定等分栅格（竖 4 等分 / 横随 pane 配置）
@@ -63,32 +97,48 @@ src/
 │   │   ├── volumeBarPrimitive.ts
 │   │   └── volumeBarPaneView.ts
 │   ├── indicator/             # 附图指标（MACD 计算 + 柱体自绘）
-│   │   ├── macd.ts            # MACD 计算（东方财富口径）
+│   │   ├── macd.ts            # MACD 计算（东方财富口径，纯函数）
 │   │   ├── macdBarPrimitive.ts
 │   │   └── macdBarPaneView.ts
-│   └── testLabel/             # 空 Pane "测试" 文字自绘
-│       ├── testLabelPrimitive.ts
-│       └── testLabelPaneView.ts
+│   ├── overlay/               # pane0 顶层遮罩（遮住十字星竖线）
+│   │   ├── pane0OverlayPrimitive.ts
+│   │   └── pane0OverlayPaneView.ts
+│   ├── testLabel/             # 空 Pane "测试" 文字自绘
+│   │   ├── testLabelPrimitive.ts
+│   │   └── testLabelPaneView.ts
+│   └── util/
+│       └── format.ts          # 数值格式化（价格 / 成交量 / 指标刻度）
 └── types/
     └── chart.ts               # 统一数据点类型（保留，供后端接入）
 tests/
 ├── mock.test.ts               # mock 数据单测
-├── theme.test.ts              # 主题单测
+├── theme.test.ts              # 主题 / 配色单测
 ├── candlestickWidth.test.ts   # 蜡烛宽度单测
 ├── macd.test.ts               # MACD 计算单测
-└── multipane.test.ts          # 布局常量 / K 线数据单测
+├── multipane.test.ts          # 布局常量 / 高度算法单测
+└── util.test.ts               # 格式化函数单测
 ```
 
-## 四、运行
+## 五、运行
 
 ```bash
 npm install        # 固定版本：lightweight-charts 5.2.1 / vue 3.5.43
 npm run dev        # 开发（http://127.0.0.1:5210）
-npm run test       # vitest 单测
+npm run test       # vitest 单测（43 项）
 npm run build      # vue-tsc 类型检查 + 构建
 ```
 
-## 五、固定依赖版本
+注意：`node_modules` 安装后需运行 `npm run patch`（若已配置）或手动应用库分隔线 patch
+（`scripts/patch-lwc-separator.js`，SeparatorHeight 1 → 0，幂等），否则 Pane 间会出现 1px 分隔线。
+
+## 六、内存与性能
+
+- **primitive 视图单例复用**：所有 primitive 的 `paneViews()` / `priceAxisPaneViews()` 返回构造时创建的单例视图，避免每帧 `new` 对象产生 GC 压力；
+- **渲染裁剪**：成交量 / MACD 柱自绘按可见逻辑范围（`getVisibleLogicalRange`）裁剪，仅遍历可视柱体，不遍历全量数据；
+- **生命周期**：controller `destroy()` 移除十字星监听、断开 ResizeObserver、`chart.remove()`、清除容器标记；指标关闭时 series 先 `removePane` 再置 null；primitive `detached()` 清空引用；
+- **实例保护**：容器 `dataset.lwcMounted` 标记防止重复创建 chart 实例。
+
+## 七、固定依赖版本
 
 ```json
 "dependencies": {
@@ -104,9 +154,9 @@ npm run build      # vue-tsc 类型检查 + 构建
 }
 ```
 
-## 六、后续规划（用户逐步提出）
+## 八、后续规划（用户逐步提出）
 
-- 附图指标（RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR）
+- 附图指标扩展（RSI / KDJ / WR / DMI / BIAS / OBV / CCI / ROC / CR）
 - K 线主图指标（MA / EXPMA / BOLL / SAR / BBI）
 - 分时线（1d~5d）与周期切换
-- 十字星、信息行、浮层、数据服务（HTTP / SSE / WebSocket）
+- 数据服务接入（HTTP / SSE / WebSocket，`types/chart.ts` 数据点结构已预留）

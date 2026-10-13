@@ -35,9 +35,13 @@ export class VolumeBarPrimitive implements ISeriesPrimitive<Time> {
   /** 挂载后的 series 引用（draw 时取 priceScale；attached 时注入） */
   public seriesApi: ISeriesApi<'Histogram'> | null = null
 
+  /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
+  private readonly paneView: VolumeBarPaneView
+
   constructor(getBars: () => readonly BasicBar[], getThemeColors: () => VolumeThemeColors) {
     this.getBars = getBars
     this.getThemeColors = getThemeColors
+    this.paneView = new VolumeBarPaneView(this)
   }
 
   /** primitive 挂载：保存 chart / series 引用供 draw 使用 */
@@ -52,8 +56,8 @@ export class VolumeBarPrimitive implements ISeriesPrimitive<Time> {
     this.seriesApi = null
   }
 
-  /** 返回本 primitive 的 pane 视图（渲染器） */
+  /** 返回本 primitive 的 pane 视图（渲染器；单例复用，避免每帧 new 对象） */
   paneViews(): readonly IPrimitivePaneView[] {
-    return [new VolumeBarPaneView(this)]
+    return [this.paneView]
   }
 }

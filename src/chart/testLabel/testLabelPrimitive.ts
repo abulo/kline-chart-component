@@ -16,13 +16,17 @@ export class TestLabelPrimitive implements ISeriesPrimitive<Time> {
   /** 文字颜色获取器（只读，draw 时动态调用以跟随主题） */
   public readonly getColor: () => string
 
+  /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
+  private readonly paneView: TestLabelPaneView
+
   constructor(text: string, getColor: () => string) {
     this.text = text
     this.getColor = getColor
+    this.paneView = new TestLabelPaneView(this)
   }
 
-  /** 返回本 primitive 的 pane 视图（渲染器） */
+  /** 返回本 primitive 的 pane 视图（渲染器；单例复用，避免每帧 new 对象） */
   paneViews(): readonly IPrimitivePaneView[] {
-    return [new TestLabelPaneView(this)]
+    return [this.paneView]
   }
 }

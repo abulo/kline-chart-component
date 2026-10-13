@@ -8,6 +8,102 @@
 
 ---
 
+## v1.4.41（2026-10-13）
+
+代码质量整理（内存 / 缓存 / 命名 / 颜色集中 / 效率 / 文档 / 测试 / 清理）。
+
+### 变更
+- **执行效率（primitive 视图单例化）**：6 个 primitive（volumeBar / macdBar /
+  paneBorder / grid / testLabel / pane0Overlay）的 `paneViews()` 原每次绘制都
+  `new XxxPaneView(this)`（每帧产生 6 个新对象 → GC 压力）；改为构造时创建单例
+  视图、`paneViews()` 返回同一实例（与 crosshairAxisLabelPrimitive /
+  axisLabelPrimitive 一致）。十字星移动 / 缩放等高频绘制场景不再有对象创建开销；
+- **清理未使用函数**：`chart/util/format.ts` 删除 11 个未被引用的遗留函数 / 常量
+  （早期分时 / 浮层 / 信息行功能遗留）：formatSigned、formatSignedPct、
+  formatPctAbs、formatAmount、calcTsRise、stretchRange、PERIOD_DATE_FORMAT、
+  resolvePeriodDateFormat、formatDateStr、formatTimeByFmt、layoutTickPositions；
+  保留 formatPrice / formatVolume / formatAxisSmart（当前实际使用）；
+- **颜色集中到公共文件**：controller 内硬编码的 `MACD_COLORS`（DIF #A0A0A0 /
+  DEA #F4AA0A）提取到 `chart/core/theme.ts` 的 `macdColors`（指标配色集中管理，
+  深浅系通用）；controller 改为引用 theme 导出；
+- **文档**：README.md 全面重写 —— 由过时的"单 Pane"描述更新为当前 6 Pane 多 Pane
+  布局（分组比例 / 空 Pane / 自绘栅格 / 刻度标签 / 十字星指示值 / 内存性能），
+  目录结构补齐 axis / crosshair / overlay / util；
+- **测试**：tests/util.test.ts 由仅 4 项扩展至 13 项 —— 新增 formatPrice
+  （小数位 / 空值）与 formatAxisSmart（亿 / 万 / 普通 / 极小值自适应小数位）覆盖；
+- **命名检查**：全量扫描确认无下划线命名，类 / 方法 / 常量均驼峰语义化，无需调整；
+- 验证：vitest 43 → 52 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.40（2026-10-13）
+
+修复十字星左刻度指示值：pane1 显示但刷新卡顿、pane3 / pane5 完全不显示。
+
+### 变更
+- 定位过程（像素级诊断，诊断设施已清理）：
+  1. **卡顿根因**：v1.4.39 用 priceAxisViews（axis 标签）渲染，而库价格轴 main canvas
+     仅在**非 Cursor 级** invalidate 时重绘（含 backLabels → axis 标签），十字星移动
+     是 Cursor 级 → 标签刷新滞后 → pane1 卡顿；
+  2. **pane3 / pane5 不显示根因①**：库 MouseEventParams.point 是**当前 pane 的本地
+     坐标**（相对 pane canvas 顶部），controller 错误地累计前序 pane 高度做 offset
+     减法，导致注入 y 严重偏移、coordinateToPrice 越界返回 null；
+  3. **不显示根因②**：paneView 内 fillText 未设置 `textAlign`（默认 'left'），文字
+     从 x=68 向右绘制超出 72px 宽的价格轴 canvas 被裁剪 → 文字不可见（背景块可见
+     但文字消失）。
+- 修复方案（回到 priceAxisPaneViews + zOrder 'top'，v1.4.38 路径并修正两处根因）：
+  - crosshairAxisLabelPrimitive：`priceAxisPaneViews()` 返回单例
+    crosshairAxisLabelPaneView（IPrimitivePaneView，zOrder 'top'）；
+  - controller `handleCrosshairMove`：`localY = point.y` **直接使用**（不再减前序
+    pane 高度），命中 pane 注入本地 y、其他 pane 置 null；
+  - crosshairAxisLabelPaneView：绘制在价格轴 top canvas（Cursor 级重绘、流畅），
+    值 = series.coordinateToPrice(y) 反算；`ctx.textAlign = 'right'` +
+    `fillText(text, width - PAD, y)`（文字右对齐，避免被 canvas 裁剪），背景块
+    包裹文字并留内边距；
+  - 删除 v1.4.39 的 crosshairAxisLabelView.ts（不再使用的 axis 标签路径）。
+- 验证：像素直方图确认 pane1 / pane3 / pane5 价格轴 top canvas 均出现文字色像素；
+  完整截图 OCR 确认 pane3 出现第 4 个标签（指示值 1.48万）；
+  vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图（诊断截图仅存 /tmp 已清理）。
+
+## v1.4.39（2026-10-13）
+
+修复 pane3 / pane5 十字星左刻度指示值不显示。
+
+### 变更
+- 原因：v1.4.38 用 priceAxisPaneViews（IPrimitivePaneView）渲染指示值，
+  pane1 正常但 pane3 / pane5 不显示（该路径对部分 Pane 的价格轴不可靠）；
+- 修复：改用 priceAxisViews（ISeriesPrimitiveAxisView）—— 与 AxisLabelPrimitive
+  刻度标签同一渲染路径（pane1 / pane3 / pane5 刻度标签均正常显示的最可靠机制）：
+  - crosshairAxisLabelPrimitive：priceAxisViews() 返回单例 CrosshairAxisLabelView，
+    setCrosshairY(y) 注入 / 读取十字星横线本地 y；
+  - 新增 crosshairAxisLabelView（ISeriesPrimitiveAxisView）：visible = y 非 null；
+    fixedCoordinate() = y（精确贴横线，自动避让不影响，且固定标签绘制在普通
+    刻度标签之上不被遮挡）；coordinate() 返回大负数（不参与 unfixed 布局）；
+    text() = series.coordinateToPrice(y) 实时反算 + format（越界返回空串）；
+    textColor / backColor 取主题（跟随深浅系）；
+  - 删除不再使用的 crosshairAxisLabelPaneView.ts；
+- controller 挂载 / 注入逻辑不变（v1.4.38）；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.38（2026-10-13）
+
+十字星移动时，左刻度区显示指示值（横线所在数值标签）。
+
+### 变更
+- 新增 `src/chart/crosshair/`：crosshairAxisLabelPrimitive.ts +
+  crosshairAxisLabelPaneView.ts
+  - priceAxisPaneViews() + zOrder 'top'：绘制在价格轴 top canvas（最上层，
+    库 9637 行 sourceTopPaneViews 路径），不干扰刻度标签（刻度标签仍由
+    AxisLabelPrimitive 按栅格等分对齐）；
+  - setCrosshairY(y) 注入十字星横线本地 y；标签值 = series.coordinateToPrice(y)
+    实时反算；样式 = 圆角背景块（主题背景色）+ 文字（主题文字色），右对齐贴
+    价格轴右缘（"冒泡"观感）；
+- controller：
+  - 字段 crosshairAxisLabelPrimitives（pane1 / pane3 常驻，pane5 随指标开关增删）；
+  - 统一 handleCrosshairMove 回调：pane0 清除十字星（v1.4.37 逻辑）+ 按前序
+    pane 高度和换算本地 y 注入命中 pane 的指示值（未命中 pane 置 null 清除残留）；
+  - 指标关闭时 filter 移除 pane5 引用（series 已销毁，防对已销毁 series 注入）；
+  - destroy：unsubscribeCrosshairMove + 清空数组（防内存泄漏）；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.37（2026-10-13）
 
 pane0 内不触发十字星。

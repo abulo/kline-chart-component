@@ -53,7 +53,7 @@ import {
   type BarPrice,
   type MouseEventParams,
 } from 'lightweight-charts'
-import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
+import { themeColors, macdColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
 import {
   paneCount,
@@ -74,18 +74,13 @@ import { GridPrimitive } from '../grid/gridPrimitive'
 import { calcMacd, type MacdPoint } from '../indicator/macd'
 import { formatVolume, formatPrice, formatAxisSmart } from '../util/format'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
+import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 
 /**
- * MACD 指标配色（东方财富风格，深浅系通用不随主题变化）：
- *   DIF / DEA 线固定配色；柱体红绿由 MacdBarPrimitive 自绘
- *   （取主题 upColor / downColor，红涨绿跌，与 pane1 / pane3 一致）
+ * 指标 Pane 布局说明：
+ *   pane5 = MACD（DIF / DEA 线 + 红绿柱，高度与 pane3 一致）
+ * 线色取 theme.macdColors（集中管理）；柱体红绿由 MacdBarPrimitive 自绘。
  */
-const MACD_COLORS = {
-  /** DIF 线 */
-  difLine: '#A0A0A0',
-  /** DEA 线 */
-  deaLine: '#F4AA0A',
-} as const
 
 /**
  * 库系统默认时间轴高度（px）。
@@ -125,6 +120,8 @@ export class KLineChartController {
   private difSeries: ISeriesApi<'Line'> | null = null
   /** pane5 DEA 线（MACD 专属；开启时创建，关闭时销毁置 null） */
   private deaSeries: ISeriesApi<'Line'> | null = null
+  /** 各内容 Pane 的十字星左刻度指示值 primitive（pane1 / pane3 常驻，pane5 随指标开关增删） */
+  private crosshairAxisLabelPrimitives: CrosshairAxisLabelPrimitive[] = []
 
   /* ===== 状态 ===== */
   private theme: ChartThemeName
@@ -269,6 +266,17 @@ export class KLineChartController {
         format: (price) => formatPrice(price),
       }),
     )
+    // pane1 十字星左刻度指示值：十字星横线所在价格（K 线价格 2 位小数）
+    const pane1CrosshairLabel = new CrosshairAxisLabelPrimitive({
+      series: this.klineSeries,
+      getPaneIndex: () => 1,
+      getColor: () => themeColors(this.theme).textColor,
+      getBackColor: () => themeColors(this.theme).background,
+      getFont: () => `12px ${chartFontFamily}`,
+      format: (price) => formatPrice(price),
+    })
+    this.klineSeries.attachPrimitive(pane1CrosshairLabel)
+    this.crosshairAxisLabelPrimitives.push(pane1CrosshairLabel)
 
     /* ---------- 3.1 pane2：底部空 Pane（无数据，自绘"测试"文字，设置与 pane0 一致） ---------- */
     this.chart.addSeries(
@@ -332,6 +340,17 @@ export class KLineChartController {
         format: (volume) => formatVolume(Math.max(0, volume)),
       }),
     )
+    // pane3 十字星左刻度指示值：十字星横线所在成交量（万 / 亿格式化，不小于 0）
+    const pane3CrosshairLabel = new CrosshairAxisLabelPrimitive({
+      series: this.volumeSeries,
+      getPaneIndex: () => 3,
+      getColor: () => themeColors(this.theme).textColor,
+      getBackColor: () => themeColors(this.theme).background,
+      getFont: () => `12px ${chartFontFamily}`,
+      format: (volume) => formatVolume(Math.max(0, volume)),
+    })
+    this.volumeSeries.attachPrimitive(pane3CrosshairLabel)
+    this.crosshairAxisLabelPrimitives.push(pane3CrosshairLabel)
 
     /* ---------- 3.3 pane4 / pane5：指标组（仅 showIndicator 开启时创建） ----------
      * 指标开启：pane4 底部空 Pane（自绘"测试"文字，设置与 pane0 一致）+
@@ -354,19 +373,39 @@ export class KLineChartController {
     this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors())
     this.resizeObserver.observe(this.container)
 
-    /* ---------- 7. pane0 内不触发十字星 ----------
-     * 鼠标进入 pane0（index 0）时清除十字星位置：十字星仅可在
-     * pane1 ~ pane5（K 线 / 成交量 / 指标）内触发与移动。
+    /* ---------- 7. 十字星移动联动 ----------
+     *  - pane0 内不触发十字星（清除十字星位置，十字星仅可在 pane1 ~ pane5 触发）；
+     *  - 命中内容 Pane（pane1 / pane3 / pane5）时，向 CrosshairAxisLabelPrimitive
+     *    注入横线本地 y，在左刻度区自绘指示值（横线所在价格）。
      */
-    this.chart.subscribeCrosshairMove(this.handleCrosshairMoveInPane0)
+    this.chart.subscribeCrosshairMove(this.handleCrosshairMove)
   }
 
-  /** pane0 内不触发十字星：鼠标位于 pane0（index 0）时清除十字星位置。
-   * 库十字星由内部 mousemove 驱动，此回调与库 set 同帧执行（同一次 invalidate
-   * 重绘），视觉上 pane0 内十字星不出现；销毁时需 unsubscribe 防内存泄漏。 */
-  private handleCrosshairMoveInPane0 = (param: MouseEventParams): void => {
+  /** 十字星移动回调：pane0 清除十字星；内容 Pane 注入左刻度指示值。
+   *  - point.y 相对整个图表数据区顶部；各 pane 本地 y = point.y - 前序 pane 高度和；
+   *  - 十字星离开图表 / 命中非内容 Pane 时，全部指示值置 null（清除残留）。 */
+  private handleCrosshairMove = (param: MouseEventParams): void => {
+    const point = param.point
+    // pane0 内不触发十字星（库十字星由内部 mousemove 驱动，此回调与库 set
+    // 同帧执行，同一次 invalidate 重绘，视觉上 pane0 内十字星不出现）
     if (param.paneIndex === 0) {
       this.chart.clearCrosshairPosition()
+    }
+    if (!point || param.paneIndex === undefined) {
+      for (const primitive of this.crosshairAxisLabelPrimitives) {
+        primitive.setCrosshairY(null)
+      }
+      return
+    }
+    // 库 MouseEventParams.point 相对"十字星当前所在 pane 的 canvas"（数据区本地坐标），
+    // 因此 point.y 即为该 pane 内的本地 y，无需再减去前序 pane 高度和
+    // （实测：pane3 鼠标绝对 y=560 - pane3 canvas 顶部 493 = point.y=67，完全一致）。
+    const localY = point.y
+    for (const primitive of this.crosshairAxisLabelPrimitives) {
+      // 仅向十字星命中的 pane 注入（其他 pane 清除，避免残留旧指示值）
+      primitive.setCrosshairY(
+        primitive.config.getPaneIndex() === param.paneIndex ? localY : null,
+      )
     }
   }
 
@@ -441,11 +480,22 @@ export class KLineChartController {
         fixedMiddleValue: 0,
       }),
     )
+    // pane5 十字星左刻度指示值：十字星横线所在 MACD 值（大数缩写 / 自适应小数）
+    const pane5CrosshairLabel = new CrosshairAxisLabelPrimitive({
+      series: this.indicatorsBarSeries,
+      getPaneIndex: () => 5,
+      getColor: () => themeColors(this.theme).textColor,
+      getBackColor: () => themeColors(this.theme).background,
+      getFont: () => `12px ${chartFontFamily}`,
+      format: (value) => formatAxisSmart(value),
+    })
+    this.indicatorsBarSeries.attachPrimitive(pane5CrosshairLabel)
+    this.crosshairAxisLabelPrimitives.push(pane5CrosshairLabel)
     this.difSeries = this.chart.addSeries(
       LineSeries,
       {
         priceScaleId: 'left',
-        color: MACD_COLORS.difLine,
+        color: macdColors.difLine,
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -457,7 +507,7 @@ export class KLineChartController {
       LineSeries,
       {
         priceScaleId: 'left',
-        color: MACD_COLORS.deaLine,
+        color: macdColors.deaLine,
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -645,6 +695,11 @@ export class KLineChartController {
       this.indicatorsBarSeries = null
       this.difSeries = null
       this.deaSeries = null
+      // 移除 pane5 十字星指示值 primitive 引用（series 已销毁，清引用防泄漏 /
+      // 避免 handleCrosshairMove 继续对已销毁 series 注入）
+      this.crosshairAxisLabelPrimitives = this.crosshairAxisLabelPrimitives.filter(
+        (primitive) => primitive.config.getPaneIndex() !== 5,
+      )
     }
     // 布局重排：pane 数量变化后按新比例分配（指标开 60:20:20 / 指标关 80:20）
     this.applyStretchFactors()
@@ -652,8 +707,9 @@ export class KLineChartController {
 
   /** 销毁：移除监听 / chart / 清除实例标记（防内存泄漏） */
   destroy = (): void => {
-    // 移除 pane0 十字星禁用监听（防内存泄漏）
-    this.chart.unsubscribeCrosshairMove(this.handleCrosshairMoveInPane0)
+    // 移除十字星移动监听 + 清空指示值 primitive 引用（防内存泄漏）
+    this.chart.unsubscribeCrosshairMove(this.handleCrosshairMove)
+    this.crosshairAxisLabelPrimitives = []
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     this.chart.remove()

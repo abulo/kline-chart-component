@@ -33,14 +33,18 @@ export class Pane0OverlayPrimitive implements ISeriesPrimitive<Time> {
   /** 文字颜色获取器（只读，draw 时动态调用以跟随主题） */
   public readonly getColor: () => string
 
+  /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
+  private readonly paneView: Pane0OverlayPaneView
+
   constructor(text: string, getBackground: () => string, getColor: () => string) {
     this.text = text
     this.getBackground = getBackground
     this.getColor = getColor
+    this.paneView = new Pane0OverlayPaneView(this)
   }
 
-  /** pane 视图（zOrder 'top' → 绘制在 pane 顶层 canvas，位于十字星之上） */
+  /** pane 视图（zOrder 'top' → 绘制在 pane 顶层 canvas，位于十字星之上；单例复用） */
   paneViews(): readonly IPrimitivePaneView[] {
-    return [new Pane0OverlayPaneView(this)]
+    return [this.paneView]
   }
 }

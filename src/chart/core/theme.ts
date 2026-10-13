@@ -109,3 +109,18 @@ export const defaultTheme: ChartThemeName = 'dark'
 
 /** 便捷取色：主题名 → 颜色对象 */
 export const themeColors = (name: ChartThemeName): ChartThemeColors => chartThemes[name]
+
+/* ==================== 指标配色（深浅系通用，不随主题变化） ==================== */
+
+/**
+ * MACD 指标配色（东方财富风格）：
+ *  - DIF / DEA 线固定配色（深浅系通用）；
+ *  - 柱体红绿由 MacdBarPrimitive 自绘（取主题 upColor / downColor，红涨绿跌，
+ *    与 pane1 / pane3 一致）。
+ */
+export const macdColors = {
+  /** DIF 线 */
+  difLine: '#A0A0A0',
+  /** DEA 线 */
+  deaLine: '#F4AA0A',
+} as const
