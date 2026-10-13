@@ -53,7 +53,7 @@ import {
   type BarPrice,
   type MouseEventParams,
 } from 'lightweight-charts'
-import { themeColors, macdColors, chartFontFamily, type ChartThemeName } from './theme'
+import { themeColors, macdColors, chartFontFamily, chartFont, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
 import {
   paneCount,
@@ -263,6 +263,7 @@ export class KLineChartController {
         getHorizontalCount: () => (this.showIndicator ? 6 : 8),
         getColor: () => themeColors(this.theme).textColor,
         getBackColor: () => themeColors(this.theme).background,
+        getFont: () => chartFont,
         format: (price) => formatPrice(price),
       }),
     )
@@ -272,7 +273,7 @@ export class KLineChartController {
       getPaneIndex: () => 1,
       getColor: () => themeColors(this.theme).textColor,
       getBackColor: () => themeColors(this.theme).background,
-      getFont: () => `12px ${chartFontFamily}`,
+      getFont: () => chartFont,
       format: (price) => formatPrice(price),
     })
     this.klineSeries.attachPrimitive(pane1CrosshairLabel)
@@ -337,6 +338,7 @@ export class KLineChartController {
         getHorizontalCount: () => 2,
         getColor: () => themeColors(this.theme).textColor,
         getBackColor: () => themeColors(this.theme).background,
+        getFont: () => chartFont,
         format: (volume) => formatVolume(Math.max(0, volume)),
       }),
     )
@@ -346,7 +348,7 @@ export class KLineChartController {
       getPaneIndex: () => 3,
       getColor: () => themeColors(this.theme).textColor,
       getBackColor: () => themeColors(this.theme).background,
-      getFont: () => `12px ${chartFontFamily}`,
+      getFont: () => chartFont,
       format: (volume) => formatVolume(Math.max(0, volume)),
     })
     this.volumeSeries.attachPrimitive(pane3CrosshairLabel)
@@ -475,6 +477,7 @@ export class KLineChartController {
         getHorizontalCount: () => 2,
         getColor: () => themeColors(this.theme).textColor,
         getBackColor: () => themeColors(this.theme).background,
+        getFont: () => chartFont,
         format: (value) => formatAxisSmart(value),
         // MACD 柱以 0 轴为正负分界：中间刻度固定显示 0（不受 scale 中间值影响）
         fixedMiddleValue: 0,
@@ -486,7 +489,7 @@ export class KLineChartController {
       getPaneIndex: () => 5,
       getColor: () => themeColors(this.theme).textColor,
       getBackColor: () => themeColors(this.theme).background,
-      getFont: () => `12px ${chartFontFamily}`,
+      getFont: () => chartFont,
       format: (value) => formatAxisSmart(value),
     })
     this.indicatorsBarSeries.attachPrimitive(pane5CrosshairLabel)

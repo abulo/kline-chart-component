@@ -13,7 +13,7 @@ import {
   type IPrimitivePaneRenderer,
   type PrimitivePaneViewZOrder,
 } from 'lightweight-charts'
-import { chartFontFamily } from '../core/theme'
+import { chartFont } from '../core/theme'
 import type { Pane0OverlayPrimitive } from './pane0OverlayPrimitive'
 
 export class Pane0OverlayPaneView implements IPrimitivePaneView {
@@ -39,7 +39,7 @@ export class Pane0OverlayPaneView implements IPrimitivePaneView {
           context.fillStyle = this.source.getBackground()
           context.fillRect(0, 0, mediaSize.width, mediaSize.height)
           // 2. "测试"文字：垂直居中、距左 6px（与 TestLabelPaneView 规格一致）
-          context.font = `12px ${chartFontFamily}`
+          context.font = chartFont
           context.fillStyle = this.source.getColor()
           context.textBaseline = 'middle'
           context.fillText(this.source.text, 6, mediaSize.height / 2)

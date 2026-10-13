@@ -1,24 +1,25 @@
 /**
- * axisLabelPrimitive.ts —— 价格轴刻度标签自绘 primitive（v1.4.27）
+ * axisLabelPrimitive.ts —— 价格轴刻度标签自绘 primitive（v1.4.42）
  *
  * 职责：通过 ISeriesPrimitive 挂载到内容 Pane 的 series 上，在价格轴（左刻度区）
  * 自绘刻度标签 —— 标签位置与 Pane 内自绘栅格横线**完全对齐**（同一等分公式）。
  *
- * 背景：库 priceScale 的刻度标签位置由库按"nice ticks"自动计算，与自绘等分栅格
- * 不对齐。本 primitive 关闭库标签（series priceFormat formatter 返回 ''）后，
- * 通过 ISeriesPrimitiveAxisView 的 fixedCoordinate 在栅格横线 y 处绘制标签，
- * 标签值 = 该 y 坐标对应的当前价格（coordinateToPrice 反算），随数据平移 / 缩放
- * 实时变化、位置固定。
+ * v1.4.42 变更（文字设置统一，以十字星指示值为基准）：
+ *   原实现走 priceAxisViews（ISeriesPrimitiveAxisView），由库渲染 axis 标签，
+ *   库自带内边距 / 对齐细节，与自绘的十字星指示值（crosshairAxisLabelPaneView）
+ *   文字设置不一致；改为 priceAxisPaneViews + zOrder 'top' 自绘，
+ *   与指示值共用 drawAxisLabel 绘制函数（右对齐、右缘距 6px、背景左右 6px、
+ *   高 18px、12px chartFontFamily、textColor / background）——两处文字完全一致。
  *
  * 标签行数 = 等分数 + 1（含首尾内嵌）：
  *  - 指标关：pane1 = 9 个值（8 等分）、pane3 = 3 个值（2 等分）；
  *  - 指标开：pane1 = 7 个值（6 等分）、pane3 / pane5 = 3 个值（2 等分）。
  *
- * 依赖：标签对象 AxisLabelView（同目录独立文件，实现 ISeriesPrimitiveAxisView）。
+ * 依赖：标签数据 AxisLabelView + 渲染视图 AxisLabelPaneView（同目录独立文件）。
  */
 import {
   type ISeriesPrimitive,
-  type ISeriesPrimitiveAxisView,
+  type IPrimitivePaneView,
   type SeriesAttachedParameter,
   type IChartApiBase,
   type ISeriesApi,
@@ -26,6 +27,7 @@ import {
   type Time,
 } from 'lightweight-charts'
 import { AxisLabelView } from './axisLabelView'
+import { AxisLabelPaneView } from './axisLabelPaneView'
 
 export interface AxisLabelConfig {
   /** 所属 series（坐标反算用：coordinateToPrice 取当前价格） */
@@ -38,6 +40,8 @@ export interface AxisLabelConfig {
   getColor: () => string
   /** 标签背景颜色（主题 background） */
   getBackColor: () => string
+  /** 全局字体（theme.chartFont：12px chartFontFamily，与指示值一致） */
+  getFont: () => string
   /** 数值格式化（按 pane 语义：K 线价格 / 成交量万·亿 / 指标值） */
   format: (price: number) => string
   /** 中间刻度固定值（可选）：设置后中间刻度标签固定显示该值（如 MACD 中间 = 0） */
@@ -48,14 +52,18 @@ export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
   /** 刻度标签配置（只读） */
   public readonly config: AxisLabelConfig
 
-  /** 挂载后的 chart 引用（attached 时注入；draw / 标签求值时使用） */
+  /** 挂载后的 chart 引用（attached 时注入；标签求值时使用） */
   public chartApi: IChartApiBase<Time> | null = null
 
   /** 当前刻度标签集合（updateAllViews 时按栅格横线重建） */
   private labelViews: AxisLabelView[] = []
 
+  /** 渲染视图（单例：构造时创建一次，priceAxisPaneViews 每次返回同一实例） */
+  private readonly paneView: AxisLabelPaneView
+
   constructor(config: AxisLabelConfig) {
     this.config = config
+    this.paneView = new AxisLabelPaneView(this)
   }
 
   /** primitive 挂载：保存 chart 引用并立即构建标签 */
@@ -74,9 +82,14 @@ export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
     this.labelViews = this.buildLabelViews()
   }
 
-  /** 价格轴标签视图（库自动渲染背景块 + 文字；fixedCoordinate 强制对齐栅格横线） */
-  priceAxisViews(): readonly ISeriesPrimitiveAxisView[] {
+  /** 读取当前刻度标签数据（渲染视图绘制用） */
+  getLabels(): readonly AxisLabelView[] {
     return this.labelViews
+  }
+
+  /** 价格轴 Pane 视图（zOrder 'top'，自绘，与十字星指示值同一层） */
+  priceAxisPaneViews(): readonly IPrimitivePaneView[] {
+    return [this.paneView]
   }
 
   /** 构建标签：在每条等分刻度处生成一个标签（值 = 该处价格，实时反算）
@@ -95,7 +108,7 @@ export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
     const hCount = this.config.getHorizontalCount()
     const views: AxisLabelView[] = []
     for (let i = 0; i <= hCount; i++) {
-      // 首尾内嵌（避免库渲染的背景块 / 文字被价格轴边缘裁切）
+      // 首尾内嵌（避免标签块 / 文字被价格轴边缘裁切）
       const y =
         i === 0
           ? AXIS_LABEL_PAD

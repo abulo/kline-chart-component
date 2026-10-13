@@ -41,7 +41,7 @@ export interface CrosshairAxisLabelConfig {
   getColor: () => string
   /** 标签背景颜色（主题 background） */
   getBackColor: () => string
-  /** 全局字体（主题 chartFontFamily 组合 12px） */
+  /** 全局字体（theme.chartFont：12px chartFontFamily，与刻度标签一致） */
   getFont: () => string
   /** 数值格式化（与对应 AxisLabelPrimitive 同一格式化函数） */
   format: (price: number) => string

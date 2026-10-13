@@ -8,6 +8,40 @@
 
 ---
 
+## v1.4.43（2026-10-13）
+
+左刻度标签文字右缘距调整：4px → 6px（文字右缘 = 价格轴右缘 − 6px）。
+
+### 变更
+- `axisLabelPaneView.ts` 公共常量 `AXIS_LABEL_PAD_X` 由 4 改为 6 —— 指示值与刻度值
+  共用同一常量，两处文字右缘距同步变为 6px（背景块左右内边距随之为 6px，背景与
+  图表底色同色无视觉影响）；相关注释 / README / CHANGELOG 同步更新。
+- 验证：vitest 52 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.42（2026-10-13）
+
+优化：左刻度**指示值**与**刻度值**文字设置统一（以指示值为基准）。
+
+### 变更
+- **背景**：指示值（crosshairAxisLabelPaneView）为自绘 canvas；刻度值原走库
+  ISeriesPrimitiveAxisView（axis 标签）渲染，库自带内边距 / 对齐细节，两处文字
+  视觉不一致。
+- **修复**：刻度值改为自绘（AxisLabelPaneView），与指示值**共用同一套绘制规格**
+  （axisLabelPaneView 导出的公共常量 AXIS_LABEL_PAD_X = 4 / AXIS_LABEL_HEIGHT =
+  18 与公共绘制函数 drawAxisLabel）：
+  - 字体：12px chartFontFamily（新增 theme.chartFont 统一常量）；
+  - 对齐：textAlign = 'right'，文字右缘 = 价格轴右缘 - 6px；
+  - 背景块：左右内边距各 4px、高 18px、垂直居中；
+  - 颜色：文字 = 主题 textColor、背景 = 主题 background（跟随深浅系）。
+- **AxisLabelPrimitive**：priceAxisViews（axis 标签路径）→ priceAxisPaneViews
+  （zOrder 'top' 自绘，与指示值同一层）；config 新增 getFont；
+  AxisLabelView 退化为纯数据载体（不再实现库 axis view 接口，保留 coordinate /
+  fixedValue / text()）。
+- **统一字体**：theme.ts 新增 chartFont（`12px ${chartFontFamily}`）；
+  controller 三处指示值 getFont、三处刻度 getFont、空 Pane "测试"文字
+  （testLabel / pane0Overlay）全部改用 chartFont。
+- 验证：vitest 52 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.41（2026-10-13）
 
 代码质量整理（内存 / 缓存 / 命名 / 颜色集中 / 效率 / 文档 / 测试 / 清理）。

@@ -8,7 +8,7 @@
  * useMediaCoordinateSpace 为回调式 API，scope 提供 context 与 mediaSize。
  */
 import { type IPrimitivePaneView, type IPrimitivePaneRenderer } from 'lightweight-charts'
-import { chartFontFamily } from '../core/theme'
+import { chartFont } from '../core/theme'
 import type { TestLabelPrimitive } from './testLabelPrimitive'
 
 export class TestLabelPaneView implements IPrimitivePaneView {
@@ -24,7 +24,7 @@ export class TestLabelPaneView implements IPrimitivePaneView {
     return {
       draw: (target) => {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
-          context.font = `12px ${chartFontFamily}`
+          context.font = chartFont
           context.fillStyle = this.source.getColor()
           context.textBaseline = 'middle'
           context.fillText(this.source.text, 6, mediaSize.height / 2)

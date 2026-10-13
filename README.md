@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.41（2026-10-13）**
+> **当前版本：v1.4.43（2026-10-13）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部空 Pane（"测试"文字）、K 线主图、成交量、附图指标（MACD），指标 Pane 可动态开关。
@@ -40,10 +40,11 @@
   - 竖线：4 等分（3 条）；
   - 横线：pane1 指标关 8 等分 / 指标开 6 等分；pane3 / pane5 2 等分（中间 1 条）；
   - 栅格固定于 Pane 本地坐标，平移 / 缩放数据时不动；
-- **自绘左刻度标签**（`AxisLabelPrimitive` + `AxisLabelView`）：
+- **自绘左刻度标签**（`AxisLabelPrimitive` + `AxisLabelView` + `AxisLabelPaneView`）：
   - 标签位置与栅格横线完全对齐（同一等分公式），值 = 该 y 处实时价格（coordinateToPrice 反算，随平移 / 缩放变化）；
   - 行数 = 等分数 + 1（含首尾内嵌 8px 防裁切）：pane1 = 9 / 7 个、pane3 / pane5 = 3 个；
   - pane5 中间刻度固定 0（MACD 以 0 轴分正负）；
+  - **文字设置与十字星指示值完全一致**（共用 `drawAxisLabel`：右对齐、右缘距 6px、背景左右 6px、高 18px、12px chartFontFamily，颜色随主题）；
 - **十字星左刻度指示值**（`CrosshairAxisLabelPrimitive` + `CrosshairAxisLabelPaneView`）：
   - 十字星移动时，在左刻度区绘制横线所在数值标签（价格 / 成交量 / MACD 值，随鼠标逐帧刷新）；
   - 实现路径：`priceAxisPaneViews` + zOrder 'top'（价格轴 top canvas，Cursor 级重绘，流畅无卡顿）；
@@ -81,10 +82,11 @@ src/
 │   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）+ MACD 指标配色
 │   │   ├── mock.ts            # mock 数据（日 K，纯函数可单测）
 │   │   └── candlestickWidth.ts# 蜡烛 / 柱体宽度（库原版 optimalCandlestickWidth）
-│   ├── axis/                  # 左刻度标签（与栅格横线对齐）
+│   ├── axis/                  # 左刻度标签（与栅格横线对齐，文字与指示值一致）
 │   │   ├── axisLabelPrimitive.ts
-│   │   └── axisLabelView.ts
-│   ├── crosshair/             # 十字星左刻度指示值
+│   │   ├── axisLabelView.ts
+│   │   └── axisLabelPaneView.ts  # 自绘渲染 + 公共 drawAxisLabel（指示值共用）
+│   ├── crosshair/             # 十字星左刻度指示值（文字与刻度标签一致）
 │   │   ├── crosshairAxisLabelPrimitive.ts
 │   │   └── crosshairAxisLabelPaneView.ts
 │   ├── border/                # 内容 Pane 边框自绘
