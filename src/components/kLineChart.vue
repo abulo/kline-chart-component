@@ -12,7 +12,7 @@
  *  - onBeforeUnmount：销毁控制器并置空引用（防内存泄漏）。
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { KLineChartController } from '../chart/kLineChartController'
+import { KLineChartController } from '../chart/core/kLineChartController'
 
 /** 容器 ref（需有确定宽高，由父组件 CSS 保证） */
 const containerRef = ref<HTMLDivElement | null>(null)

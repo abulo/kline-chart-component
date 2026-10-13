@@ -34,6 +34,8 @@ export interface ChartThemeColors {
   downColor: string
   /** 内容 Pane 边框色（pane1 / pane3 / pane5 自绘矩形边框，深浅系区分） */
   paneBorder: string
+  /** 栅格线颜色（自绘等分栅格：竖 4 等分 / 横按 pane 配置，深浅系区分） */
+  grid: string
 
   /* ===== 页面布局（App.vue） ===== */
   /** 页面整体背景（html 背景，跟随主题） */
@@ -68,6 +70,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     upColor: '#FF0000',
     downColor: '#008000',
     paneBorder: '#2A2E39',
+    grid: '#1E222D',
 
     pageBackground: '#0B0E13',
     toolbarBackground: '#1E222D',
@@ -87,6 +90,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     upColor: '#FF0000',
     downColor: '#008000',
     paneBorder: '#D4D8DE',
+    grid: '#E6E8EC',
 
     pageBackground: '#EDEFF3',
     toolbarBackground: '#F3F4F6',

@@ -63,11 +63,12 @@ import {
   groupRatiosWithoutIndicator,
   calcPaneHeights,
 } from './layout'
-import { TestLabelPrimitive } from './testLabelPrimitive'
-import { VolumeBarPrimitive } from './volumeBarPrimitive'
-import { MacdBarPrimitive } from './macdBarPrimitive'
-import { PaneBorderPrimitive } from './paneBorderPrimitive'
-import { calcMacd, type MacdPoint } from './indicators/macd'
+import { TestLabelPrimitive } from '../testLabel/testLabelPrimitive'
+import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
+import { MacdBarPrimitive } from '../indicator/macdBarPrimitive'
+import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
+import { GridPrimitive } from '../grid/gridPrimitive'
+import { calcMacd, type MacdPoint } from '../indicator/macd'
 
 /**
  * MACD 指标配色（东方财富风格，深浅系通用不随主题变化）：
@@ -224,6 +225,13 @@ export class KLineChartController {
     this.klineSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
     )
+    // pane1 栅格：竖 4 等分；横向等分数随指标开关变化（关 8 / 开 6）
+    this.klineSeries.attachPrimitive(
+      new GridPrimitive({
+        getColor: () => themeColors(this.theme).grid,
+        getHorizontalCount: () => (this.showIndicator ? 6 : 8),
+      }),
+    )
 
     /* ---------- 3.1 pane2：底部空 Pane（无数据，自绘"测试"文字，设置与 pane0 一致） ---------- */
     this.chart.addSeries(
@@ -263,6 +271,13 @@ export class KLineChartController {
     // 内容 Pane 边框（pane3）：自绘 1px 矩形，颜色随主题（深浅系区分）
     this.volumeSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
+    )
+    // pane3 栅格：竖 4 等分；横向 2 等分（中间 1 条）
+    this.volumeSeries.attachPrimitive(
+      new GridPrimitive({
+        getColor: () => themeColors(this.theme).grid,
+        getHorizontalCount: () => 2,
+      }),
     )
 
     /* ---------- 3.3 pane4 / pane5：指标组（仅 showIndicator 开启时创建） ----------
@@ -332,6 +347,13 @@ export class KLineChartController {
     // 内容 Pane 边框（pane5）：自绘 1px 矩形，颜色随主题（深浅系区分）
     this.indicatorsBarSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
+    )
+    // pane5 栅格：竖 4 等分；横向 2 等分（中间 1 条）
+    this.indicatorsBarSeries.attachPrimitive(
+      new GridPrimitive({
+        getColor: () => themeColors(this.theme).grid,
+        getHorizontalCount: () => 2,
+      }),
     )
     this.difSeries = this.chart.addSeries(
       LineSeries,

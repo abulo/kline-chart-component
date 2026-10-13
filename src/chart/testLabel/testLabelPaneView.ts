@@ -8,7 +8,7 @@
  * useMediaCoordinateSpace 为回调式 API，scope 提供 context 与 mediaSize。
  */
 import { type IPrimitivePaneView, type IPrimitivePaneRenderer } from 'lightweight-charts'
-import { chartFontFamily } from './theme'
+import { chartFontFamily } from '../core/theme'
 import type { TestLabelPrimitive } from './testLabelPrimitive'
 
 export class TestLabelPaneView implements IPrimitivePaneView {

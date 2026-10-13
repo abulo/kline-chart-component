@@ -22,7 +22,7 @@ import {
   type IChartApiBase,
   type Time,
 } from 'lightweight-charts'
-import type { MacdPoint } from './indicators/macd'
+import type { MacdPoint } from './macd'
 import type { MacdThemeColors } from './macdBarPaneView'
 import { MacdBarPaneView } from './macdBarPaneView'
 

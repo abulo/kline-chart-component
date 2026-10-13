@@ -5,7 +5,7 @@
  * （首值 = 0、MACD = 2×(DIF-DEA)、长度对齐、单调序列下 DIF 符号合理）。
  */
 import { describe, expect, it } from 'vitest'
-import { ema, calcMacd } from '../src/chart/indicators/macd'
+import { ema, calcMacd } from '../src/chart/indicator/macd'
 
 describe('ema（指数移动平均，东方财富算法）', () => {
   it('period=2 时 alpha=2/3，逐项手算一致', () => {

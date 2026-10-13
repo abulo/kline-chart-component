@@ -6,7 +6,7 @@
  *  - candlestickBarWidth：奇偶修正（柱宽与影线宽 floor(dpr) 同奇偶）。
  */
 import { describe, expect, it } from 'vitest'
-import { optimalCandlestickWidth, candlestickBarWidth } from '../src/chart/candlestickWidth'
+import { optimalCandlestickWidth, candlestickBarWidth } from '../src/chart/core/candlestickWidth'
 
 describe('optimalCandlestickWidth（库源码原版）', () => {
   it('特殊区间 barSpacing ∈ [2.5, 4]：恒为 3 × dpr', () => {

@@ -20,7 +20,7 @@ import {
   type IChartApiBase,
   type Time,
 } from 'lightweight-charts'
-import type { BasicBar } from './mock'
+import type { BasicBar } from '../core/mock'
 import type { VolumeThemeColors } from './volumeBarPaneView'
 import { VolumeBarPaneView } from './volumeBarPaneView'
 

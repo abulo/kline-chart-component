@@ -11,7 +11,7 @@
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import KLineChart from './components/kLineChart.vue'
-import { themeColors, type ChartThemeName } from './chart/theme'
+import { themeColors, type ChartThemeName } from './chart/core/theme'
 
 /** 图表组件 ref（访问控制器） */
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)

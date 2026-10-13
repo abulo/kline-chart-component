@@ -15,8 +15,8 @@ import {
   groupRatios,
   groupRatiosWithoutIndicator,
   calcPaneHeights,
-} from '../src/chart/layout'
-import { genMockBars } from '../src/chart/mock'
+} from '../src/chart/core/layout'
+import { genMockBars } from '../src/chart/core/mock'
 
 describe('布局常量', () => {
   it('指标开 Pane 总数为 6（空 Pane ×3 + K 线 + 成交量 + 指标）', () => {

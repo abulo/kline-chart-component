@@ -2,7 +2,7 @@
  * theme.test.ts —— 主题色配置单测（v1.2.1）
  */
 import { describe, expect, it } from 'vitest'
-import { chartThemes, themeColors, defaultTheme } from '../src/chart/theme'
+import { chartThemes, themeColors, defaultTheme } from '../src/chart/core/theme'
 
 describe('主题配置', () => {
   it('深系 / 浅系都存在且默认深系', () => {
@@ -38,6 +38,14 @@ describe('主题配置', () => {
     expect(d.paneBorder).toBe('#2A2E39')
     expect(l.paneBorder).toBe('#D4D8DE')
     expect(d.paneBorder).not.toBe(l.paneBorder)
+  })
+
+  it('栅格线色：深浅系区分且各自存在', () => {
+    const d = themeColors('dark')
+    const l = themeColors('light')
+    expect(d.grid).toBe('#1E222D')
+    expect(l.grid).toBe('#E6E8EC')
+    expect(d.grid).not.toBe(l.grid)
   })
 
   it('清理后无 separatorColor / CHART_FONT 残留', () => {

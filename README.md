@@ -46,15 +46,36 @@ src/
 ├── main.ts                    # 入口
 ├── components/
 │   └── KLineChart.vue         # 图表组件（挂载控制器，expose controller）
-├── chart/
-│   ├── KLineChartController.ts# 控制器：K 线创建 / 主题 / 缩放 / 时间轴
-│   ├── mock.ts                # mock 数据（日 K）
-│   └── theme.ts               # 深系 / 浅系主题（所有颜色集中）
+├── chart/                     # 按功能分组的图表源码
+│   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
+│   │   ├── KLineChartController.ts # 控制器：Pane 创建 / 布局 / 主题 / 数据
+│   │   ├── layout.ts          # 布局常量与高度计算（60/20/20 ⇄ 80/20）
+│   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）
+│   │   ├── mock.ts            # mock 数据（日 K）
+│   │   └── candlestickWidth.ts# 蜡烛 / 柱体宽度（库原版 optimalCandlestickWidth）
+│   ├── border/                # Pane 边框自绘（内容 Pane 四边 / 空 Pane 指定边）
+│   │   ├── paneBorderPrimitive.ts
+│   │   └── paneBorderPaneView.ts
+│   ├── grid/                  # 固定等分栅格（竖 4 等分 / 横随 pane 配置）
+│   │   ├── gridPrimitive.ts
+│   │   └── gridPaneView.ts
+│   ├── volume/                # 成交量柱自绘（红涨空心 / 绿跌实心）
+│   │   ├── volumeBarPrimitive.ts
+│   │   └── volumeBarPaneView.ts
+│   ├── indicator/             # 附图指标（MACD 计算 + 柱体自绘）
+│   │   ├── macd.ts            # MACD 计算（东方财富口径）
+│   │   ├── macdBarPrimitive.ts
+│   │   └── macdBarPaneView.ts
+│   └── testLabel/             # 空 Pane "测试" 文字自绘
+│       ├── testLabelPrimitive.ts
+│       └── testLabelPaneView.ts
 └── types/
     └── chart.ts               # 统一数据点类型（保留，供后端接入）
 tests/
 ├── mock.test.ts               # mock 数据单测
 ├── theme.test.ts              # 主题单测
+├── candlestickWidth.test.ts   # 蜡烛宽度单测
+├── macd.test.ts               # MACD 计算单测
 └── multipane.test.ts          # 布局常量 / K 线数据单测
 ```
 

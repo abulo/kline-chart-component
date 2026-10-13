@@ -2,7 +2,7 @@
  * mock.test.ts —— mock 数据单测（v1.1.0）
  */
 import { describe, expect, it } from 'vitest'
-import { genMockBars } from '../src/chart/mock'
+import { genMockBars } from '../src/chart/core/mock'
 
 describe('genMockBars', () => {
   it('生成指定数量且 time 严格递增', () => {
