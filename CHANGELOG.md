@@ -8,6 +8,17 @@
 
 ---
 
+## v1.4.51（2026-10-13）
+
+App.vue 工具栏新增"左移 / 右移"按钮（X 轴平移）。
+
+### 变更
+- controller 新增 `shiftLeft` / `shiftRight`：基于 lightweight-charts 5.2.1
+  `scrollToPosition(position, animated)` 平移（position = 距最新 bar 的 bar 数，
+  ±10 根/次；右移时库内部自动钳制到边界）；
+- App.vue 工具栏在"缩小 / 放大"前插入"左移 / 右移"按钮；
+- 验证：vitest 57 项全绿；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.50（2026-10-13）
 
 最高价 / 最低价标注与十字星标签背景：浅系配色优化（白底可读性）。

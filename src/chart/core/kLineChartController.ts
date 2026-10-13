@@ -676,6 +676,20 @@ export class KLineChartController {
     timeScaleApi.applyOptions({ barSpacing: Math.max(barSpacing / 1.25, 2) })
   }
 
+  /** 左移（平移 X 轴：视口向左滚动，查看更早数据；步长 = 10 根柱） */
+  shiftLeft = (): void => {
+    const timeScaleApi = this.chart.timeScale()
+    // scrollPosition() = 距最新 bar 的 bar 数；增大 → 视口向右露出更早数据（"左移"）
+    timeScaleApi.scrollToPosition(timeScaleApi.scrollPosition() + 10, false)
+  }
+
+  /** 右移（平移 X 轴：视口向右滚动，查看最新数据；步长 = 10 根柱） */
+  shiftRight = (): void => {
+    const timeScaleApi = this.chart.timeScale()
+    // 减小距最新 bar 的 bar 数 → 视口向左靠近最新数据（"右移"）；库内部自动钳制
+    timeScaleApi.scrollToPosition(timeScaleApi.scrollPosition() - 10, false)
+  }
+
   /** 时间轴开关：切换显隐后重算 pane 高度（时间轴高度占用随之变化，保证固定空 Pane 仍绝对相等） */
   toggleTimeAxis = (visible: boolean): void => {
     this.chart.timeScale().applyOptions({ visible })

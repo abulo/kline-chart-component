@@ -63,9 +63,11 @@ const toggleRightScale = (): void => {
   chartRef.value?.controller?.setRightScaleVisible(showRightScale.value)
 }
 
-/** 放大 / 缩小（X 轴全局） */
+/** 放大 / 缩小 / 左移 / 右移（X 轴全局） */
 const zoomIn = (): void => chartRef.value?.controller?.zoomIn()
 const zoomOut = (): void => chartRef.value?.controller?.zoomOut()
+const shiftLeft = (): void => chartRef.value?.controller?.shiftLeft()
+const shiftRight = (): void => chartRef.value?.controller?.shiftRight()
 
 /** 首次进入：设置页面背景 */
 onMounted(() => {
@@ -84,9 +86,11 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
 <template>
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
+    <div class="info">
+      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.51</span>
+    </div>
+
     <div class="toolbar">
-      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.50</span>
-      <div class="spacer" />
       <button class="btn" :class="{ active: showIndicator }" @click="toggleIndicator">
         指标{{ showIndicator ? '开' : '关' }}
       </button>
@@ -99,6 +103,8 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       <button class="btn" :class="{ active: showRightScale }" @click="toggleRightScale">
         右刻度{{ showRightScale ? '开' : '关' }}
       </button>
+      <button class="btn" @click="shiftLeft">左移</button>
+      <button class="btn" @click="shiftRight">右移</button>
       <button class="btn" @click="zoomOut">缩小</button>
       <button class="btn" @click="zoomIn">放大</button>
       <button class="btn" :class="{ active: theme === 'light' }" @click="toggleTheme">
@@ -135,6 +141,21 @@ body,
   width: 100%;
   height: 100%;
   box-sizing: border-box;
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 80%;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  /* 工具栏配色跟随主题 */
+  background: v-bind('themeColors(theme).toolbarBackground');
+  border: 1px solid v-bind('themeColors(theme).toolbarBorder');
+  border-radius: 4px;
 }
 
 .toolbar {
