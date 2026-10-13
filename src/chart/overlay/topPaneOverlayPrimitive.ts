@@ -1,5 +1,5 @@
 /**
- * pane0OverlayPrimitive.ts —— pane0 顶层遮罩 primitive（v1.4.36）
+ * topPaneOverlayPrimitive.ts —— 顶部空 Pane（pane0）顶层遮罩 primitive（v1.4.36）
  *
  * 职责：通过 ISeriesPrimitive 挂载到 pane0 的空 series 上，用 **topPaneViews()**
  * 在 pane0 的 top canvas 绘制不透明背景 + "测试"文字。
@@ -16,16 +16,16 @@
  *
  * 背景色与文字色每次 draw 动态获取（跟随主题，深浅系切换无需额外刷新）。
  *
- * 依赖：渲染逻辑委托给 Pane0OverlayPaneView（同目录独立文件）。
+ * 依赖：渲染逻辑委托给 TopPaneOverlayPaneView（同目录独立文件）。
  */
 import {
   type ISeriesPrimitive,
   type IPrimitivePaneView,
   type Time,
 } from 'lightweight-charts'
-import { Pane0OverlayPaneView } from './pane0OverlayPaneView'
+import { TopPaneOverlayPaneView } from './topPaneOverlayPaneView'
 
-export class Pane0OverlayPrimitive implements ISeriesPrimitive<Time> {
+export class TopPaneOverlayPrimitive implements ISeriesPrimitive<Time> {
   /** 待绘制文字（只读，构造时注入） */
   public readonly text: string
   /** 背景色获取器（只读，draw 时动态调用以跟随主题） */
@@ -34,13 +34,13 @@ export class Pane0OverlayPrimitive implements ISeriesPrimitive<Time> {
   public readonly getColor: () => string
 
   /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
-  private readonly paneView: Pane0OverlayPaneView
+  private readonly paneView: TopPaneOverlayPaneView
 
   constructor(text: string, getBackground: () => string, getColor: () => string) {
     this.text = text
     this.getBackground = getBackground
     this.getColor = getColor
-    this.paneView = new Pane0OverlayPaneView(this)
+    this.paneView = new TopPaneOverlayPaneView(this)
   }
 
   /** pane 视图（zOrder 'top' → 绘制在 pane 顶层 canvas，位于十字星之上；单例复用） */

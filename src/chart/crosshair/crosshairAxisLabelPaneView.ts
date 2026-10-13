@@ -26,7 +26,7 @@
 import { type IPrimitivePaneRenderer, type IPrimitivePaneView } from 'lightweight-charts'
 import type { CanvasRenderingTarget2D } from 'fancy-canvas'
 import type { CrosshairAxisLabelPrimitive } from './crosshairAxisLabelPrimitive'
-import { AXIS_LABEL_PAD_X, drawAxisLabel } from '../axis/axisLabelPaneView'
+import { AXIS_LABEL_HEIGHT, AXIS_LABEL_PAD_X, drawAxisLabel } from '../axis/axisLabelPaneView'
 
 /** 指示值标签渲染器：真正执行 canvas 绘制 */
 class CrosshairAxisLabelRenderer implements IPrimitivePaneRenderer {
@@ -46,12 +46,18 @@ class CrosshairAxisLabelRenderer implements IPrimitivePaneRenderer {
     const text = this.source.config.format(price)
 
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+      // 钳制 y：标签块（高 AXIS_LABEL_HEIGHT，垂直居中于横线）必须完整位于
+      // 当前 pane（价格轴 canvas）内 —— 十字星靠近 pane 顶部 / 底部时，
+      // 标签不越界到 pane 外面
+      const labelHalf = AXIS_LABEL_HEIGHT / 2
+      if (mediaSize.height < AXIS_LABEL_HEIGHT) return // 高度不足时跳过（防异常）
+      const yClamped = Math.min(Math.max(y, labelHalf), mediaSize.height - labelHalf)
       // 与刻度标签共用同一绘制规格（字体 / 对齐 / 内边距 / 高度完全一致）
       drawAxisLabel(
         ctx,
         text,
         mediaSize.width - AXIS_LABEL_PAD_X,
-        y,
+        yClamped,
         this.source.config.getFont(),
         this.source.config.getColor(),
         this.source.config.getBackColor(),

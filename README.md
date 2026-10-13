@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.45（2026-10-13）**
+> **当前版本：v1.4.47（2026-10-13）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部空 Pane（"测试"文字）、K 线主图、成交量、附图指标（MACD），指标 Pane 可动态开关。
@@ -51,7 +51,7 @@
   - 实现路径：`priceAxisPaneViews` + zOrder 'top'（价格轴 top canvas，Cursor 级重绘，流畅无卡顿）；
   - 坐标：库 `point.y` 为 Pane 本地坐标，直接注入，不做前序 Pane 高度换算；
   - 文字右对齐绘制（`textAlign = 'right'`），避免超出价格轴 canvas 被裁剪；
-- **十字星不贯穿 pane0**：pane0 内不触发十字星（controller 清除），pane0 顶层遮罩（`Pane0OverlayPrimitive`，zOrder 'top'）以背景色覆盖竖线；
+- **十字星不贯穿 pane0**：pane0 内不触发十字星（controller 清除），pane0 顶层遮罩（`TopPaneOverlayPrimitive`，zOrder 'top'）以背景色覆盖竖线；
 - **内容 Pane 边框**（`PaneBorderPrimitive`）：pane1 / pane3 / pane5 自绘 1px 直角矩形边框，颜色随主题；
 - **空 Pane "测试"文字**（`TestLabelPrimitive`）：垂直居中、距左 6px、跟随主题文字色。
 
@@ -104,8 +104,8 @@ src/
 │   │   ├── macdBarPrimitive.ts
 │   │   └── macdBarPaneView.ts
 │   ├── overlay/               # pane0 顶层遮罩（遮住十字星竖线）
-│   │   ├── pane0OverlayPrimitive.ts
-│   │   └── pane0OverlayPaneView.ts
+│   │   ├── topPaneOverlayPrimitive.ts
+│   │   └── topPaneOverlayPaneView.ts
 │   ├── testLabel/             # 空 Pane "测试" 文字自绘
 │   │   ├── testLabelPrimitive.ts
 │   │   └── testLabelPaneView.ts

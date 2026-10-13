@@ -8,6 +8,29 @@
 
 ---
 
+## v1.4.47（2026-10-13）
+
+左刻度**指示值**文字不越界：十字星靠近 pane 顶部 / 底部时，标签完整位于 pane 内。
+
+### 变更
+- `crosshairAxisLabelPaneView` 绘制时对横线 y 做钳制：
+  `yClamped = clamp(y, AXIS_LABEL_HEIGHT/2, mediaSize.height - AXIS_LABEL_HEIGHT/2)`，
+  标签块（高 18px、垂直居中）始终不超出当前 pane 的垂直范围；
+  pane 高度不足 18px 时跳过绘制（防异常）。
+- 验证：vitest 53 项全绿；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.46（2026-10-13）
+
+文件命名去除数字：`pane0Overlay*` → `topPaneOverlay*`（语义化驼峰）。
+
+### 变更
+- `git mv src/chart/overlay/pane0OverlayPrimitive.ts` → `topPaneOverlayPrimitive.ts`、
+  `pane0OverlayPaneView.ts` → `topPaneOverlayPaneView.ts`；
+- 类名 `Pane0OverlayPrimitive` → `TopPaneOverlayPrimitive`、
+  `Pane0OverlayPaneView` → `TopPaneOverlayPaneView`；controller import / 实例化、
+  README 同步更新；`find src -name '*[0-9]*'` 无命中（源码无数字命名文件）。
+- 验证：vitest 53 项全绿；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.45（2026-10-13）
 
 时间轴（X 轴）十字星指示值标签背景色接入深浅系配色。

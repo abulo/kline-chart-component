@@ -1,5 +1,5 @@
 /**
- * pane0OverlayPaneView.ts —— pane0 顶层遮罩渲染视图（v1.4.36）
+ * topPaneOverlayPaneView.ts —— 顶部空 Pane（pane0）顶层遮罩渲染视图（v1.4.36）
  *
  * 职责：提供 IPrimitivePaneRenderer，在 draw 回调中：
  *  1. 用主题背景色填充整个 pane0 区域（不透明覆盖 → 遮住底层十字星竖线）；
@@ -14,13 +14,13 @@ import {
   type PrimitivePaneViewZOrder,
 } from 'lightweight-charts'
 import { chartFont } from '../core/theme'
-import type { Pane0OverlayPrimitive } from './pane0OverlayPrimitive'
+import type { TopPaneOverlayPrimitive } from './topPaneOverlayPrimitive'
 
-export class Pane0OverlayPaneView implements IPrimitivePaneView {
+export class TopPaneOverlayPaneView implements IPrimitivePaneView {
   /** 所属 primitive（只读，提供文字与颜色来源） */
-  private readonly source: Pane0OverlayPrimitive
+  private readonly source: TopPaneOverlayPrimitive
 
-  constructor(source: Pane0OverlayPrimitive) {
+  constructor(source: TopPaneOverlayPrimitive) {
     this.source = source
   }
 

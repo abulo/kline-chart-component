@@ -66,7 +66,7 @@ import {
   calcPaneHeights,
 } from './layout'
 import { TestLabelPrimitive } from '../testLabel/testLabelPrimitive'
-import { Pane0OverlayPrimitive } from '../overlay/pane0OverlayPrimitive'
+import { TopPaneOverlayPrimitive } from '../overlay/topPaneOverlayPrimitive'
 import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
 import { MacdBarPrimitive } from '../indicator/macdBarPrimitive'
 import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
@@ -221,7 +221,7 @@ export class KLineChartController {
     ).attachPrimitive(
       // pane0 顶层遮罩（topPaneViews）：背景填充 + "测试"文字，绘制在十字星之上，
       // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）
-      new Pane0OverlayPrimitive(
+      new TopPaneOverlayPrimitive(
         '测试',
         () => themeColors(this.theme).background,
         () => themeColors(this.theme).textColor,
