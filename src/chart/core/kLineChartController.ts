@@ -100,6 +100,10 @@ export interface KLineChartOptions {
   container: HTMLElement
   /** 指标 Pane（pane4 / pane5）初始状态：开启（默认 true）；可运行时切换 */
   showIndicator?: boolean
+  /** 股票名称（pane0 顶部信息行显示：名称 [代码]） */
+  name?: string
+  /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
+  symbol?: string
 }
 
 export class KLineChartController {
@@ -109,6 +113,10 @@ export class KLineChartController {
 
   /* ===== 数据 ===== */
   private readonly bars: BasicBar[]
+  /** 股票名称（pane0 顶部信息行显示） */
+  private readonly name: string
+  /** 股票代码（pane0 顶部信息行显示） */
+  private readonly symbol: string
   /** MACD 指标点缓存（applyData 计算一次，自绘 primitive 与 series 共用） */
   private macdPoints: MacdPoint[] = []
 
@@ -142,6 +150,9 @@ export class KLineChartController {
     this.showLeftScale = false
     this.showRightScale = false
     this.theme = 'dark'
+    // 股票信息（pane0 顶部信息行显示，格式：名称 [代码]）
+    this.name = options.name ?? ''
+    this.symbol = options.symbol ?? ''
 
     /* ---------- 0. 实例保护：容器打标记防重复创建 chart 实例 ----------
      * 组件重复挂载 / HMR / 路由切换时可能再次进入构造；标记在 destroy 时清除，
@@ -220,10 +231,10 @@ export class KLineChartController {
       },
       0,
     ).attachPrimitive(
-      // pane0 顶层遮罩（topPaneViews）：背景填充 + "测试"文字，绘制在十字星之上，
-      // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）
+      // pane0 顶层遮罩（topPaneViews）：背景填充 + 股票信息文字，绘制在十字星之上，
+      // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）；文字 = "股票名称 [代码]"
       new TopPaneOverlayPrimitive(
-        '测试',
+        this.symbol ? `${this.name} [${this.symbol}]` : this.name || '测试',
         () => themeColors(this.theme).background,
         () => themeColors(this.theme).textColor,
       ),

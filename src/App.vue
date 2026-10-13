@@ -87,7 +87,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.51</span>
+      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.52</span>
     </div>
 
     <div class="toolbar">
@@ -112,9 +112,9 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       </button>
     </div>
 
-    <!-- 图表容器：占浏览器 80% 宽高、居中 -->
+    <!-- 图表容器：占浏览器 80% 宽高、居中（symbol / name 在 pane0 顶部信息行显示） -->
     <div class="chart-wrap">
-      <KLineChart ref="chartRef" />
+      <KLineChart ref="chartRef" symbol="300750" name="宁德时代" />
     </div>
   </div>
 </template>

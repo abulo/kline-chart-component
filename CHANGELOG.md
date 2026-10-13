@@ -8,6 +8,18 @@
 
 ---
 
+## v1.4.52（2026-10-13）
+
+KLineChart.vue 新增 `symbol` / `name` 参数，pane0 顶部信息行显示"股票名称 [代码]"。
+
+### 变更
+- KLineChart.vue：`withDefaults(defineProps)` 新增 `symbol?` / `name?`（默认空串），
+  透传给 KLineChartController；
+- controller：KLineChartOptions 新增 `name?` / `symbol?`；pane0 顶层遮罩文字由
+  固定"测试"改为 `名称 [代码]`（symbol 为空时仅显示 name，两者都空回退"测试"）；
+- App.vue：示例传 `symbol="300750" name="宁德时代"`；
+- 验证：vitest 57 项全绿；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.51（2026-10-13）
 
 App.vue 工具栏新增"左移 / 右移"按钮（X 轴平移）。

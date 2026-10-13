@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.51（2026-10-13）**
+> **当前版本：v1.4.52（2026-10-13）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部空 Pane（"测试"文字）、K 线主图、成交量、附图指标（MACD），指标 Pane 可动态开关。
@@ -76,7 +76,7 @@ src/
 ├── App.vue                    # 工具栏 + 容器（80% 宽高居中）
 ├── main.ts                    # 入口
 ├── components/
-│   └── KLineChart.vue         # 图表组件（挂载控制器，expose controller）
+│   └── KLineChart.vue         # 图表组件（props: symbol / name → pane0 顶部信息行，expose controller）
 ├── chart/                     # 按功能分组的图表源码
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
 │   │   ├── KLineChartController.ts # 控制器：Pane 创建 / 布局 / 主题 / 数据 / 十字星联动
