@@ -8,6 +8,69 @@
 
 ---
 
+## v1.4.37（2026-10-13）
+
+pane0 内不触发十字星。
+
+### 变更
+- controller：新增 `handleCrosshairMoveInPane0`（const 箭头函数）——
+  鼠标位于 pane0（index 0）时调用 `chart.clearCrosshairPosition()` 清除十字星；
+  十字星仅可在 pane1 ~ pane5（K 线 / 成交量 / 指标）内触发与移动；
+- 说明：库十字星由内部 mousemove 驱动，回调与库 set 同帧（同一次 invalidate
+  重绘），pane0 内十字星不出现；pane0 顶层背景遮罩（v1.4.36）保留作双保险；
+- 内存：destroy 中 `unsubscribeCrosshairMove` 移除监听，防泄漏；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.36（2026-10-13）
+
+pane0 永远位于十字星上层，遮住十字星竖线（竖线不贯穿 pane0）。
+
+### 变更
+- 库渲染层级确认（dist 源码）：
+  - 每个 PaneWidget 有 bottom / top 两层 canvas；
+  - bottom canvas：背景 → 栅格 → 系列 → 十字星线（CrosshairPaneView 属
+    pane 级视图，画在各 pane 的 bottom canvas 上）→ 刻度标签；
+  - top canvas：十字星标签 → **zOrder 'top' 的 paneViews**（库 9637 行）；
+- 新增 `src/chart/overlay/`：pane0OverlayPrimitive.ts + pane0OverlayPaneView.ts
+  - 挂载到 pane0 空 series，`paneViews()` 返回 zOrder 'top' 的视图；
+  - draw：先用主题背景色填充整个 pane0 区域（不透明覆盖 → 遮住底层十字星
+    竖线），再绘制"测试"文字（垂直居中、距左 6px、主题 textColor）；
+  - 颜色每次 draw 动态获取（跟随深浅系主题）；
+- controller：pane0 挂载由 TestLabelPrimitive 替换为 Pane0OverlayPrimitive
+  （TestLabelPrimitive 仍被 pane2 / pane4 使用，未删除）；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.35（2026-10-13）
+
+修复 `primitive.setCrosshairY is not a function` 崩溃（工作树混版）。
+
+### 变更
+- 背景：工作树被覆盖回 v1.4.33 的 controller（含 handleCrosshairMove /
+  subscribeCrosshairMove / axisLabelPrimitives 十字星注入配置），而
+  axisLabelPrimitive.ts 已回滚为无 setCrosshairY 的版本 → 十字星移动时
+  调用不存在的方法，运行时抛 `TypeError: primitive.setCrosshairY is not a function`；
+- 按"删除 axis 相关配置"意图重新清理 controller：
+  - 删除 axisLabelPrimitives 数组、handleCrosshairMove 方法、
+    subscribeCrosshairMove / unsubscribeCrosshairMove、MouseEventParams 导入；
+  - pane1 / pane3 / pane5 挂载恢复直接 attachPrimitive(new AxisLabelPrimitive(...))；
+  - handleScale 的 axisPressedMouseMove / axisDoubleClickReset 保持删除（v1.4.34）；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.34（2026-10-13）
+
+删除 axis 相关配置。
+
+### 变更
+- handleScale：删除 `axisPressedMouseMove: false` / `axisDoubleClickReset: false`
+  （axis 相关配置）——恢复库默认：按住价格轴拖动可缩放、双击价格轴可重置；
+  滚轮 / 双指缩放仍关闭（mouseWheel / pinch: false），缩放仅由工具栏按钮控制；
+- controller：删除十字星左刻度指示值相关的 axis 注入配置
+  （axisLabelPrimitives 数组、handleCrosshairMove 方法、subscribeCrosshairMove /
+  unsubscribeCrosshairMove、MouseEventParams 导入）；
+- 同步用户手动回滚：axisLabelPrimitive.ts 恢复 v1.4.31 版本（无 crosshairY），
+  pane1 / pane3 / pane5 挂载恢复直接 attachPrimitive(new AxisLabelPrimitive(...))；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.31（2026-10-13）
 
 MACD 柱改为从中间值（数据区中间，与中间刻度 0 对齐）向上下延伸。

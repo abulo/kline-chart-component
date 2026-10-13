@@ -85,7 +85,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="toolbar">
-      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.31</span>
+      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.37</span>
       <div class="spacer" />
       <button class="btn" :class="{ active: showIndicator }" @click="toggleIndicator">
         指标{{ showIndicator ? '开' : '关' }}

@@ -51,6 +51,7 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
   type BarPrice,
+  type MouseEventParams,
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
@@ -65,6 +66,7 @@ import {
   calcPaneHeights,
 } from './layout'
 import { TestLabelPrimitive } from '../testLabel/testLabelPrimitive'
+import { Pane0OverlayPrimitive } from '../overlay/pane0OverlayPrimitive'
 import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
 import { MacdBarPrimitive } from '../indicator/macdBarPrimitive'
 import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
@@ -211,7 +213,15 @@ export class KLineChartController {
         crosshairMarkerVisible: false,
       },
       0,
-    ).attachPrimitive(new TestLabelPrimitive('测试', () => themeColors(this.theme).textColor))
+    ).attachPrimitive(
+      // pane0 顶层遮罩（topPaneViews）：背景填充 + "测试"文字，绘制在十字星之上，
+      // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）
+      new Pane0OverlayPrimitive(
+        '测试',
+        () => themeColors(this.theme).background,
+        () => themeColors(this.theme).textColor,
+      ),
+    )
 
     /* ---------- 3. pane1：K 线主图（红涨绿跌；上涨柱体空心） ----------
      * 空心实现：上涨（up）柱体填充色 = 图表背景色（视觉空心），
@@ -343,6 +353,21 @@ export class KLineChartController {
     /* ---------- 6. 容器尺寸监听：重算固定 Pane 高度（topPaneHeight） ---------- */
     this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors())
     this.resizeObserver.observe(this.container)
+
+    /* ---------- 7. pane0 内不触发十字星 ----------
+     * 鼠标进入 pane0（index 0）时清除十字星位置：十字星仅可在
+     * pane1 ~ pane5（K 线 / 成交量 / 指标）内触发与移动。
+     */
+    this.chart.subscribeCrosshairMove(this.handleCrosshairMoveInPane0)
+  }
+
+  /** pane0 内不触发十字星：鼠标位于 pane0（index 0）时清除十字星位置。
+   * 库十字星由内部 mousemove 驱动，此回调与库 set 同帧执行（同一次 invalidate
+   * 重绘），视觉上 pane0 内十字星不出现；销毁时需 unsubscribe 防内存泄漏。 */
+  private handleCrosshairMoveInPane0 = (param: MouseEventParams): void => {
+    if (param.paneIndex === 0) {
+      this.chart.clearCrosshairPosition()
+    }
   }
 
   /* ===================== 布局 ===================== */
@@ -627,6 +652,8 @@ export class KLineChartController {
 
   /** 销毁：移除监听 / chart / 清除实例标记（防内存泄漏） */
   destroy = (): void => {
+    // 移除 pane0 十字星禁用监听（防内存泄漏）
+    this.chart.unsubscribeCrosshairMove(this.handleCrosshairMoveInPane0)
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     this.chart.remove()
