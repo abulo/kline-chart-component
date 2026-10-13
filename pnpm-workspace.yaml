@@ -1,0 +1,3 @@
+allowBuilds:
+  lightweight-charts@https://codeload.github.com/abulo/lightweight-charts/tar.gz/b2ce010e4ad59f6556c9ed60e2b2b30feccdd2d1: true
+  lightweight-charts@https://codeload.github.com/abulo/lightweight-charts/tar.gz/cb06581a0ae28778de17521b5c3edc8119e46d5d: true

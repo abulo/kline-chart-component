@@ -8,6 +8,84 @@
 
 ---
 
+## v1.4.31（2026-10-13）
+
+MACD 柱改为从中间值（数据区中间，与中间刻度 0 对齐）向上下延伸。
+
+### 变更
+- macdBarPaneView：柱底基准由 `priceToCoordinate(0)`（scale 的 0 轴位置）
+  改为 `mediaSize.height / 2`（数据区中间）—— 与中间刻度固定值 0 对齐；
+  - 延伸量 = |priceToCoordinate(0) - priceToCoordinate(macd)|（值相对 0 轴的像素距离，
+    比例仍由 scale 决定，随平移 / 缩放一致）；
+  - 柱 > 0：从中间向上（空心红柱）；柱 < 0：从中间向下（绿色实心）；
+- macdBarPrimitive：文件头注释同步更新；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.30（2026-10-13）
+
+MACD（pane5）左刻度中间值固定为 0。
+
+### 变更
+- axisLabelPrimitive：AxisLabelConfig 新增可选 `fixedMiddleValue`；
+  buildLabelViews 对中间刻度（i = count / 2）传入固定值；
+- axisLabelView：AxisLabelView 新增可选 `fixedValue`，text() 优先显示
+  固定值（否则按坐标反算价格）；
+- controller：pane5 挂载 `fixedMiddleValue: 0` —— MACD 柱以 0 轴为正负分界，
+  中间刻度不再受 scale 中间值影响，固定显示 0；
+- pane1 / pane3 不受影响（未设置 fixedMiddleValue）；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.29（2026-10-13）
+
+成交量（pane3）尾部刻度值 clamp 到非负（不小于 0）。
+
+### 变更
+- pane3 AxisLabelPrimitive 的 format 增加 `Math.max(0, volume)`：
+  priceScale 底部默认留白可能使刻度 y 处反算出负成交量，
+  成交量最低为 0，负值无意义 → 截断为 0 显示（'0' / '0.00万'）；
+- K 线（价格恒正）/ MACD（允许负值）不受影响；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.28（2026-10-13）
+
+左刻度刻度值数量调整为「等分数 + 1（含首尾）」，首尾刻度内嵌完整可见。
+
+### 变更
+- axisLabelPrimitive：`buildLabelViews` 循环 i = 0..count（含首尾），
+  刻度行数 = 等分数 + 1：
+  - 指标关：pane1 = 9 个值（8 等分）、pane3 = 3 个值（2 等分）；
+  - 指标开：pane1 = 7 个值（6 等分）、pane3 / pane5 = 3 个值（2 等分）；
+- 中间刻度（i = 1..count-1）仍与栅格横线同一等分公式（完全对齐）；
+- 首尾刻度（i = 0 / count）内嵌 `AXIS_LABEL_PAD = 8` px，
+  避免库渲染的背景块 / 文字被价格轴边缘裁切；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.27（2026-10-13）
+
+左刻度区刻度值与自绘栅格横线**完全对齐**（自绘价格轴刻度标签）。
+
+### 变更
+- 新增 `src/chart/axis/axisLabelPrimitive.ts` + `axisLabelView.ts`：
+  - `AxisLabelPrimitive`（ISeriesPrimitive）：`priceAxisViews()` 返回刻度标签集合，
+    标签 y 与 `GridPrimitive` 同一等分公式（`Math.round(h * i / count)`，
+    i = 1..count-1），pane 高度取自 `chartApi.panes()[i].getHeight()`；
+  - `AxisLabelView`（ISeriesPrimitiveAxisView）：`fixedCoordinate()` 强制标签
+    绘制在栅格横线 y 处（防库自动防重叠移动导致错位）；
+    `text()` 用 `series.coordinateToPrice(y)` 实时反算当前价格并格式化
+    （随数据平移 / 缩放变化，位置固定）；textColor / backColor 取主题
+    textColor / background（深浅系区分）；
+- 隐藏库刻度标签（刻度区保留）：pane1 klineSeries / pane3 volumeSeries /
+  pane5 indicatorsBarSeries 的 `priceFormat formatter` 返回 `''`，
+  刻度值全部由自绘标签承担（刻度区宽度仍受 leftPriceScale minimumWidth = 72 控制）；
+- 挂载与格式化：
+  - pane1：`formatPrice`（K 线价格 2 位小数），行数随指标开关 6 / 8 等分变化；
+  - pane3：`formatVolume`（成交量 万 / 亿）；
+  - pane5：`formatAxisSmart`（MACD 值，自适应小数位）；
+- 机制已验证：库 dist 在渲染价格轴时调用 `_internal_priceAxisViews` 收集
+  primitive 视图并绘制（19 处相关代码）；pane 尺寸变化触发 primitive
+  `updateAllViews` 重建标签，平移 / 缩放时 `text()` 每次渲染求值；
+- 验证：vitest 43 项全绿（6 files）；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.19（2026-10-12）
 
 给内容 Pane（pane1 / pane3 / pane5）添加 1px 自绘边框，颜色区分深浅系。

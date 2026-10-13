@@ -70,7 +70,8 @@ import { MacdBarPrimitive } from '../indicator/macdBarPrimitive'
 import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
 import { GridPrimitive } from '../grid/gridPrimitive'
 import { calcMacd, type MacdPoint } from '../indicator/macd'
-import { formatVolume } from '../util/format'
+import { formatVolume, formatPrice, formatAxisSmart } from '../util/format'
+import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 
 /**
  * MACD 指标配色（东方财富风格，深浅系通用不随主题变化）：
@@ -228,6 +229,11 @@ export class KLineChartController {
         wickDownColor: initialThemeColors.downColor,
         priceLineVisible: false,
         lastValueVisible: false,
+        // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
+        priceFormat: {
+          type: 'custom',
+          formatter: () => '',
+        },
       },
       1,
     )
@@ -240,6 +246,17 @@ export class KLineChartController {
       new GridPrimitive({
         getColor: () => themeColors(this.theme).grid,
         getHorizontalCount: () => (this.showIndicator ? 6 : 8),
+      }),
+    )
+    // pane1 左刻度标签：与栅格横线对齐（值 = 横线处价格，K 线价格 2 位小数）
+    this.klineSeries.attachPrimitive(
+      new AxisLabelPrimitive({
+        series: this.klineSeries,
+        getPaneIndex: () => 1,
+        getHorizontalCount: () => (this.showIndicator ? 6 : 8),
+        getColor: () => themeColors(this.theme).textColor,
+        getBackColor: () => themeColors(this.theme).background,
+        format: (price) => formatPrice(price),
       }),
     )
 
@@ -272,10 +289,10 @@ export class KLineChartController {
         color: initialThemeColors.background, // 不可见（仅建 scale）
         priceLineVisible: false,
         lastValueVisible: false,
-        // 左刻度标签：成交量格式化（万 / 亿，见 util/format.formatVolume）
+        // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
         priceFormat: {
           type: 'custom',
-          formatter: (price: BarPrice) => formatVolume(price),
+          formatter: () => '',
         },
       },
       3,
@@ -292,6 +309,17 @@ export class KLineChartController {
       new GridPrimitive({
         getColor: () => themeColors(this.theme).grid,
         getHorizontalCount: () => 2,
+      }),
+    )
+    // pane3 左刻度标签：与栅格横线对齐（值 = 横线处成交量，万 / 亿格式化）
+    this.volumeSeries.attachPrimitive(
+      new AxisLabelPrimitive({
+        series: this.volumeSeries,
+        getPaneIndex: () => 3,
+        getHorizontalCount: () => 2,
+        getColor: () => themeColors(this.theme).textColor,
+        getBackColor: () => themeColors(this.theme).background,
+        format: (volume) => formatVolume(Math.max(0, volume)),
       }),
     )
 
@@ -353,6 +381,11 @@ export class KLineChartController {
         color: themeColors(this.theme).background, // 不可见（仅建 scale）
         priceLineVisible: false,
         lastValueVisible: false,
+        // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
+        priceFormat: {
+          type: 'custom',
+          formatter: () => '',
+        },
       },
       5,
     )
@@ -368,6 +401,19 @@ export class KLineChartController {
       new GridPrimitive({
         getColor: () => themeColors(this.theme).grid,
         getHorizontalCount: () => 2,
+      }),
+    )
+    // pane5 左刻度标签：与栅格横线对齐（值 = 横线处指标值，大数缩写 / 自适应小数）
+    this.indicatorsBarSeries.attachPrimitive(
+      new AxisLabelPrimitive({
+        series: this.indicatorsBarSeries,
+        getPaneIndex: () => 5,
+        getHorizontalCount: () => 2,
+        getColor: () => themeColors(this.theme).textColor,
+        getBackColor: () => themeColors(this.theme).background,
+        format: (value) => formatAxisSmart(value),
+        // MACD 柱以 0 轴为正负分界：中间刻度固定显示 0（不受 scale 中间值影响）
+        fixedMiddleValue: 0,
       }),
     )
     this.difSeries = this.chart.addSeries(

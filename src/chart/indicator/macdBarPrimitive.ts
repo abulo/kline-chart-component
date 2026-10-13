@@ -8,7 +8,8 @@
  *  - 柱中心 = 同一逻辑索引的 logicalToCoordinate（与 pane1 / pane3 柱位对齐）；
  *  - 柱 > 0：**空心红柱**（背景色填充 + 红色边框，同 pane1 上涨柱）；
  *  - 柱 < 0：绿色实心（同 pane1 下跌柱）；
- *  - 柱底 = 0 轴（priceToCoordinate(0)，正负双向绘制）。
+ *  - 柱底基准 = 数据区中间（与中间刻度固定值 0 对齐），柱从中间向上下延伸；
+ *  - 延伸量 = 值相对 0 轴的像素距离（priceToCoordinate 差值）。
  *
  * 依赖：渲染逻辑委托给 MacdBarPaneView（同目录独立文件）。
  * 注意：MACD 指标 series 数据不可见（color = 背景色），仅用于建立 Y 轴
