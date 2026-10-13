@@ -43,6 +43,10 @@ export interface ChartThemeColors {
   crosshairLabelBackground: string
   /** 十字星指示值标签文字颜色（深浅系区分） */
   crosshairLabelText: string
+  /** 最高价标注颜色（黄色系，深浅系区分保证可读性） */
+  highMarkerColor: string
+  /** 最低价标注颜色（蓝色系，深浅系区分保证可读性） */
+  lowMarkerColor: string
 
   /* ===== 页面布局（App.vue） ===== */
   /** 页面整体背景（html 背景，跟随主题） */
@@ -80,6 +84,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#1E222D',
     crosshairLabelBackground: '#2A2E39',
     crosshairLabelText: '#D1D4DC',
+    highMarkerColor: '#F4AA0A',
+    lowMarkerColor: '#2962FF',
 
     pageBackground: '#0B0E13',
     toolbarBackground: '#1E222D',
@@ -100,8 +106,10 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     downColor: '#008000',
     paneBorder: '#D4D8DE',
     grid: '#E6E8EC',
-    crosshairLabelBackground: '#E9EBEF',
+    crosshairLabelBackground: '#F0F2F5',
     crosshairLabelText: '#33373E',
+    highMarkerColor: '#B8860B',
+    lowMarkerColor: '#2452CC',
 
     pageBackground: '#EDEFF3',
     toolbarBackground: '#F3F4F6',

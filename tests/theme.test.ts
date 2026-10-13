@@ -53,13 +53,26 @@ describe('主题配置', () => {
     const l = themeColors('light')
     // 背景块需与图表背景可区分（深系块 ≠ 背景、浅系块 ≠ 白底）
     expect(d.crosshairLabelBackground).toBe('#2A2E39')
-    expect(l.crosshairLabelBackground).toBe('#E9EBEF')
+    expect(l.crosshairLabelBackground).toBe('#F0F2F5')
     expect(d.crosshairLabelBackground).not.toBe(d.background)
     expect(l.crosshairLabelBackground).not.toBe(l.background)
     // 文字颜色深浅系各自定义且互不相同
     expect(d.crosshairLabelText).toBe('#D1D4DC')
     expect(l.crosshairLabelText).toBe('#33373E')
     expect(d.crosshairLabelText).not.toBe(l.crosshairLabelText)
+  })
+
+  it('最高 / 最低价标注色：深浅系区分且各自存在', () => {
+    const d = themeColors('dark')
+    const l = themeColors('light')
+    // 最高价黄色系（深系亮黄 / 浅系深金黄保证白底可读）
+    expect(d.highMarkerColor).toBe('#F4AA0A')
+    expect(l.highMarkerColor).toBe('#B8860B')
+    // 最低价蓝色系（深系亮蓝 / 浅系深蓝保证白底可读）
+    expect(d.lowMarkerColor).toBe('#2962FF')
+    expect(l.lowMarkerColor).toBe('#2452CC')
+    expect(d.highMarkerColor).not.toBe(l.highMarkerColor)
+    expect(d.lowMarkerColor).not.toBe(l.lowMarkerColor)
   })
 
   it('清理后无 separatorColor / CHART_FONT 残留', () => {

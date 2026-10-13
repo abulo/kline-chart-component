@@ -67,6 +67,7 @@ import {
 } from './layout'
 import { TestLabelPrimitive } from '../testLabel/testLabelPrimitive'
 import { TopPaneOverlayPrimitive } from '../overlay/topPaneOverlayPrimitive'
+import { HighLowMarkerPrimitive } from '../highLow/highLowMarkerPrimitive'
 import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
 import { MacdBarPrimitive } from '../indicator/macdBarPrimitive'
 import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
@@ -286,6 +287,18 @@ export class KLineChartController {
     })
     this.klineSeries.attachPrimitive(pane1CrosshairLabel)
     this.crosshairAxisLabelPrimitives.push(pane1CrosshairLabel)
+    // pane1 最高价 / 最低价标注：可视区域内 high 最大 / low 最小的 bar，
+    // 最高价黄色标注在柱顶上方、最低价蓝色标注在柱底下方（各带同色实线
+    // 连接到柱体上 / 下边缘中间，随平移 / 缩放实时重算）
+    this.klineSeries.attachPrimitive(
+      new HighLowMarkerPrimitive({
+        series: this.klineSeries,
+        getBars: () => this.bars,
+        getHighColor: () => themeColors(this.theme).highMarkerColor,
+        getLowColor: () => themeColors(this.theme).lowMarkerColor,
+        getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
+      }),
+    )
 
     /* ---------- 3.1 pane2：底部空 Pane（无数据，自绘"测试"文字，设置与 pane0 一致） ---------- */
     this.chart.addSeries(
