@@ -39,6 +39,10 @@ export interface ChartThemeColors {
   paneBorder: string
   /** 栅格线颜色（自绘等分栅格：竖 4 等分 / 横按 pane 配置，深浅系区分） */
   grid: string
+  /** 十字星指示值标签背景块颜色（左刻度区命中标签，深浅系区分，需与图表背景可见区分） */
+  crosshairLabelBackground: string
+  /** 十字星指示值标签文字颜色（深浅系区分） */
+  crosshairLabelText: string
 
   /* ===== 页面布局（App.vue） ===== */
   /** 页面整体背景（html 背景，跟随主题） */
@@ -74,6 +78,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     downColor: '#008000',
     paneBorder: '#2A2E39',
     grid: '#1E222D',
+    crosshairLabelBackground: '#2A2E39',
+    crosshairLabelText: '#D1D4DC',
 
     pageBackground: '#0B0E13',
     toolbarBackground: '#1E222D',
@@ -94,6 +100,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     downColor: '#008000',
     paneBorder: '#D4D8DE',
     grid: '#E6E8EC',
+    crosshairLabelBackground: '#E9EBEF',
+    crosshairLabelText: '#33373E',
 
     pageBackground: '#EDEFF3',
     toolbarBackground: '#F3F4F6',

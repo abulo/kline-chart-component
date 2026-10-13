@@ -48,6 +48,20 @@ describe('主题配置', () => {
     expect(d.grid).not.toBe(l.grid)
   })
 
+  it('十字星指示值标签色：深浅系区分、与图表背景可见区分', () => {
+    const d = themeColors('dark')
+    const l = themeColors('light')
+    // 背景块需与图表背景可区分（深系块 ≠ 背景、浅系块 ≠ 白底）
+    expect(d.crosshairLabelBackground).toBe('#2A2E39')
+    expect(l.crosshairLabelBackground).toBe('#E9EBEF')
+    expect(d.crosshairLabelBackground).not.toBe(d.background)
+    expect(l.crosshairLabelBackground).not.toBe(l.background)
+    // 文字颜色深浅系各自定义且互不相同
+    expect(d.crosshairLabelText).toBe('#D1D4DC')
+    expect(l.crosshairLabelText).toBe('#33373E')
+    expect(d.crosshairLabelText).not.toBe(l.crosshairLabelText)
+  })
+
   it('清理后无 separatorColor / CHART_FONT 残留', () => {
     // v1.2.1 清理验证：单 Pane 无分隔线 + 栅格关闭，这些字段/常量不应存在
     expect('separatorColor' in chartThemes.dark).toBe(false)

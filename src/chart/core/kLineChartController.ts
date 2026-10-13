@@ -171,6 +171,14 @@ export class KLineChartController {
       // 十字星：Normal 模式 = 横竖线自由跟随鼠标（不吸附数据点）
       crosshair: {
         mode: CrosshairMode.Normal,
+        // 时间轴（X 轴）十字星指示值标签：背景跟随深浅系 crosshairLabelBackground
+        // （文字颜色由库按背景亮度自动对比：深背景白字 / 浅背景黑字）
+        vertLine: {
+          labelBackgroundColor: initialThemeColors.crosshairLabelBackground,
+        },
+        horzLine: {
+          labelBackgroundColor: initialThemeColors.crosshairLabelBackground,
+        },
       },
       // 栅格化关闭：纵向 / 横向栅格线全部隐藏
       grid: {
@@ -271,8 +279,8 @@ export class KLineChartController {
     const pane1CrosshairLabel = new CrosshairAxisLabelPrimitive({
       series: this.klineSeries,
       getPaneIndex: () => 1,
-      getColor: () => themeColors(this.theme).textColor,
-      getBackColor: () => themeColors(this.theme).background,
+      getColor: () => themeColors(this.theme).crosshairLabelText,
+      getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
       getFont: () => chartFont,
       format: (price) => formatPrice(price),
     })
@@ -346,8 +354,8 @@ export class KLineChartController {
     const pane3CrosshairLabel = new CrosshairAxisLabelPrimitive({
       series: this.volumeSeries,
       getPaneIndex: () => 3,
-      getColor: () => themeColors(this.theme).textColor,
-      getBackColor: () => themeColors(this.theme).background,
+      getColor: () => themeColors(this.theme).crosshairLabelText,
+      getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
       getFont: () => chartFont,
       format: (volume) => formatVolume(Math.max(0, volume)),
     })
@@ -487,8 +495,8 @@ export class KLineChartController {
     const pane5CrosshairLabel = new CrosshairAxisLabelPrimitive({
       series: this.indicatorsBarSeries,
       getPaneIndex: () => 5,
-      getColor: () => themeColors(this.theme).textColor,
-      getBackColor: () => themeColors(this.theme).background,
+      getColor: () => themeColors(this.theme).crosshairLabelText,
+      getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
       getFont: () => chartFont,
       format: (value) => formatAxisSmart(value),
     })
@@ -614,6 +622,15 @@ export class KLineChartController {
       grid: {
         vertLines: { visible: false },
         horzLines: { visible: false },
+      },
+      // 十字星指示值标签背景跟随主题（时间轴 + 价格轴；文字颜色库自动黑白对比）
+      crosshair: {
+        vertLine: {
+          labelBackgroundColor: themeColorSet.crosshairLabelBackground,
+        },
+        horzLine: {
+          labelBackgroundColor: themeColorSet.crosshairLabelBackground,
+        },
       },
     })
     // K 线换色（上涨柱体填充跟随背景色保持空心）

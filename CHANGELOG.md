@@ -8,6 +8,33 @@
 
 ---
 
+## v1.4.45（2026-10-13）
+
+时间轴（X 轴）十字星指示值标签背景色接入深浅系配色。
+
+### 变更
+- createChart 与 applyTheme 的 crosshair 配置新增
+  `vertLine.labelBackgroundColor` / `horzLine.labelBackgroundColor` =
+  主题 `crosshairLabelBackground`（深系 #2A2E39 / 浅系 #E9EBEF）；
+  时间轴十字星日期标签背景随深浅系切换同步更新。
+- 文字颜色说明：lightweight-charts 十字星标签文字色由库按背景亮度自动
+  黑白对比（深背景白字 / 浅背景黑字），方向与 crosshairLabelText 一致。
+- 验证：vitest 53 项全绿；vue-tsc 通过；未运行 / 未截图。
+
+## v1.4.44（2026-10-13）
+
+十字星左刻度**指示值**标签背景块与文字颜色按深浅系定义。
+
+### 变更
+- `theme.ts` 新增 `crosshairLabelBackground` / `crosshairLabelText` 字段：
+  - 深系：背景 `#2A2E39`（与图表背景 #131722 可见区分）、文字 `#D1D4DC`；
+  - 浅系：背景 `#E9EBEF`（与白底可见区分）、文字 `#33373E`。
+- controller 三处 CrosshairAxisLabelPrimitive（pane1 / pane3 / pane5 指示值）的
+  getColor / getBackColor 改用上述字段（原为 textColor / background —— 背景块
+  与图表底色同色不可见）。
+- 测试：theme.test.ts 新增用例（深浅系各自取值、背景块与图表背景可区分、
+  文字色互不相同），总用例 52 → 53 全绿；vue-tsc 通过；未运行 / 未截图。
+
 ## v1.4.43（2026-10-13）
 
 左刻度标签文字右缘距调整：4px → 6px（文字右缘 = 价格轴右缘 − 6px）。
