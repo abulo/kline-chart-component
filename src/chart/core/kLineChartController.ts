@@ -50,6 +50,7 @@ import {
   CrosshairMode,
   type ISeriesApi,
   type UTCTimestamp,
+  type BarPrice,
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
 import { genMockBars, type BasicBar } from './mock'
@@ -69,6 +70,7 @@ import { MacdBarPrimitive } from '../indicator/macdBarPrimitive'
 import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
 import { GridPrimitive } from '../grid/gridPrimitive'
 import { calcMacd, type MacdPoint } from '../indicator/macd'
+import { formatVolume } from '../util/format'
 
 /**
  * MACD 指标配色（东方财富风格，深浅系通用不随主题变化）：
@@ -90,6 +92,8 @@ const MACD_COLORS = {
  * 布局换算必须扣除该高度，否则固定 Pane 的实际像素高度与目标不符。
  */
 const LIBRARY_TIME_AXIS_HEIGHT = 28
+/** 左右刻度区最小宽度（打开时固定宽度，左右一致；单位 px） */
+const PRICE_SCALE_MIN_WIDTH = 72
 
 /** 控制器选项 */
 export interface KLineChartOptions {
@@ -123,6 +127,10 @@ export class KLineChartController {
   private theme: ChartThemeName
   /** 指标 Pane 开关状态（true = 显示 pane4 / pane5，false = 隐藏） */
   private showIndicator: boolean
+  /** 左刻度区开关状态（true = 显示左侧刻度，false = 隐藏；默认关） */
+  private showLeftScale: boolean
+  /** 右刻度区开关状态（true = 显示右侧刻度，false = 隐藏；默认关） */
+  private showRightScale: boolean
 
   /** 容器尺寸监听：尺寸变化时重算固定 Pane 高度（topPaneHeight） */
   private resizeObserver: ResizeObserver | null = null
@@ -130,6 +138,8 @@ export class KLineChartController {
   constructor(options: KLineChartOptions) {
     this.container = options.container
     this.showIndicator = options.showIndicator ?? true
+    this.showLeftScale = false
+    this.showRightScale = false
     this.theme = 'dark'
 
     /* ---------- 0. 实例保护：容器打标记防重复创建 chart 实例 ----------
@@ -262,6 +272,11 @@ export class KLineChartController {
         color: initialThemeColors.background, // 不可见（仅建 scale）
         priceLineVisible: false,
         lastValueVisible: false,
+        // 左刻度标签：成交量格式化（万 / 亿，见 util/format.formatVolume）
+        priceFormat: {
+          type: 'custom',
+          formatter: (price: BarPrice) => formatVolume(price),
+        },
       },
       3,
     )
@@ -400,10 +415,11 @@ export class KLineChartController {
   private applyStretchFactors = (): void => {
     const panes = this.chart.panes()
     if (panes.length < 2) return
-    // 库实际可用高度 = 容器高度 - 时间轴高度（显隐按库当前状态） - 分隔线总高（每 pane 间隔 1px）
+    // 库实际可用高度 = 容器高度 - 时间轴高度（显隐按库当前状态）。
+    // Pane 之间无间隔：库分隔线高度已通过 patch（node_modules dist
+    // SeparatorConstants.SeparatorHeight: 1 → 0）置零，pane 紧贴、无 1px 预留。
     const timeAxisHeight = this.chart.timeScale().options().visible ? LIBRARY_TIME_AXIS_HEIGHT : 0
-    const separatorHeight = panes.length - 1
-    const usableHeight = this.container.clientHeight - timeAxisHeight - separatorHeight
+    const usableHeight = this.container.clientHeight - timeAxisHeight
     // 指标开启：3 个固定空 Pane、60:20:20；指标关闭：2 个固定空 Pane、80:20
     const fixedCount = this.showIndicator ? fixedPaneCount : fixedPaneCountWithoutIndicator
     const ratios = this.showIndicator ? groupRatios : groupRatiosWithoutIndicator
@@ -510,6 +526,34 @@ export class KLineChartController {
   toggleTimeAxis = (visible: boolean): void => {
     this.chart.timeScale().applyOptions({ visible })
     this.applyStretchFactors()
+  }
+
+  /** 左刻度区开关：显隐所有 Pane 的 left price scale，切换后 fitContent 重排数据区 */
+  setLeftScaleVisible = (visible: boolean): void => {
+    if (this.showLeftScale === visible) return
+    this.showLeftScale = visible
+    this.applyPriceScaleVisible('left', visible)
+  }
+
+  /** 右刻度区开关：显隐所有 Pane 的 right price scale，切换后 fitContent 重排数据区 */
+  setRightScaleVisible = (visible: boolean): void => {
+    if (this.showRightScale === visible) return
+    this.showRightScale = visible
+    this.applyPriceScaleVisible('right', visible)
+  }
+
+  /** 刻度区统一应用（左右宽度一致）：逐个 Pane 设置 price scale 显隐与最小宽度，最后 fitContent */
+  private applyPriceScaleVisible = (side: 'left' | 'right', visible: boolean): void => {
+    const panes = this.chart.panes()
+    panes.forEach((_, paneIndex) => {
+      this.chart.priceScale(side, paneIndex).applyOptions({
+        visible,
+        borderVisible: false, // 刻度区无边框
+        minimumWidth: visible ? PRICE_SCALE_MIN_WIDTH : 0, // 关闭时不占位；打开时左右宽度一致
+      })
+    })
+    // 刻度区开关改变数据区宽度，fitContent 让 K 线重新铺满（不残留空白）
+    this.chart.timeScale().fitContent()
   }
 
   /** 指标开关：动态创建 / 删除 indicator 组（pane4 / pane5），布局随之切换 60:20:20 ⇄ 80:20 */

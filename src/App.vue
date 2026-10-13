@@ -22,6 +22,10 @@ const theme = ref<ChartThemeName>('dark')
 const showTimeAxis = ref(true)
 /** 指标开关（指标 Pane pane4 / pane5，默认开启） */
 const showIndicator = ref(true)
+/** 左刻度区开关（默认关） */
+const showLeftScale = ref(false)
+/** 右刻度区开关（默认关） */
+const showRightScale = ref(false)
 
 /** 主题切换：更新 html 背景 + 图表主题 */
 const toggleTheme = (): void => {
@@ -47,6 +51,18 @@ const toggleIndicator = (): void => {
   chartRef.value?.controller?.setShowIndicator(showIndicator.value)
 }
 
+/** 左刻度区开关：显隐所有 Pane 左侧刻度，切换后 fitContent */
+const toggleLeftScale = (): void => {
+  showLeftScale.value = !showLeftScale.value
+  chartRef.value?.controller?.setLeftScaleVisible(showLeftScale.value)
+}
+
+/** 右刻度区开关：显隐所有 Pane 右侧刻度，切换后 fitContent */
+const toggleRightScale = (): void => {
+  showRightScale.value = !showRightScale.value
+  chartRef.value?.controller?.setRightScaleVisible(showRightScale.value)
+}
+
 /** 放大 / 缩小（X 轴全局） */
 const zoomIn = (): void => chartRef.value?.controller?.zoomIn()
 const zoomOut = (): void => chartRef.value?.controller?.zoomOut()
@@ -69,13 +85,19 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="toolbar">
-      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.19</span>
+      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.26</span>
       <div class="spacer" />
       <button class="btn" :class="{ active: showIndicator }" @click="toggleIndicator">
         指标{{ showIndicator ? '开' : '关' }}
       </button>
       <button class="btn" :class="{ active: showTimeAxis }" @click="toggleTimeAxis">
         时间轴{{ showTimeAxis ? '开' : '关' }}
+      </button>
+      <button class="btn" :class="{ active: showLeftScale }" @click="toggleLeftScale">
+        左刻度{{ showLeftScale ? '开' : '关' }}
+      </button>
+      <button class="btn" :class="{ active: showRightScale }" @click="toggleRightScale">
+        右刻度{{ showRightScale ? '开' : '关' }}
       </button>
       <button class="btn" @click="zoomOut">缩小</button>
       <button class="btn" @click="zoomIn">放大</button>
