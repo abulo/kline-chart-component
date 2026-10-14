@@ -8,6 +8,22 @@
 
 ---
 
+## v1.4.67（2026-10-14）
+
+修复窗口缩放时 pane1 / pane3 / pane5 最右 / 最下边框与画布边缘出现 subpixel 缝隙。
+
+### 变更
+- 根因：`PaneBorderPaneView` 原用 `useMediaCoordinateSpace`（CSS 像素）绘制边框，
+  窗口缩小 / 放大时 canvas CSS 宽度取整（floor）与物理宽度存在亚像素差，
+  边框右缘落在 floor-0.5 处 → 视觉上最右边缘留一条缝隙；
+- 修复：改用 `useBitmapCoordinateSpace`（物理像素）绘制 ——
+  `strokeRect(0.5, 0.5, bitmapSize.width - 1, bitmapSize.height - 1)`，
+  边框覆盖 canvas 物理最右 / 最下列 `[W-1, W)`，缩放任意尺寸均贴住画布边缘，
+  无取整缝隙；+0.5 保持 1px 线条锐利；
+- 容器侧已有 `overflow: hidden`（裁掉容器与 canvas 的亚像素差），组合后边框
+  视觉上始终在最边缘；
+- 验证：vue-tsc 通过、vitest 74/74 全绿；未运行 / 未截图。
+
 ## v1.4.66（2026-10-14）
 
 全量质量审计（内存 / 缓存 / 命名 / 颜色 / 效率 / 文档 / 测试 / 清理）。
