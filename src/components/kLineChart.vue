@@ -25,10 +25,11 @@
  *    同步 html 背景，组件内只负责图表主题）；
  *  - onBeforeUnmount：销毁控制器并置空引用（防内存泄漏）。
  */
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { KLineChartController, type MainIndicatorName } from '../chart/core/KLineChartController'
 import type { ChartThemeName } from '../chart/core/theme'
 import type { SubIndicatorType } from '../chart/indicator'
+import { Periods, type PeriodItem, type PeriodValue } from '../chart/periods'
 
 /** 图表组件 Props（工具栏状态单向数据流） */
 const props = withDefaults(
@@ -51,6 +52,12 @@ const props = withDefaults(
     subIndicator?: string
     /** 内置演示数据条数（默认 120；极限压测可传 10000） */
     dataCount?: number
+    /**
+     * 周期白名单（可选）：数组（如 ['day', 'week', 'month']）或逗号分隔字符串
+     * （如 'day,week,month'）。有值（非空）时组件内渲染白名单内的周期按钮，
+     * 点击 emit 'period-change'；无值 / 空时不渲染（周期由外部 App 工具栏控制）。
+     */
+    periodWhitelist?: PeriodValue[] | string
   }>(),
   {
     symbol: '',
@@ -62,8 +69,20 @@ const props = withDefaults(
     mainIndicator: '',
     subIndicator: '',
     dataCount: 120,
+    periodWhitelist: '',
   },
 )
+
+/** 白名单周期解析：字符串按逗号分隔 / 数组直接使用 → 过滤 Periods 子集 */
+const whitelistedPeriods = computed<PeriodItem[]>(() => {
+  const raw = props.periodWhitelist
+  if (!raw || (typeof raw === 'string' && raw.trim() === '')) return []
+  const values = Array.isArray(raw) ? raw : raw.split(',').map((item) => item.trim())
+  return Periods.filter((period) => values.includes(period.value))
+})
+
+/** 周期切换事件（点击白名单周期按钮时触发，value 为周期标识） */
+const emit = defineEmits<{ (event: 'period-change', value: PeriodValue): void }>()
 
 /** 容器 ref（需有确定宽高，由父组件 CSS 保证） */
 const containerRef = ref<HTMLDivElement | null>(null)
@@ -136,11 +155,11 @@ defineExpose({ controller })
 </script>
 
 <template>
-  <!-- 图表容器 -->
   <div ref="containerRef" class="kline-chart-container" />
 </template>
 
 <style scoped>
+
 .kline-chart-container {
   position: relative;
   width: 100%;

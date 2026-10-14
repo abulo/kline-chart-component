@@ -16,9 +16,30 @@ import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
 import type { MainIndicatorName } from './chart/core/KLineChartController'
 import type { SubIndicatorType } from './chart/indicator'
+import { Periods, type PeriodValue } from './chart/periods'
 
 /** 图表组件 ref（访问控制器） */
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
+
+/** 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入） */
+const activePeriod = ref<PeriodValue>('day')
+
+/**
+ * 周期白名单（单一配置源）：限制 App 周期栏可选项，并同源传给 KLineChart
+ * 的 period-whitelist prop（组件内白名单周期栏渲染一致）。
+ * 数组或逗号分隔字符串皆可；白名单外的周期不渲染。
+ */
+// const periodWhitelist = ''
+
+// /** 白名单过滤后的周期（App 周期栏渲染；未知周期自动剔除） */
+// const whitelistedPeriods = Periods.filter((period) =>
+//   periodWhitelist.split(',').includes(period.value),
+// )
+
+/** 周期切换（点击即选中，周期保持必选其一） */
+const togglePeriod = (value: PeriodValue): void => {
+  activePeriod.value = value
+}
 
 /** 当前主题 */
 const theme = ref<ChartThemeName>('dark')
@@ -122,7 +143,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.93</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.95</span>
     </div>
 
     <div class="toolbar">
@@ -183,6 +204,20 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         class="btn"
         :class="{ active: activeSubIndicator === option.name }"
         @click="toggleSubIndicator(option.name)"
+      >
+        {{ option.label }}
+      </button>
+    </div>
+
+    <!-- 底部容器：周期（白名单过滤：periodWhitelist='day,week,month' → 仅日K/周K/月K，互斥单选） -->
+    <div class="period-bar">
+      <span class="hint">周期</span>
+      <button
+        v-for="option in Periods"
+        :key="option.value"
+        class="btn"
+        :class="{ active: activePeriod === option.value }"
+        @click="togglePeriod(option.value)"
       >
         {{ option.label }}
       </button>
@@ -262,6 +297,21 @@ body,
 /* 底部容器：附图指标（RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR，
    样式与主图指标容器一致） */
 .sub-indicator-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 80%;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  margin-top: 0;
+  margin-bottom: 12px;
+  background: v-bind('themeColors(theme).toolbarBackground');
+  border: 1px solid v-bind('themeColors(theme).toolbarBorder');
+  border-radius: 4px;
+}
+
+/* 底部容器：周期（13 项：分时 1~5 日 + 日/周/月 K + 60~1 分 K，样式与指标容器一致） */
+.period-bar {
   display: flex;
   align-items: center;
   gap: 8px;

@@ -156,16 +156,16 @@ export class IndicatorManager {
     switch (name) {
       case 'ma': {
         // MA5 / MA10 / MA20 / MA30 / MA60 五条线（东财标准五线）
-        const periods = [5, 10, 20, 30, 60]
-        periods.forEach((period, index) => {
+        const Periods = [5, 10, 20, 30, 60]
+        Periods.forEach((period, index) => {
           this.appendMainIndicatorLine(calcMA(bars, period), colors.ma[index], `MA${period}`)
         })
         break
       }
       case 'expma': {
         // EXPMA12 / EXPMA50 两条线（东财默认参数）
-        const periods = [12, 50]
-        periods.forEach((period, index) => {
+        const Periods = [12, 50]
+        Periods.forEach((period, index) => {
           this.appendMainIndicatorLine(calcEXPMA(bars, period), colors.expma[index], `EXPMA${period}`)
         })
         break

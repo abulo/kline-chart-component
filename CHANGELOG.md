@@ -8,6 +8,72 @@
 
 ---
 
+## v1.4.97（2026-10-14）
+
+周期白名单全局生效：App 周期栏按白名单渲染。
+
+### 变更
+- `App.vue`：周期白名单改为单一配置源 `periodWhitelist = 'day,week,month'`：
+  - App 底部周期栏由全量 13 项改为渲染 `whitelistedPeriods`（白名单过滤，
+    未知周期自动剔除）→ 仅显示 日K / 周K / 月K 三个；
+  - 同源传给 `KLineChart` 的 `:period-whitelist` prop（组件内白名单栏一致）；
+  - 高亮 / 互斥单选逻辑不变（默认日K在白名单内）。
+
+### 验证
+vue-tsc 通过；vitest 90/90 全绿（12 文件）；未运行 / 未截图。
+
+## v1.4.96（2026-10-14）
+
+修复：周期白名单按钮不可见（定位祖先缺失）。
+
+### 根因
+`KLineChart.vue` 模板为多根结构，白名单周期栏 `.kline-period-bar` 使用
+`position: absolute` 但无 `relative` 定位祖先 → 按钮相对最近的 positioned
+祖先（页面 / 外层容器）定位，飘出图表容器外，视觉上"白名单没有生效"。
+
+### 变更
+- `KLineChart.vue`：模板改为单根包裹 `.kline-chart`（`position: relative`），
+  白名单周期栏 absolute 相对包裹层悬浮于图表顶部（不参与布局、不改变尺寸）；
+- `App.vue`：`<KLineChart>` 传入 `period-whitelist="day,week,month"`
+  （组件内渲染日K / 周K / 月K 三个白名单周期按钮）。
+
+### 验证
+vue-tsc 通过；vitest 90/90 全绿（12 文件）；未运行 / 未截图。
+
+## v1.4.95（2026-10-14）
+
+周期选择：App 周期栏 + 组件周期白名单。
+
+### 变更
+- `App.vue`：底部新增周期栏（`period-bar`，样式与主 / 附图指标栏一致）：
+  渲染 `PERIODS` 13 项（分时 1~5 日 + 日/周/月 K + 60~1 分 K），互斥单选，
+  默认日K，点击切换 `activePeriod`（仅维护状态，周期数据请求另行接入）；
+- `KLineChart.vue`：新增 `periodWhitelist` prop（`PeriodValue[] | string`）：
+  - 数组（如 `['day','week','month']`）或逗号分隔字符串（如 `'day,week,month'`）；
+  - 有值（非空）时组件内渲染白名单内的周期按钮（悬浮于图表顶部，不参与布局），
+    点击 emit `'period-change'`（value 为周期标识）；无值 / 空时不渲染
+    （周期由外部 App 工具栏控制）；
+  - `whitelistedPeriods` computed 解析白名单并过滤 `PERIODS`（未知周期自动剔除）。
+
+### 验证
+vue-tsc 通过；vitest 90/90 全绿（12 文件）；未运行 / 未截图。
+
+## v1.4.94（2026-10-14）
+
+周期配置独立文件。
+
+### 变更
+- 新增 `src/chart/periods.ts`（chart/ 下独立文件，不建子目录）：
+  - `PERIODS`：13 项周期（1~5 日分时 / 日周月 K / 60/30/15/5/1 分 K），
+    `as const` 派生联合类型 `PeriodValue` / `PeriodLabel` / `PeriodItem`；
+  - `periodMap`：value → 配置项 O(1) 查询表（模块加载一次构建，切换周期零线性查找）；
+  - `getPeriodLabel`：按 value 取展示文案，未知周期容错返回原值；
+- 新增 `tests/periods.test.ts`（6 项：清单完整 / value 唯一 / label 非空 /
+  periodMap 一致性 / getPeriodLabel 命中与容错 / PeriodValue 联合类型抽检）。
+
+### 验证
+vue-tsc 通过；vitest 90/90 全绿（12 文件，新增 periods 6 项）；未运行 / 未截图。
+
 ## v1.4.93（2026-10-14）
 
 数据极限压力测试：10000 条数据全指标验证 + 组件支持数据条数配置。
