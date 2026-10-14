@@ -48,11 +48,10 @@ export interface IndicatorLineSet {
 export interface IndicatorLinePrimitiveOptions {
   /**
    * 绘制层级获取器（可选，默认 'top'）：
-   *  - 'top'：绘制在 top canvas（十字星之上）——主图（pane1）/ 成交量（pane3）
-   *    沿用历史行为（指标线不被十字星横线遮挡，线更醒目）；
-   *  - 'normal'：绘制在数据层（十字星之下、K 线/柱之上）——附图指标 pane5 使用，
-   *    满足"十字星在 pane5 内放在最上层"（库 top canvas 先画十字星再画
-   *    primitive top 视图，'top' 会盖住十字星）。
+   *  - 'top'：绘制在 top canvas（十字星之上）——主图（pane1）/ 成交量（pane3）/
+   *    附图指标（pane5）均用此默认：指标线完整可见、不被十字星横线遮挡；
+   *  - 'normal'：绘制在数据层（十字星之下、K 线/柱之上）——预留分支
+   *    （若需"十字星盖住指标线"的场景可传此值）。
    */
   getZOrder?: () => 'top' | 'normal'
 }

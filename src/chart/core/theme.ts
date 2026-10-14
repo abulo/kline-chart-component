@@ -43,6 +43,13 @@ export interface ChartThemeColors {
   crosshairLabelBackground: string
   /** 十字星指示值标签文字颜色（深浅系区分） */
   crosshairLabelText: string
+  /**
+   * 十字星横 / 竖线颜色（半透明，深浅系区分）：
+   * 库默认 '#9598A1' 不透明 —— 竖线穿过 MACD 红绿柱 / K 线 / 成交量柱时，
+   * 不透明虚线会完全遮盖柱体。半透明后虚线间隙与线体都透出柱体，视觉
+   * 上"不被遮盖"，同时十字星仍清晰可见（保持"十字星在柱上方"层级不变）。
+   */
+  crosshairLineColor: string
   /** 最高价标注颜色（黄色系，深浅系区分保证可读性） */
   highMarkerColor: string
   /** 最低价标注颜色（蓝色系，深浅系区分保证可读性） */
@@ -92,6 +99,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#1E222D',
     crosshairLabelBackground: '#2A2E39',
     crosshairLabelText: '#D1D4DC',
+    // 浅灰蓝半透明（#9598A1 @ 60%）：深背景上清晰、穿过柱体时透出
+    crosshairLineColor: 'rgba(149, 152, 161, 0.45)',
     highMarkerColor: '#F4AA0A',
     lowMarkerColor: '#2962FF',
     sarUp: '#FF0000',
@@ -120,6 +129,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#E6E8EC',
     crosshairLabelBackground: '#F0F2F5',
     crosshairLabelText: '#33373E',
+    // 中灰半透明（白底更清晰；穿过柱体时透出）
+    crosshairLineColor: 'rgba(90, 96, 112, 0.45)',
     highMarkerColor: '#B8860B',
     lowMarkerColor: '#2452CC',
     sarUp: '#FF0000',

@@ -4,9 +4,13 @@
  * 在 top canvas（十字星之上）逐条绘制指标折线：
  *  - 按 timeScale.getVisibleRange() 裁剪可视点区间（数据升序，线性扫描首尾）；
  *  - x = timeToCoordinate(time)、y = anchorSeries.priceToCoordinate(value)；
- *  - 相邻有效点连线（中间出现 null 坐标则断开路径），线宽 1、颜色 = 指标线颜色。
+ *  - **值越界（priceToCoordinate 返回 null）时贴边绘制而非断线**：BOLL 上下轨 /
+ *    部分指标的极值会超出可视价格值域（如窄幅横盘时 2σ 带宽大于 K 线高低），
+ *    旧逻辑遇 null 直接断开路径 → 曲线出现"断点 / 间隔"（v1.4.87 修复）；
+ *    贴边后线连续（从 pane 上 / 下边缘进出），与主流行情软件一致。
  */
 import {
+  type Coordinate,
   type IPrimitivePaneRenderer,
   type IPrimitivePaneView,
   type Time,
@@ -34,7 +38,7 @@ export class IndicatorLinePaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer {
     return {
       draw: (target) => {
-        target.useMediaCoordinateSpace(({ context }) => {
+        target.useMediaCoordinateSpace(({ context, mediaSize }) => {
           const data = this.source.getSource()
           const timeScale = data.getTimeScale()
           const seriesApi = data.anchorSeries()
@@ -43,6 +47,12 @@ export class IndicatorLinePaneView implements IPrimitivePaneView {
           if (visible === null) return
           const from = visible.from as number
           const to = visible.to as number
+          // 可视值域边界价格（用于越界贴边判断：coordinateToPrice(0) = 顶部价格、
+          // coordinateToPrice(mediaSize.height - 1) = 底部价格；scale 倒置时方向相反，
+          // 用数值比较而非假定上下，value 大于顶价则贴顶、小于底价则贴底）。
+          // 注意：coordinateToPrice 属 ISeriesApi（IPriceScaleApi 5.x 无此方法）
+          const topPrice = seriesApi.coordinateToPrice(0)
+          const bottomPrice = seriesApi.coordinateToPrice(mediaSize.height - 1)
           // 绘制前统一设置，减少状态切换
           context.lineWidth = 1
           for (const line of data.lines) {
@@ -58,11 +68,21 @@ export class IndicatorLinePaneView implements IPrimitivePaneView {
             for (let i = start; i < end; i++) {
               const point = line.points[i]
               const x = timeScale.timeToCoordinate(point.time as Time)
-              const y = seriesApi.priceToCoordinate(point.value)
-              if (x === null || y === null) {
-                // 坐标缺失（如缩放到区间外）：断开当前路径，避免跨空白区连线
+              if (x === null) {
+                // x 缺失（理论上仅发生在可视裁剪边界外）：断开当前路径，避免跨空白区连线
                 started = false
                 continue
+              }
+              let y = seriesApi.priceToCoordinate(point.value)
+              if (y === null) {
+                // 值越界：贴边绘制保持连续（topPrice / bottomPrice 可能为 null，
+                // 此时保守贴底部，避免整条线消失）
+                const value = point.value
+                if (topPrice !== null && bottomPrice !== null) {
+                  y = (value > topPrice ? 0 : mediaSize.height - 1) as Coordinate
+                } else {
+                  y = (mediaSize.height - 1) as Coordinate
+                }
               }
               if (!started) {
                 context.moveTo(x, y)

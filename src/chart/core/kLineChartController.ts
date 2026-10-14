@@ -171,12 +171,16 @@ export class KLineChartController {
       // 十字星：Normal 模式 = 横竖线自由跟随鼠标（不吸附数据点）
       crosshair: {
         mode: CrosshairMode.Normal,
-        // 时间轴（X 轴）十字星指示值标签：背景跟随深浅系 crosshairLabelBackground
+        // 横 / 竖线：半透明虚线（crosshairLineColor，深浅系区分）——
+        // 穿过 MACD 红绿柱 / K 线 / 成交量柱时柱体透出，不被不透明线遮盖；
+        // 时间轴（X 轴）十字星指示值标签背景跟随深浅系 crosshairLabelBackground
         // （文字颜色由库按背景亮度自动对比：深背景白字 / 浅背景黑字）
         vertLine: {
+          color: initialThemeColors.crosshairLineColor,
           labelBackgroundColor: initialThemeColors.crosshairLabelBackground,
         },
         horzLine: {
+          color: initialThemeColors.crosshairLineColor,
           labelBackgroundColor: initialThemeColors.crosshairLabelBackground,
         },
       },
@@ -537,12 +541,15 @@ export class KLineChartController {
         vertLines: { visible: false },
         horzLines: { visible: false },
       },
-      // 十字星指示值标签背景跟随主题（时间轴 + 价格轴；文字颜色库自动黑白对比）
+      // 十字星线颜色 + 指示值标签背景跟随主题（半透明线深浅系区分；
+      // 时间轴 + 价格轴标签文字颜色库自动黑白对比）
       crosshair: {
         vertLine: {
+          color: themeColorSet.crosshairLineColor,
           labelBackgroundColor: themeColorSet.crosshairLabelBackground,
         },
         horzLine: {
+          color: themeColorSet.crosshairLineColor,
           labelBackgroundColor: themeColorSet.crosshairLabelBackground,
         },
       },

@@ -8,6 +8,84 @@
 
 ---
 
+## v1.4.88（2026-10-14）
+
+十字星在 pane5 的逻辑照搬 pane3：指标线层级 'normal' → 'top'。
+
+### 变更
+- `indicatorManager.ts`：pane5 指标线（DIF/DEA 等）zOrder 由 'normal'（十字星之下）
+  改为默认 'top'（十字星之上），与 pane3 成交量均量线一致 —— 指标线完整可见、
+  不被十字星横线遮挡；MACD 红绿柱保持 'normal'（十字星穿过柱区仍可见）。
+- `indicatorLinePrimitive.ts`：选项注释同步（'normal' 改为预留分支）。
+
+### 验证
+vue-tsc 通过；vitest 78/78 全绿；未运行 / 未截图。
+
+## v1.4.87（2026-10-14）
+
+十字星线透明度 0.6 → 0.45（消除线被竖线轻微遮盖的断口观感）。
+
+### 说明
+"MACD 线条之间的间隔"经排查为**正常现象**：DIF（白）与 DEA（黄）是两条
+不同周期的均线差，数值不同 → 纵坐标不同 → 两条线之间存在垂直间距，交叉点
+即金叉 / 死叉。数据层已加测试（macdLineContinuity）证明线点完整、无 NaN、
+time 与 K 线严格对齐；挂载顺序保证线绘制在柱之上。
+
+### 变更
+- `theme.ts`：crosshairLineColor 透明度 0.6 → **0.45**（深浅系同步）——
+  竖线穿过 DIF/DEA 线与红绿柱时遮盖更轻微，线保持连贯；十字星仍清晰。
+
+### 验证
+vue-tsc 通过；vitest 78/78 全绿（新增 3 项 macdLineContinuity）；未运行 / 未截图。
+
+## v1.4.86（2026-10-14）
+
+修复十字星（竖线 / 横线）穿过 MACD 红绿柱时柱体被遮盖。
+
+### 根因
+十字星线使用库默认 `#9598A1` **不透明**虚线（LargeDashed）。竖线在柱体上方
+（v1.4.83 起"十字星在 pane5 最上层"），穿过红绿柱时，不透明虚线把柱体
+完全盖住 → 视觉上"红绿柱被遮盖"。
+
+### 变更
+- `theme.ts`：新增 `crosshairLineColor`（半透明）——
+  深系 `rgba(149,152,161,0.6)`（#9598A1 @ 60%）、浅系 `rgba(90,96,112,0.6)`
+  （中灰，白底更清晰）；
+- `kLineChartController.ts`：初始 options 与主题切换（applyTheme）同步设置
+  `crosshair.vertLine.color / horzLine.color` —— 虚线间隙与线体均透出柱体，
+  "不被遮盖"，同时十字星仍清晰（层级保持"十字星在柱上方"不变）。
+
+### 验证
+vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.85（2026-10-14）
+
+修复十字星竖线"不能到 pane5 底部"。
+
+### 根因
+lightweight-charts 在 Pane 之间绘制 1px 分隔线（`SeparatorConstants.SeparatorHeight`）。
+此前注释声称"已通过 patch-lwc-separator.js 将 1 → 0"，但该 patch **未生效**
+（node_modules 重装后丢失、scripts 脚本不存在）：指标开（6 Pane）时 5 条分隔线
+共 5px，全部从 Pane 可用高度中扣除 → pane5 实际高度比布局目标偏小，且 pane5
+底部残留 1px 分隔线 —— 竖线虽画满 pane5 canvas，但视觉上被分隔线截断，
+表现为"竖线不能到 pane5 底部"。
+
+### 变更
+- patch lightweight-charts dist 中 4 处 `SeparatorConstants.SeparatorHeight` 1 → 0
+  （SeparatorWidget 行高 / getSize / getBitmapSize / adjustSizeImpl）；
+- 新增 `scripts/patch-lwc-separator.js`（幂等，可重复执行）并接入
+  `npm run patch`：node_modules 重装后一键恢复；
+- README 补充 patch 必要性说明（未 patch 时 Pane 间 1px 分隔线 + pane5 高度
+  偏小 + 竖线视觉截断）。
+
+### 说明（竖线机制）
+库竖线在每个 Pane 的 top canvas 绘制 0 → Pane 高度，无裁剪；本修复后 pane5
+高度恢复布局目标值，竖线贯穿 pane5 到底（时间轴之上）。鼠标移出 Pane 数据区
+（进入时间轴 / 图表外）时库会清除十字星，属库标准行为。
+
+### 验证
+vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
 ## v1.4.84（2026-10-14）
 
 修复 MACD 附图红绿柱被"切割"、DIF / DEA 灰黄线不连贯。

@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.84（2026-10-14）**
+> **当前版本：v1.4.88（2026-10-14）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
@@ -154,8 +154,11 @@ npm run test       # vitest 单测（43 项）
 npm run build      # vue-tsc 类型检查 + 构建
 ```
 
-注意：`node_modules` 安装后需运行 `npm run patch`（若已配置）或手动应用库分隔线 patch
-（`scripts/patch-lwc-separator.js`，SeparatorHeight 1 → 0，幂等），否则 Pane 间会出现 1px 分隔线。
+注意：`node_modules` 安装后必须运行 `npm run patch`（或 `node scripts/patch-lwc-separator.js`，
+幂等）—— 该脚本把 lightweight-charts dist 的分隔线高度（SeparatorConstants.SeparatorHeight）
+从 1px 置为 0。若未 patch：Pane 之间会出现 1px 分隔线，且内容 Pane 高度被分隔线
+挤占（指标开 6 Pane 时共 5px），导致最底部 pane5 高度偏小、**十字星竖线视觉上
+"不能到 pane5 底部"**（竖线画满 pane5 canvas，但底部被残留分隔线截断）。
 
 ## 六、内存与性能
 

@@ -497,16 +497,15 @@ export class IndicatorManager {
     })
     this.indicatorsBarSeries.attachPrimitive(pane5CrosshairLabel)
     this.crosshairRegistry.registerPrimitive(pane5CrosshairLabel)
-    // pane5 指标线：IndicatorLinePrimitive 自绘（zOrder 'normal' → 十字星之下，
-    // 满足"十字星在 pane5 最上层"；数据由 rebuildSubIndicatorData 写入
-    // subIndicatorLines 缓存现取）
+    // pane5 指标线：IndicatorLinePrimitive 自绘（zOrder 'top' → 十字星之上，
+    // 与 pane3 成交量均量线一致：指标线完整可见、不被十字星横线遮挡；
+    // MACD 红绿柱（MacdBarPaneView 'normal'）仍在十字星之下，十字星穿过柱区可见）
     this.subIndicatorLinePrimitive = new IndicatorLinePrimitive(
       () => ({
         lines: this.subIndicatorLines,
         getTimeScale: () => this.chart.timeScale(),
         anchorSeries: () => this.indicatorsBarSeries!,
       }),
-      { getZOrder: () => 'normal' },
     )
     this.indicatorsBarSeries.attachPrimitive(this.subIndicatorLinePrimitive)
   }

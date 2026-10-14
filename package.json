@@ -1,14 +1,15 @@
 {
   "name": "lightweight-charts-demo",
   "private": true,
-  "version": "1.4.84",
+  "version": "1.4.88",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "patch": "node scripts/patch-lwc-separator.js"
   },
   "dependencies": {
     "lightweight-charts": "5.2.1",
