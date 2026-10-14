@@ -44,6 +44,19 @@ export interface IndicatorLineSet {
   anchorSeries: () => ISeriesApi<SeriesType>
 }
 
+/** 指标线 primitive 构造选项（可选） */
+export interface IndicatorLinePrimitiveOptions {
+  /**
+   * 绘制层级获取器（可选，默认 'top'）：
+   *  - 'top'：绘制在 top canvas（十字星之上）——主图（pane1）/ 成交量（pane3）
+   *    沿用历史行为（指标线不被十字星横线遮挡，线更醒目）；
+   *  - 'normal'：绘制在数据层（十字星之下、K 线/柱之上）——附图指标 pane5 使用，
+   *    满足"十字星在 pane5 内放在最上层"（库 top canvas 先画十字星再画
+   *    primitive top 视图，'top' 会盖住十字星）。
+   */
+  getZOrder?: () => 'top' | 'normal'
+}
+
 export class IndicatorLinePrimitive implements ISeriesPrimitive<Time> {
   /** 指标线数据源获取器（只读，draw 时现取 —— 切换指标 / 换数据后自动跟随） */
   public readonly getSource: () => IndicatorLineSet
@@ -51,12 +64,15 @@ export class IndicatorLinePrimitive implements ISeriesPrimitive<Time> {
   /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
   private readonly paneView: IndicatorLinePaneView
 
-  constructor(getSource: () => IndicatorLineSet) {
+  constructor(
+    getSource: () => IndicatorLineSet,
+    options?: IndicatorLinePrimitiveOptions,
+  ) {
     this.getSource = getSource
-    this.paneView = new IndicatorLinePaneView(this)
+    this.paneView = new IndicatorLinePaneView(this, options?.getZOrder ?? (() => 'top'))
   }
 
-  /** pane 视图（zOrder 'top' → 绘制在 top canvas、十字星之上；单例复用） */
+  /** pane 视图（层级由构造选项决定，见 IndicatorLinePrimitiveOptions） */
   paneViews(): readonly IPrimitivePaneView[] {
     return [this.paneView]
   }

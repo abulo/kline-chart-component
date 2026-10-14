@@ -1,7 +1,7 @@
 {
   "name": "lightweight-charts-demo",
   "private": true,
-  "version": "1.4.81",
+  "version": "1.4.84",
   "type": "module",
   "scripts": {
     "dev": "vite",

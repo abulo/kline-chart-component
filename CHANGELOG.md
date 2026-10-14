@@ -8,6 +8,56 @@
 
 ---
 
+## v1.4.84（2026-10-14）
+
+修复 MACD 附图红绿柱被"切割"、DIF / DEA 灰黄线不连贯。
+
+### 根因
+v1.4.83 将 MACD 柱（MacdBarPrimitive）与 pane5 指标线降为 normal 层（十字星之上）
+后，二者与锚点 series 同在 main canvas。库 normal 层绘制顺序 = **先 pane
+primitive、后 series 本体**：锚点 series（`indicatorsBarSeries`，Histogram，
+颜色 = 不透明背景色）每个 bar 画一根背景色柱形 → 逐根覆盖先画的自绘红绿柱
+与灰黄线 → 柱被切、线断断续续。v1.4.81（zOrder 'top'）时柱画在 top canvas，
+被 main canvas 的锚点柱盖住，无此问题。
+
+### 变更
+- `indicatorManager.ts` 新增 `invisibleSeriesColor = 'rgba(0, 0, 0, 0)'`；
+- 锚点 series（`indicatorsBarSeries` / `indicatorScaleAnchorSeries`）颜色
+  背景色 → **全透明**：透明不产生像素、不覆盖自绘内容；scale 值域只取
+  数据值，与颜色无关，刻度对称 / 0 值线固定不受影响；
+- `updateThemeColors` 主题切换时同步保持锚点全透明（避免浅 / 深切换时
+  被改回不透明背景色导致问题复发）。
+
+### 验证
+vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.83（2026-10-14）
+
+十字星（横线 / 竖线）在附图指标 MACD 时置于红绿柱上方（不放在下方）。
+
+### 背景
+v1.4.82 的对应修改因用户环境回滚丢失（源码退回 v1.4.81、zip 被清理），
+本版重建并交付。
+
+### 根因
+库 top canvas 绘制顺序固定：先 `drawCrosshair`（十字星横竖线）→ 再画
+primitive 的 zOrder 'top' 视图。MACD 柱（MacdBarPrimitive）此前 zOrder = 'top'
+→ 画在十字星**之上**，十字星被红绿柱盖住（视觉上横线 / 竖线在柱下方）。
+
+### 变更
+- `macdBarPaneView.ts`：MACD 柱 zOrder 'top' → **'normal'**（数据层：十字星之下、
+  K 线 / 柱之上）；库按 zOrder 提取分层（main canvas z-index 1 < top canvas
+  z-index 2），十字星横竖线必在柱上方；
+- `indicatorLinePrimitive.ts`：新增构造选项 `getZOrder?: () => 'top' | 'normal'`
+  （默认 'top'，pane1 主图 / pane3 成交量线行为不变）；
+- `indicatorLinePaneView.ts`：zOrder 由注入 getter 动态决定；
+- `indicatorManager.ts`：pane5 指标线（DIF / DEA）传 `getZOrder: () => 'normal'`
+  → 与柱同层，十字星同样在其上方。
+- 栅格（bottom）/ 边框（normal 默认）本就在十字星之下，无需改动。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
 ## v1.4.81（2026-10-14）
 
 MACD 去掉 MACD 柱的线条：只保留 DIF / DEA 两条线 + 红绿柱。

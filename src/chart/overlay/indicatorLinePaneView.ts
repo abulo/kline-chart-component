@@ -17,13 +17,17 @@ export class IndicatorLinePaneView implements IPrimitivePaneView {
   /** 所属 primitive（取指标线数据源） */
   private readonly source: IndicatorLinePrimitive
 
-  constructor(source: IndicatorLinePrimitive) {
+  /** 绘制层级获取器（'top' 默认；pane5 附图指标传 'normal' → 十字星之下） */
+  private readonly getZOrder: () => 'top' | 'normal'
+
+  constructor(source: IndicatorLinePrimitive, getZOrder: () => 'top' | 'normal') {
     this.source = source
+    this.getZOrder = getZOrder
   }
 
-  /** zOrder 'top' → 绘制在 top canvas（十字星之上，指标线不被十字星遮挡） */
-  zOrder(): 'top' {
-    return 'top'
+  /** 层级：'top'（十字星之上，主图 / 成交量线默认）或 'normal'（十字星之下，附图指标） */
+  zOrder(): 'top' | 'normal' {
+    return this.getZOrder()
   }
 
   /** 渲染器：逐条绘制指标折线 */

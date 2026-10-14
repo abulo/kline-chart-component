@@ -64,6 +64,15 @@ const zeroCenteredSubIndicators = ['macd', 'cci'] as const
 const isZeroCenteredSubIndicator = (name: string): boolean =>
   (zeroCenteredSubIndicators as readonly string[]).includes(name)
 
+/**
+ * 不可见 series 颜色（全透明）：
+ * 建 scale 的锚点 series 用透明色而非背景色 —— 透明不产生像素、不会覆盖
+ * 同 canvas 上的自绘内容（v1.4.83 起 MACD 柱 / 指标线降为 normal 层后，
+ * 若锚点柱用不透明背景色，会在 main canvas 逐根覆盖红绿柱与灰黄线，
+ * 表现为"柱被切割、线不连贯"）；scale 值域只取数据值，与颜色无关。
+ */
+const invisibleSeriesColor = 'rgba(0, 0, 0, 0)'
+
 /** 十字星指示值 primitive 管理接口（CrosshairManager 提供） */
 export interface CrosshairPrimitiveRegistry {
   /** 注册（pane1 / pane3 由控制器注册，pane5 由本管理器注册） */
@@ -396,7 +405,9 @@ export class IndicatorManager {
       {
         priceScaleId: 'left',
         base: 0, // 柱从 0 轴绘制（正负双方向）
-        color: themeColors(this.getTheme()).background, // 不可见（仅建 scale）
+        // 全透明不可见（仅建 scale）：锚点柱不产生像素，避免在 normal 层
+        // 逐根覆盖自绘的 MACD 红绿柱与指标线（见 invisibleSeriesColor 说明）
+        color: invisibleSeriesColor,
         priceLineVisible: false,
         lastValueVisible: false,
         // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
@@ -423,7 +434,9 @@ export class IndicatorManager {
       LineSeries,
       {
         priceScaleId: 'left',
-        color: themeColors(this.getTheme()).background, // 不可见（仅撑 scale 值域）
+        // 全透明不可见（仅撑 scale 值域）：1px 背景色线在 normal 层也会与自绘内容
+        // 叠加产生遮挡，统一用透明色（见 invisibleSeriesColor 说明）
+        color: invisibleSeriesColor,
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -484,14 +497,16 @@ export class IndicatorManager {
     })
     this.indicatorsBarSeries.attachPrimitive(pane5CrosshairLabel)
     this.crosshairRegistry.registerPrimitive(pane5CrosshairLabel)
-    // pane5 指标线：IndicatorLinePrimitive 自绘（top canvas，十字星之上，
-    // 不被横线遮挡）；数据由 rebuildSubIndicatorData 写入 subIndicatorLines 缓存现取
+    // pane5 指标线：IndicatorLinePrimitive 自绘（zOrder 'normal' → 十字星之下，
+    // 满足"十字星在 pane5 最上层"；数据由 rebuildSubIndicatorData 写入
+    // subIndicatorLines 缓存现取）
     this.subIndicatorLinePrimitive = new IndicatorLinePrimitive(
       () => ({
         lines: this.subIndicatorLines,
         getTimeScale: () => this.chart.timeScale(),
         anchorSeries: () => this.indicatorsBarSeries!,
       }),
+      { getZOrder: () => 'normal' },
     )
     this.indicatorsBarSeries.attachPrimitive(this.subIndicatorLinePrimitive)
   }
@@ -618,8 +633,10 @@ export class IndicatorManager {
 
   /** 主题切换后同步指标相关颜色（数据不变，仅换色 + 触发重绘） */
   updateThemeColors = (themeColorSet: ChartThemeColors): void => {
-    // 附图指标锚点色跟随背景（保持不可见）；可见柱体由 MacdBarPrimitive 动态取新主题色
-    this.indicatorsBarSeries?.applyOptions({ color: themeColorSet.background })
+    // 附图指标锚点 series 保持全透明（仅建 scale，不可见不覆盖）；
+    // 可见柱体由 MacdBarPrimitive 动态取新主题色
+    this.indicatorsBarSeries?.applyOptions({ color: invisibleSeriesColor })
+    this.indicatorScaleAnchorSeries?.applyOptions({ color: invisibleSeriesColor })
     // SAR 圆点颜色（多头红 / 空头绿）随主题更新
     this.sarMarkerPrimitive?.setTheme(themeColorSet)
     // 成交量均量线颜色跟随主题（数据不变，仅换色；MA5/MA10 色值见 theme.volMa5/volMa10）
