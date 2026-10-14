@@ -8,6 +8,99 @@
 
 ---
 
+## v1.4.73（2026-10-14）
+
+按功能拆分 `kLineChartController.ts`（1173 行 → 6 个文件），功能零变化（纯重构）。
+
+### 拆分结构（每个 class / 常量一个文件）
+- `src/chart/core/kLineChartController.ts`（瘦身至 ~700 行）：
+  仅保留图表创建 / Pane 构建 / 数据写入（applyData）/ 布局（applyStretchFactors）/
+  主题（applyTheme）/ 缩放平移 / 刻度开关 / 生命周期（destroy），职责委托给管理器；
+- `src/chart/core/indicatorManager.ts`（新）：
+  `IndicatorManager` 指标管理器 —— 主图五指标（setMainIndicator）+ 附图十指标
+  （setSubIndicator / 指标层 pane4+pane5 创建与移除 / rebuildSubIndicatorData）+
+  成交量均量线（rebuildVolumeData）+ pane0/2/4 信息行分段
+  （buildInfoSegments / buildVolumeInfoSegments / buildSubIndicatorInfoSegments）+
+  主题同步（updateThemeColors）。依赖注入（series 惰性 getter + theme / overlayTime /
+  十字星注册表 / 布局回调），构造时 series 未创建也可安全组合；
+- `src/chart/core/crosshairManager.ts`（新）：
+  `CrosshairManager` 十字星管理器 —— handleCrosshairMove（pane0 不触发 / 内容 Pane
+  注入左刻度指示值）+ overlayTime（信息行时间同源）+ 指示值 primitive 注册表
+  （registerPrimitive / removeByPaneIndex），构造即订阅、destroy 退订；
+- `src/chart/core/constants.ts`（新）：LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH；
+- `src/chart/core/types.ts`（新）：KLineChartOptions / MainIndicatorName / IndicatorLineSpec
+  （controller re-export 保持外部导入接口不变）；
+- `src/chart/core/indicatorMeta.ts`（新）：subIndicatorLabels（附图指标线名）。
+
+### 说明
+- 十字星指示值数组归 CrosshairManager 所有：pane1/pane3 由控制器注册，
+  pane5 由 IndicatorManager 经 crosshairRegistry 注册 / 按 pane 下标移除；
+- `MainIndicatorName` 继续从 controller re-export（App.vue 导入路径不变）；
+- 未删除任何文件；无未使用 import / 函数残留。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.72（2026-10-14）
+
+pane4 指标信息行文字间距与 pane2 成交量信息行一致。
+
+### 根因
+`InfoLabelPaneView` 按 `measureText` 无缝拼接分段文字，段间距完全由文本自身决定：
+- pane2（成交量）：后续段文本前导 1 空格（`成交量: x  MA5: x  MA10: x`）→ 有间距；
+- pane4（指标信息行）：`${label}: ${value}` 无前导空格 → 各段首尾紧贴、无间距。
+
+### 修复
+- `buildSubIndicatorInfoSegments`：首段无前导空格、后续段前导 1 空格，
+  与 pane2 间距一致（如 `RSI6: 50.2  RSI12: 48.1  RSI24: 45.3`）。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.71（2026-10-14）
+
+统一指标层绘制层级：MACD 柱改为 top 层重绘（与指标线一致，纳入 setSubIndicator 统一管理）。
+
+### 背景
+指标层统一由 `setSubIndicator(name | null)` 管理（开层 / 关层 / 切换指标）：
+- 线型指标（含 MACD 的 DIF / DEA 线）：`IndicatorLinePrimitive` top 层自绘（十字星之上）；
+- MACD 红绿柱此前 `MacdBarPaneView` **无 zOrder → 默认 normal（bottom canvas）**，
+  绘制在十字星之下 —— 与指标线层级不一致，十字星横线会遮挡 MACD 柱
+  （违反用户既定叠加顺序：十字星 → 指标绘图 → K线/成交量）。
+
+### 修复
+- `MacdBarPaneView` 新增 `zOrder(): 'top'`：MACD 柱改 top canvas 重绘，
+  与 DIF / DEA 线、其他指标线同层（十字星之上）；
+- 指标层全部元素（线 + 柱）统一在 top 层、由 setSubIndicator 切换时
+  `rebuildSubIndicatorData` 全量重建 + `chart.applyOptions({})` 强制重绘；
+  非 MACD 指标时 macdPoints 为空 → 柱不绘制，无残留。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.70（2026-10-14）
+
+修复 MACD 首根数据不渲染。
+
+### 根因
+MACD 计算特性：EMA 首日以首日收盘价起步 → 首根 DIF / DEA / 柱值 = 0；
+Y 轴锚点（rebuildSubIndicatorData）此前取全量线 min / max 作为 scale 值域，
+当 MACD 全为正（或全为负）时值域不含 0 → `priceToCoordinate(0)` 返回 null，
+首根（0 值）的 DIF / DEA 线起点与柱被渲染裁剪（视觉上"第一个数据没渲染"）。
+
+### 修复
+- `rebuildSubIndicatorData`：MACD 指标时 scale 强制覆盖 0
+  （`maxValue = Math.max(...values, 0)`、`minValue = Math.min(...values, 0)`），
+  保证 0 轴始终在值域内，首根柱与线起点正常绘制；
+- 其他指标（如 OBV 累计值）保持实际值域，避免 0 拉宽 scale 压缩图形。
+
+### 说明
+- MACD 首根柱值本身 = 0（算法特性）：柱体高度为 0，视觉上本就无柱；
+  本次修复的是"值域不含 0 时首根线起点 / 柱整体被裁剪"的问题。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
 ## v1.4.69（2026-10-14）
 
 修复附图指标：点击指标后图表消失 / 布局错乱。

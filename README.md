@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.69（2026-10-14）**
+> **当前版本：v1.4.73（2026-10-14）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
@@ -85,7 +85,12 @@ src/
 │   └── KLineChart.vue         # 图表组件（props: symbol / name → pane0 信息行"名称[代码] 时间 + 指标值"，随十字星）
 ├── chart/                     # 按功能分组的图表源码
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
-│   │   ├── KLineChartController.ts # 控制器：Pane 创建 / 布局 / 主题 / 数据 / 十字星联动
+│   │   ├── kLineChartController.ts # 控制器（v1.4.73 功能拆分版）：Pane 创建 / 布局 / 主题 / 数据 / 缩放平移 / 刻度开关 / 生命周期，职责委托给下方管理器
+│   │   ├── indicatorManager.ts # 指标管理器（主图五指标 + 附图十指标 + 成交量均量线 + 信息行分段；setMainIndicator / setSubIndicator）
+│   │   ├── crosshairManager.ts # 十字星管理器（十字星移动联动 + overlayTime + 左刻度指示值注册表）
+│   │   ├── constants.ts        # 共享常量（LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH）
+│   │   ├── types.ts            # 公共类型（KLineChartOptions / MainIndicatorName / IndicatorLineSpec）
+│   │   ├── indicatorMeta.ts    # 附图指标线名元信息（subIndicatorLabels）
 │   │   ├── layout.ts          # 布局常量与高度计算（60/20/20 ⇄ 80/20）
 │   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）+ 主图 / 附图指标配色
 │   │   ├── mock.ts            # mock 数据（日 K，纯函数可单测）

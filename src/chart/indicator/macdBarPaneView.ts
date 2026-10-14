@@ -39,6 +39,13 @@ export class MacdBarPaneView implements IPrimitivePaneView {
     this.source = source
   }
 
+  /** zOrder 'top' → 绘制在 top canvas（十字星之上）。
+   *  统一指标层叠加顺序（用户既定：十字星 → 指标绘图 → K线/成交量）：
+   *  MACD 柱与 DIF / DEA 线（IndicatorLinePrimitive top 层）同层，十字星横线不遮挡柱体 */
+  zOrder(): 'top' {
+    return 'top'
+  }
+
   /** 渲染器：自绘 MACD 柱（media 坐标系 = CSS 像素） */
   renderer(): IPrimitivePaneRenderer {
     return {
