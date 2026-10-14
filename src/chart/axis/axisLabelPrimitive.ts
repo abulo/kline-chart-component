@@ -50,6 +50,18 @@ export interface AxisLabelConfig {
    * 动态获取使同一 pane 切换指标（MACD ⇄ 其他）无需重建刻度 primitive。
    */
   getFixedMiddleValue?: () => number | undefined
+  /**
+   * 首尾刻度固定值获取器（可选）：返回 { topValue, bottomValue } 时，
+   * 首尾刻度（i = 0 / hCount）**直接显示该值**而不经 coordinateToPrice 反推。
+   *
+   * 必要性（v1.4.79 根因修复）：首尾刻度内嵌 AXIS_LABEL_PAD 像素，
+   * 经库 coordinateToLogical 反推时，顶 / 底内嵌偏移产生不同溢出率
+   * （对称值域 ±A + 对称 scaleMargins 下，顶部约 +0.151A、底部约 −0.163A，
+   * 随 pane 高度变化）→ 显示刻度 |max| ≠ |min|（如 0.27 / −0.28）。
+   * 对要求刻度对称的 pane（如 MACD），直接固定显示 scale 边界值
+   * （maxValue / minValue），|max| = |min| 严格成立、与平移无关。
+   */
+  getEdgeFixedValues?: () => { topValue: number; bottomValue: number } | undefined
 }
 
 export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
@@ -119,13 +131,21 @@ export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
           : i === hCount
             ? paneHeight - AXIS_LABEL_PAD
             : Math.round((paneHeight * i) / hCount)
+      // 首尾固定值（如 MACD 直接显示 ±absMax，保证 |max| = |min| 且不随平移变化）；
+      // 中间固定值（如 MACD 中间 = 0）；其余反推该 y 处价格（随数据实时变化）
+      const edgeValues = this.config.getEdgeFixedValues?.()
       views.push(
         new AxisLabelView({
           primitive: this,
           coordinate: y,
-          // 中间刻度固定值（如 MACD 中间刻度 = 0，不受 scale 中间值影响）
           fixedValue:
-            i === Math.floor(hCount / 2) ? this.config.getFixedMiddleValue?.() : undefined,
+            i === 0
+              ? edgeValues?.topValue
+              : i === hCount
+                ? edgeValues?.bottomValue
+                : i === Math.floor(hCount / 2)
+                  ? this.config.getFixedMiddleValue?.()
+                  : undefined,
         }),
       )
     }

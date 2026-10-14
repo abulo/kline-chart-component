@@ -133,6 +133,22 @@ export class IndicatorManager {
   private showIndicator: boolean
   /** pane5 指标柱（Histogram，指标通用；开启时创建，关闭时销毁置 null） */
   private indicatorsBarSeries: ISeriesApi<'Histogram'> | null = null
+  /**
+   * pane5 刻度对称锚点 series（Line，不可见）：
+   * 数据 = 全部时间点交替 ±absMax（i 偶 = +maxValue、i 奇 = -minValue），
+   * 使可视区内**任意窗口**都同时含正 / 负锚点 → priceScale autoScale 并集恒为
+   * [-absMax, +absMax]：平移 / 缩放 / 切换指标时 0 值线（中间刻度）固定不漂移，
+   * 首尾刻度对称（|max| = |min|）。若只用首尾两根锚点，平移后可视区不含锚点，
+   * 库按可视区数据重算值域，DIF/DEA/MACD 线条会整体上下漂移。
+   */
+  private indicatorScaleAnchorSeries: ISeriesApi<'Line'> | null = null
+  /**
+   * 当前附图指标 scale 值域边界（rebuildSubIndicatorData 每次重建时缓存）：
+   * 供 pane5 左刻度**首尾固定值**显示（getEdgeFixedValues → ±absMax），
+   * 保证刻度 |max| = |min| 严格成立、与平移 / 内嵌偏移无关。
+   */
+  private subScaleMax = 0
+  private subScaleMin = 0
   /** pane5 附图指标各线数据缓存（{ 线色, 数据点 }[]；top 层自绘现取） */
   private subIndicatorLines: IndicatorLineSpec[] = []
   /** pane5 附图指标线自绘 primitive（挂 indicatorsBarSeries，zOrder 'top'） */
@@ -378,6 +394,33 @@ export class IndicatorManager {
       },
       5,
     )
+    // pane5 左刻度对称边距：库 priceScale.scaleMargins 默认 { top: 0.2, bottom: 0.1 }
+    // —— 上下边距不对称。首尾刻度（内嵌 AXIS_LABEL_PAD=8px）经 coordinateToPrice 反推
+    // 的值被不对称边距扭曲 → 即使 Y 轴值域对称（rebuildSubIndicatorData 已 |max|=|min|），
+    // 显示刻度的最大值 / 最小值绝对值仍不相等（如 MACD 顶部约 +1.5A / 底部约 -1.2A）。
+    // 改为 top = bottom = 0.1：数据映射上下镜像对称，首尾刻度反推值绝对值严格相等，
+    // 同时柱体上下各留 10% 边距（不贴边、视觉更均匀）。
+    this.chart.priceScale('left', 5).applyOptions({
+      scaleMargins: { top: 0.1, bottom: 0.1 },
+    })
+    // pane5 刻度对称锚点 series（不可见）：全部时间点交替 ±absMax，
+    // 使任意可视窗口都含正 / 负锚点 → autoScale 并集恒为对称 [-absMax, +absMax]，
+    // 0 值线固定不漂移（数据由 rebuildSubIndicatorData 同步更新）
+    this.indicatorScaleAnchorSeries = this.chart.addSeries(
+      LineSeries,
+      {
+        priceScaleId: 'left',
+        color: themeColors(this.getTheme()).background, // 不可见（仅撑 scale 值域）
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        priceFormat: {
+          type: 'custom',
+          formatter: () => '',
+        },
+      },
+      5,
+    )
     // MACD 红绿柱自绘（仅激活 MACD 时有数据；柱体 > 0 空心红 / < 0 绿实心）
     this.macdBarPrimitive = new MacdBarPrimitive(
       () => this.macdPoints,
@@ -408,6 +451,13 @@ export class IndicatorManager {
         getFont: () => chartFont,
         format: (value) => formatAxisSmart(value),
         getFixedMiddleValue: () => (this.activeSubIndicator === 'macd' ? 0 : undefined),
+        // 首尾刻度固定显示 scale 边界值（±absMax）：避免内嵌 8px 位置经
+        // coordinateToPrice 反推产生顶/底不同溢出率导致 |max| ≠ |min|（0.27/-0.28）；
+        // MACD 与全部附图指标通用（RSI 等首尾显示其值域边界，更直观）
+        getEdgeFixedValues: () => ({
+          topValue: this.subScaleMax,
+          bottomValue: this.subScaleMin,
+        }),
       }),
     )
     // pane5 十字星左刻度指示值：十字星横线所在指标值（大数缩写 / 自适应小数）
@@ -444,6 +494,7 @@ export class IndicatorManager {
     this.chart.removePane(4)
     this.chart.removePane(4)
     this.indicatorsBarSeries = null
+    this.indicatorScaleAnchorSeries = null
     this.macdBarPrimitive = null
     this.subIndicatorLinePrimitive = null
     // 移除 pane5 十字星指示值 primitive 引用（series 已销毁，清引用防泄漏 /
@@ -478,8 +529,25 @@ export class IndicatorManager {
     // 裁剪（"第一个数据不渲染"）；强制 scale 覆盖 0。
     // 其他指标（OBV 等累计值）按实际值域，避免 0 拉宽 scale 压缩图形。
     const forceZero = name === 'macd'
-    const maxValue = Math.max(...allValues, forceZero ? 0 : -Infinity)
-    const minValue = Math.min(...allValues, forceZero ? 0 : Infinity)
+    // 单趟扫描极值（数据量小；用循环避免 spread 大数组栈风险）
+    let maxValue = -Infinity
+    let minValue = Infinity
+    for (const value of allValues) {
+      if (value > maxValue) maxValue = value
+      if (value < minValue) minValue = value
+    }
+    if (forceZero) {
+      // MACD 刻度对称：Y 轴以 0 为对称中心，左刻度最大值与最小值绝对值相等
+      // （|max| = |min| = 全量极值绝对值的最大值；如 DIF 最大 2.1 / 柱最小 -1.3
+      //  → 刻度范围 [-2.1, +2.1]，正负刻度值镜像对齐）
+      const absMax = Math.max(Math.abs(maxValue), Math.abs(minValue), 0)
+      maxValue = absMax
+      minValue = -absMax
+    }
+    // 缓存 scale 值域边界（pane5 首尾刻度固定显示用；首尾标签不再反推，
+    // 避免内嵌偏移顶/底溢出率不同导致 |max| ≠ |min|）
+    this.subScaleMax = maxValue
+    this.subScaleMin = minValue
     const anchorPoints = lines[0].map((point) => ({
       time: point.time as UTCTimestamp,
       value: point.value,
@@ -490,6 +558,16 @@ export class IndicatorManager {
       value: minValue,
     }
     this.indicatorsBarSeries.setData(anchorPoints)
+    // 刻度对称锚点 series：全部时间点交替 ±absMax（可视区任意窗口恒含正 / 负锚点，
+    // scale 值域恒为 [-absMax, +absMax] → 0 值线固定；平移 / 切换指标均不漂移）
+    if (this.indicatorScaleAnchorSeries !== null) {
+      this.indicatorScaleAnchorSeries.setData(
+        lines[0].map((point, index) => ({
+          time: point.time as UTCTimestamp,
+          value: index % 2 === 0 ? maxValue : minValue,
+        })),
+      )
+    }
     // MACD 柱点缓存（MacdBarPrimitive 自绘现取；仅 MACD 有值，其他指标为空不画柱）
     if (name === 'macd') {
       const [difLine, deaLine, histLine] = lines

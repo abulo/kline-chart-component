@@ -8,6 +8,97 @@
 
 ---
 
+## v1.4.79（2026-10-14）
+
+彻底修复附图指标左刻度 |max| ≠ |min|（实测 0.27 / -0.28，差 0.01）。
+
+### 根因（v1.4.76 值域对称 + v1.4.77 边距对称后仍不对称）
+首尾刻度标签位置**内嵌 AXIS_LABEL_PAD = 8px**（顶部 y=8、底部 y=H-8），
+值经库 `coordinateToLogical` 反推。库映射公式（默认不反转）：
+
+```
+invCoord = H - 1 - y
+logical = min + (max-min) × (invCoord - bottomMarginPx) / (internalHeight - 1)
+```
+
+scale max 映射在 y = 0.1H、min 映射在 y = 0.9H（对称），但内嵌 8px 的位置
+使顶 / 底产生**不同溢出率**（对称值域 ±A 时：顶部 ≈ +0.151A、底部 ≈ −0.163A，
+随 pane 高度变化）→ 反推显示值 |max| ≠ |min|（如 0.27 / −0.28）。
+
+### 修复
+- `axisLabelPrimitive.ts`：`AxisLabelConfig` 新增 `getEdgeFixedValues?`；
+  首尾刻度（i = 0 / hCount）存在该值时**直接固定显示** scale 边界值，
+  不再 coordinateToPrice 反推（位置仍内嵌，仅值改为固定）；
+- `indicatorManager.ts`：缓存 `subScaleMax / subScaleMin`（rebuildSubIndicatorData
+  每次重建赋值 = maxValue / minValue），pane5 刻度 primitive 传入
+  `getEdgeFixedValues: () => ({ topValue: subScaleMax, bottomValue: subScaleMin })`：
+  - MACD：首尾直接显示 ±absMax，|max| = |min| **严格成立**、与平移无关；
+  - 全部附图指标通用（RSI 等首尾显示其值域边界，更直观）；
+  - 中间刻度逻辑不变（MACD 固定 0 / 其他反推）。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.78（2026-10-14）
+
+修复平移时 DIF / DEA / MACD 线条整体漂移（0 值线未固定）。
+
+### 根因
+pane5 的 Y 轴锚点极值（±absMax）只固定在**首 / 末两根**（indicatorsBarSeries
+首尾点替换为极值）。平移后可视区域不再包含首尾锚点 → 库 autoScale 按**可视区内**
+数据重算值域（中间只有 DIF/DEA/柱 实际值，不含 ±absMax）→ 值域随平移变化，
+0 值线（中间刻度）漂移，线条整体上下移动。
+
+### 修复
+- `indicatorManager.ts`：
+  - 新增不可见锚点 series `indicatorScaleAnchorSeries`（Line，pane5，
+    color = 背景色、priceLine/lastValue 隐藏）：
+    数据 = 全部时间点**交替 ±absMax**（i 偶 = +maxValue、i 奇 = -minValue）；
+  - 可视区任意窗口（≥2 根）都同时含正 / 负锚点 → priceScale autoScale 并集
+    恒为 `[-absMax, +absMax]`：平移 / 缩放 / 切换指标时 0 值线固定不漂移；
+  - `rebuildSubIndicatorData` 每次 setData 同步更新锚点（新指标新极值自动生效）；
+  - `removeIndicatorPanes` 随 pane 销毁置空（无泄漏）。
+- 保持 v1.4.77 的对称 scaleMargins（top = bottom = 0.1），刻度 |max| = |min| 不变。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.77（2026-10-14）
+
+修复 MACD 左刻度最大值 / 最小值绝对值仍不相等（根因：库 scaleMargins 默认不对称）。
+
+### 根因（v1.4.76 值域已对称，但显示刻度仍不对称）
+库 `priceScale.scaleMargins` 默认 `{ top: 0.2, bottom: 0.1 }` —— 上下边距**不对称**。
+首尾刻度标签（内嵌 AXIS_LABEL_PAD = 8px）经 `series.coordinateToPrice(y)` 反推
+显示值，反推结果被不对称边距扭曲：数据值域即使为对称的 `[-A, +A]`，
+顶部刻度（y = 8px）反推约 `+1.5A`、底部刻度（y = H-8px）反推约 `-1.2A`
+（H = pane 高度），`|max| ≠ |min|`。
+
+### 修复
+- `indicatorManager.ts` `createIndicatorPanes`：pane5 创建后对其 left priceScale
+  设置对称边距 `scaleMargins: { top: 0.1, bottom: 0.1 }`：
+  - 数据映射上下镜像对称 → 首尾刻度反推值绝对值严格相等（|max| = |min|）；
+  - 柱体上下各留 10% 边距（不贴边、视觉更均匀，替代默认上 20% / 下 10%）。
+- 附图指标层（pane5）通用生效（MACD 及 RSI/KDJ 等全部附图指标），无副作用。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.76（2026-10-14）
+
+MACD 左刻度对称：附图指标 MACD 的 Y 轴最大值与最小值绝对值相等（|max| = |min|）。
+
+### 变更
+- `indicatorManager.ts` `rebuildSubIndicatorData`：
+  - 极值扫描改为单趟循环（替代 spread，避免大数组栈风险）；
+  - MACD 时 scale 值域强制对称：`absMax = max(|max|, |min|, 0)`，
+    刻度范围 `[-absMax, +absMax]` —— Y 轴以 0 为对称中心，
+    pane5 左刻度首尾值镜像对齐（如 DIF 最大 2.1 / 柱最小 -1.3 → [-2.1, +2.1]）；
+  - 其他指标仍按实际值域（避免 0 拉宽 scale 压缩图形）。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
 ## v1.4.75（2026-10-14）
 
 统一数据源：去掉内部 BasicBar，全链路直接使用 ChartDataPoint（types/chart.ts）。

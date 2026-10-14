@@ -26,13 +26,13 @@ const theme = ref<ChartThemeName>('dark')
 const showTimeAxis = ref(true)
 /** 附图指标（互斥单选，默认无选中 → 指标层关闭）。
  * 点击已选中指标 = 取消（关闭指标层）；点击其他指标 = 切换。 */
-const activeSubIndicator = ref<SubIndicatorType | null>(null)
+const activeSubIndicator = ref<SubIndicatorType | null>("macd")
 /** 左刻度区开关（默认关） */
 const showLeftScale = ref(false)
 /** 右刻度区开关（默认关） */
 const showRightScale = ref(false)
 /** 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关） */
-const activeMainIndicator = ref<MainIndicatorName | null>(null)
+const activeMainIndicator = ref<MainIndicatorName | null>("ma")
 
 /** 主图指标按钮配置（名称 + 标签；互斥） */
 const mainIndicatorOptions: ReadonlyArray<{ name: MainIndicatorName; label: string }> = [
@@ -122,7 +122,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.75</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.78</span>
     </div>
 
     <div class="toolbar">
