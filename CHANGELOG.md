@@ -8,6 +8,24 @@
 
 ---
 
+## v1.4.64（2026-10-14）
+
+pane2 升级为成交量信息行（成交量 + VOL MA5/MA10 值）；pane3 叠加成交量均量线。
+
+### 变更
+- pane2：显示 `成交量: x  MA5: x  MA10: x`（随十字星命中 bar / 最新 bar）：
+  成交量本体用主题文字色，MA5 黄（volMa5）、MA10 粉（volMa10）；
+  使用新建 `InfoLabelPrimitive`（**不填背景**，区别于 pane0 的 TopPaneOverlayPrimitive ——
+  十字星竖线需贯穿 pane2，不能被背景遮挡）；
+- pane3：新增 VOL MA5 / MA10 两条 LineSeries（东财指标库 `calcVolMA`，与成交量柱
+  同 priceScaleId 'left' 同量刻度；前 N-1 根无值）；applyData 换数据时与
+  `volumeInfoMap`（pane2 信息行缓存，O(1) 现取）一并重建；
+- theme.ts：新增 `volMa5: '#FFD54F' / volMa10: '#F06292'`（深浅系一致，
+  与用户库 volumeMa.ts 注释预留色值对齐）；
+- 测试：新增 tests/volumeMa.test.ts（calcVolMA 3 用例：MA5 窗口、不足 N 根无输出、
+  MA3 滑动推进），69 → 72；
+- 验证：vue-tsc 通过、vitest 72/72 全绿；未运行 / 未截图。
+
 ## v1.4.63（2026-10-14）
 
 pane0 信息行指标值按对应指标线颜色分段着色。

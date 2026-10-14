@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.63（2026-10-14）**
+> **当前版本：v1.4.64（2026-10-14）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部空 Pane（"测试"文字）、K 线主图、成交量、附图指标（MACD），指标 Pane 可动态开关。
@@ -15,7 +15,7 @@
 ┌──────────────────────────────────────┐
 │ pane0  信息行（名称[代码] 时间 + 指标值[各线色]，随十字星）│
 │ pane1  K 线主图（Candlestick）         │  ← main 组 60%
-│ pane2  信息行（"测试"文字，固定 22px） │
+│ pane2  成交量信息行（成交量 + MA5/MA10）│
 │ pane3  成交量（自绘红绿柱）             │  ← volume 组 20%
 │ pane4  空 Pane（"测试"文字，固定 22px） │
 │ pane5  MACD（DIF/DEA 线 + 红绿柱）      │  ← indicator 组 20%

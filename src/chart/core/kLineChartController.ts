@@ -75,6 +75,7 @@ import {
 } from './layout'
 import { TestLabelPrimitive } from '../testLabel/testLabelPrimitive'
 import { TopPaneOverlayPrimitive, type TextSegment } from '../overlay/topPaneOverlayPrimitive'
+import { InfoLabelPrimitive } from '../overlay/infoLabelPrimitive'
 import { HighLowMarkerPrimitive } from '../highLow/highLowMarkerPrimitive'
 import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
 import { MacdBarPrimitive, type MacdPoint } from '../indicator/macdBarPrimitive'
@@ -88,6 +89,7 @@ import {
   calcSAR,
   calcBBI,
   calcMACD,
+  calcVolMA,
   type IndicatorLine,
   type SarPoint,
 } from '../indicator'
@@ -147,6 +149,10 @@ export class KLineChartController {
   /* ===== series（pane0/pane2/pane4 空线 = 文字载体；pane1 K 线；pane3 成交量；pane5 指标） ===== */
   private klineSeries: ISeriesApi<'Candlestick'>
   private volumeSeries: ISeriesApi<'Histogram'>
+  /** pane3 成交量均量线（VOL MA5 / MA10，LineSeries 叠加在成交量柱上，同 priceScaleId 'left'） */
+  private volumeMaSeries: ISeriesApi<'Line'>[] = []
+  /** pane2 成交量信息行缓存（time → 成交量 + MA5/MA10 值；MA 前 N-1 根为 null，O(1) 现取） */
+  private volumeInfoMap: Map<number, { volume: number; ma5: number | null; ma10: number | null }> = new Map()
   /** pane5 指标柱（Histogram，指标通用；开启时创建，关闭时销毁置 null） */
   private indicatorsBarSeries: ISeriesApi<'Histogram'> | null = null
   /** pane5 DIF 线（MACD 专属；开启时创建，关闭时销毁置 null） */
@@ -362,7 +368,11 @@ export class KLineChartController {
     this.sarMarkerPrimitive.setVisible(false)
     this.klineSeries.attachPrimitive(this.sarMarkerPrimitive)
 
-    /* ---------- 3.1 pane2：底部空 Pane（无数据，自绘"测试"文字，设置与 pane0 一致） ---------- */
+    /* ---------- 3.1 pane2：成交量信息行（自绘分段文字，设置与 pane0 一致） ----------
+     * 显示 "成交量: x  MA5: x  MA10: x"（数值随十字星命中 bar / 最新 bar）；
+     * 用 InfoLabelPrimitive（**不填背景**）—— 十字星竖线需贯穿 pane2，
+     * 不能像 pane0 那样用背景遮罩遮挡竖线。
+     */
     this.chart.addSeries(
       LineSeries,
       {
@@ -372,7 +382,9 @@ export class KLineChartController {
         crosshairMarkerVisible: false,
       },
       2,
-    ).attachPrimitive(new TestLabelPrimitive('测试', () => themeColors(this.theme).textColor))
+    ).attachPrimitive(
+      new InfoLabelPrimitive(() => this.buildVolumeInfoSegments()),
+    )
 
     /* ---------- 3.2 pane3：成交量（自绘柱体，视觉与 pane1 完全一致） ----------
      * HistogramSeries 仅作数据锚点：color = 背景色（不可见），
@@ -436,6 +448,26 @@ export class KLineChartController {
     })
     this.volumeSeries.attachPrimitive(pane3CrosshairLabel)
     this.crosshairAxisLabelPrimitives.push(pane3CrosshairLabel)
+
+    /* 成交量均量线 VOL MA5 / MA10（东财成交量副图默认）：
+     * 与成交量柱同 priceScaleId 'left'（同一量刻度），LineSeries 叠加；
+     * 颜色 = theme.volMa5（黄）/ volMa10（粉），构造创建、applyData 复用 setData */
+    const volMa5Color = initialThemeColors.volMa5
+    const volMa10Color = initialThemeColors.volMa10
+    this.volumeMaSeries = [volMa5Color, volMa10Color].map((color) =>
+      this.chart.addSeries(
+        LineSeries,
+        {
+          priceScaleId: 'left',
+          color,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        },
+        3,
+      ),
+    )
 
     /* ---------- 3.3 pane4 / pane5：指标组（仅 showIndicator 开启时创建） ----------
      * 指标开启：pane4 底部空 Pane（自绘"测试"文字，设置与 pane0 一致）+
@@ -661,6 +693,28 @@ export class KLineChartController {
         value: bar.volume,
       })),
     )
+    // 成交量均量线 VOL MA5 / MA10：东财指标库 calcVolMA（前 N-1 根跳过），
+    // 与成交量柱同量纲；同时构建 pane2 成交量信息行缓存（数值现取 O(1)）
+    const volMa5Line = calcVolMA(this.bars, 5)
+    const volMa10Line = calcVolMA(this.bars, 10)
+    this.volumeMaSeries[0]?.setData(
+      volMa5Line.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })),
+    )
+    this.volumeMaSeries[1]?.setData(
+      volMa10Line.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })),
+    )
+    const volMa5Map = new Map(volMa5Line.map((point) => [point.time, point.value]))
+    const volMa10Map = new Map(volMa10Line.map((point) => [point.time, point.value]))
+    this.volumeInfoMap = new Map(
+      this.bars.map((bar) => [
+        bar.time,
+        {
+          volume: bar.volume,
+          ma5: volMa5Map.get(bar.time) ?? null,
+          ma10: volMa10Map.get(bar.time) ?? null,
+        },
+      ]),
+    )
     // MACD：DIF / DEA 线 + 自绘红绿柱（柱 > 0 空心红、< 0 绿实心）。
     // macdPoints 缓存供 MacdBarPrimitive 自绘复用；仅指标开启时写入
     // （series 关闭时已移除，判空防误用）。
@@ -881,6 +935,26 @@ export class KLineChartController {
         color: sarPoint.trend === 1 ? theme.sarUp : theme.sarDown,
       })
     }
+    return segments
+  }
+
+  /**
+   * 构建 pane2 成交量信息行分段文字（"成交量: x  MA5: x  MA10: x"，逐段着色）：
+   *  - 成交量本体 = 主题文字色；MA5 / MA10 = theme.volMa5（黄）/ volMa10（粉）；
+   *  - 数值同源（overlayTime ?? 最新 bar），十字星命中显示命中 bar 的成交量与均量；
+   *  - MA 前 N-1 根无值（null）自动跳过；数据来自 applyData 构建的 volumeInfoMap（O(1)）。
+   */
+  private buildVolumeInfoSegments = (): TextSegment[] => {
+    const theme = themeColors(this.theme)
+    const time = this.overlayTime ?? this.bars[this.bars.length - 1]?.time ?? null
+    if (time === null) return []
+    const info = this.volumeInfoMap.get(time)
+    if (info === undefined) return []
+    const segments: TextSegment[] = [
+      { text: `成交量: ${formatVolume(info.volume)}`, color: theme.textColor },
+    ]
+    if (info.ma5 !== null) segments.push({ text: ` MA5: ${formatVolume(info.ma5)}`, color: theme.volMa5 })
+    if (info.ma10 !== null) segments.push({ text: ` MA10: ${formatVolume(info.ma10)}`, color: theme.volMa10 })
     return segments
   }
 

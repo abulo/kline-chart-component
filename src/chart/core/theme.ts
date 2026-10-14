@@ -51,6 +51,10 @@ export interface ChartThemeColors {
   sarUp: string
   /** SAR 空头圆点色（与 K 线下跌色一致，红涨绿跌） */
   sarDown: string
+  /** 成交量 MA5 线颜色（pane3 VOL MA5，成交量副图惯例黄色） */
+  volMa5: string
+  /** 成交量 MA10 线颜色（pane3 VOL MA10，成交量副图惯例粉色） */
+  volMa10: string
 
   /* ===== 页面布局（App.vue） ===== */
   /** 页面整体背景（html 背景，跟随主题） */
@@ -92,6 +96,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     lowMarkerColor: '#2962FF',
     sarUp: '#FF0000',
     sarDown: '#008000',
+    volMa5: '#FFD54F',
+    volMa10: '#F06292',
 
     pageBackground: '#0B0E13',
     toolbarBackground: '#1E222D',
@@ -118,6 +124,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     lowMarkerColor: '#2452CC',
     sarUp: '#FF0000',
     sarDown: '#008000',
+    volMa5: '#FFD54F',
+    volMa10: '#F06292',
 
     pageBackground: '#EDEFF3',
     toolbarBackground: '#F3F4F6',
