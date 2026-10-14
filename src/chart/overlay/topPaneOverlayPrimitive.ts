@@ -26,8 +26,9 @@ import {
 import { TopPaneOverlayPaneView } from './topPaneOverlayPaneView'
 
 export class TopPaneOverlayPrimitive implements ISeriesPrimitive<Time> {
-  /** 待绘制文字（只读，构造时注入） */
-  public readonly text: string
+  /** 信息行整段文字获取器（"股票名称 [代码] 时间"；只读，draw 时现取，
+   *  时间随十字星命中 bar / 最新 bar 动态变化） */
+  public readonly getLeftText: () => string
   /** 背景色获取器（只读，draw 时动态调用以跟随主题） */
   public readonly getBackground: () => string
   /** 文字颜色获取器（只读，draw 时动态调用以跟随主题） */
@@ -36,8 +37,8 @@ export class TopPaneOverlayPrimitive implements ISeriesPrimitive<Time> {
   /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
   private readonly paneView: TopPaneOverlayPaneView
 
-  constructor(text: string, getBackground: () => string, getColor: () => string) {
-    this.text = text
+  constructor(getLeftText: () => string, getBackground: () => string, getColor: () => string) {
+    this.getLeftText = getLeftText
     this.getBackground = getBackground
     this.getColor = getColor
     this.paneView = new TopPaneOverlayPaneView(this)

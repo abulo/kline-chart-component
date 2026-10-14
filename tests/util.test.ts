@@ -3,10 +3,11 @@
  * 覆盖 src/chart/util/format.ts：
  *  - formatVolume（pane3 左刻度标签专用）；
  *  - formatPrice（pane1 K 线刻度 / 十字星指示值）；
- *  - formatAxisSmart（pane5 指标刻度大数缩写 / 小数自适应）。
+ *  - formatAxisSmart（pane5 指标刻度大数缩写 / 小数自适应）；
+ *  - formatDate（pane0 顶部信息行最新 bar 时间，YYYY-MM-DD）。
  */
 import { describe, it, expect } from 'vitest'
-import { formatVolume, formatPrice, formatAxisSmart } from '../src/chart/util/format'
+import { formatVolume, formatPrice, formatAxisSmart, formatDate } from '../src/chart/util/format'
 
 describe('formatVolume 成交量格式化（util/format.ts）', () => {
   it('亿级：两位小数 + 亿', () => {
@@ -82,5 +83,27 @@ describe('formatAxisSmart 指标刻度缩写（pane5 指标刻度）', () => {
 
   it('负极小值：保留负号', () => {
     expect(formatAxisSmart(-0.0123)).toBe('-0.012')
+  })
+})
+
+describe('formatDate 日期格式化（pane0 顶部信息行时间）', () => {
+  it('秒级时间戳 → YYYY-MM-DD（本地时区）', () => {
+    // 2026-10-14 00:00:00 UTC+8 = 1789315200 秒（本地时区日界）
+    expect(formatDate(1789315200)).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    // 具体日期断言：用 Date 构造本地时间，避免测试环境时区差异
+    const local = new Date(2026, 9, 14) // 2026-10-14（本地时区）
+    const seconds = Math.floor(local.getTime() / 1000)
+    expect(formatDate(seconds)).toBe('2026-10-14')
+  })
+
+  it('月 / 日补零', () => {
+    const local = new Date(2026, 0, 5) // 2026-01-05
+    expect(formatDate(Math.floor(local.getTime() / 1000))).toBe('2026-01-05')
+  })
+
+  it('非法输入返回 --', () => {
+    expect(formatDate(undefined)).toBe('--')
+    expect(formatDate(null)).toBe('--')
+    expect(formatDate(NaN)).toBe('--')
   })
 })

@@ -45,3 +45,16 @@ export const formatAxisSmart = (v: number): string => {
   const digits = Math.min(6, Math.max(2, Math.ceil(-Math.log10(a)) + 1))
   return v.toFixed(digits)
 }
+
+/**
+ * 秒级时间戳 → 本地日期字符串 YYYY-MM-DD（pane0 顶部信息行最新 bar 时间显示）。
+ * 非法输入（NaN / Infinity）返回 '--'，避免展示层出现乱码。
+ */
+export const formatDate = (seconds?: number | null): string => {
+  if (seconds === undefined || seconds === null || Number.isNaN(seconds)) return '--'
+  const date = new Date(seconds * 1000)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}

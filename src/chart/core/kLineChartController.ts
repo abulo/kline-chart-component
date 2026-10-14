@@ -91,7 +91,7 @@ import {
   type IndicatorLine,
   type SarPoint,
 } from '../indicator'
-import { formatVolume, formatPrice, formatAxisSmart } from '../util/format'
+import { formatVolume, formatPrice, formatAxisSmart, formatDate } from '../util/format'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 
@@ -161,6 +161,8 @@ export class KLineChartController {
   private sarPoints: SarPoint[] = []
   /** SAR 圆点自绘 primitive（挂在 klineSeries 上，visible 控制显隐，复用单例防泄漏） */
   private sarMarkerPrimitive: SarMarkerPrimitive | null = null
+  /** pane0 信息行当前显示的时间（秒级时间戳；null = 十字星未命中 → 显示最新 bar 时间） */
+  private overlayTime: number | null = null
 
   /* ===== 状态 ===== */
   private theme: ChartThemeName
@@ -263,10 +265,16 @@ export class KLineChartController {
       },
       0,
     ).attachPrimitive(
-      // pane0 顶层遮罩（topPaneViews）：背景填充 + 股票信息文字，绘制在十字星之上，
-      // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）；文字 = "股票名称 [代码]"
+      // pane0 顶层遮罩（topPaneViews）：背景填充 + 信息行文字，绘制在十字星之上，
+      // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）。
+      // 文字格式："股票名称 [代码] 时间"；时间由 handleCrosshairMove 更新 ——
+      // 十字星命中时 = 命中 bar 日期、未命中时 = 最新 bar 日期（overlayTime 为 null）
       new TopPaneOverlayPrimitive(
-        this.symbol ? `${this.name} [${this.symbol}]` : this.name || '测试',
+        () => {
+          const base = this.symbol ? `${this.name} [${this.symbol}]` : this.name || '测试'
+          const time = this.overlayTime ?? this.bars[this.bars.length - 1]?.time ?? null
+          return `${base} ${formatDate(time)}`
+        },
         () => themeColors(this.theme).background,
         () => themeColors(this.theme).textColor,
       ),
@@ -468,11 +476,17 @@ export class KLineChartController {
       this.chart.clearCrosshairPosition()
     }
     if (!point || param.paneIndex === undefined) {
+      // 未命中（鼠标离开图表 / pane0 内）：pane0 时间回退到最新 bar 日期，
+      // 并清除各 pane 指示值
+      this.overlayTime = null
       for (const primitive of this.crosshairAxisLabelPrimitives) {
         primitive.setCrosshairY(null)
       }
       return
     }
+    // 十字星命中（pane1/3/5）：pane0 时间跟随命中 bar 的日期。
+    // 库 crosshairMove 事件本身会触发重绘，pane0 draw 现取 overlayTime 即时更新
+    this.overlayTime = (param.time as number | undefined) ?? null
     // 库 MouseEventParams.point 相对"十字星当前所在 pane 的 canvas"（数据区本地坐标），
     // 因此 point.y 即为该 pane 内的本地 y，无需再减去前序 pane 高度和
     // （实测：pane3 鼠标绝对 y=560 - pane3 canvas 顶部 493 = point.y=67，完全一致）。

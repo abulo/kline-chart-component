@@ -8,6 +8,35 @@
 
 ---
 
+## v1.4.61（2026-10-14）
+
+pane0 信息行格式改为 `股票名称 [代码] 时间`，时间跟随十字星。
+
+### 变更
+- pane0 整段文字：`股票名称 [代码] 时间`（单行左对齐、距左 6px），
+  替代原"左侧名称 / 右侧时间"双段布局；
+- 时间联动十字星：`handleCrosshairMove` 命中（pane1/3/5）时设置
+  `overlayTime = 命中 bar 时间戳`；未命中（鼠标离开 / pane0 内）时置 null →
+  draw 现取 `overlayTime ?? 最新 bar 时间`。库 crosshairMove 事件自带重绘，
+  pane0 文字实时刷新、无需手动 invalidate；
+- `TopPaneOverlayPrimitive`：leftText + getRightText 收敛为单一 `getLeftText`
+  动态获取器（整段文字 draw 时现取）；
+- 验证：vue-tsc 通过、vitest 69/69 全绿；未运行 / 未截图。
+
+## v1.4.60（2026-10-14）
+
+pane0 顶部信息行新增右侧时间显示（最新 bar 时间，YYYY-MM-DD）。
+
+### 变更
+- `format.ts` 新增 `formatDate(seconds)`：秒级时间戳 → 本地日期 YYYY-MM-DD，
+  非法输入返回 '--'（纯函数，可单测）；
+- `TopPaneOverlayPrimitive`：单一 text 改为 leftText（股票名称 [代码]，距左 6px）
+  + getRightText（右侧时间，右对齐距右 6px，draw 时现取跟随最新数据）；
+- controller 构造处传入 `formatDate(最新 bar.time)` —— applyData 换数据后
+  pane0 右侧时间自动跟随最新 K 线日期；
+- 测试：util.test.ts 新增 formatDate 3 用例（格式 / 补零 / 非法输入），66 → 69；
+- 验证：vue-tsc 通过、vitest 69/69 全绿；未运行 / 未截图。
+
 ## v1.4.59（2026-10-14）
 
 修复：反复点击 SAR 按钮无效果。
