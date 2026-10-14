@@ -44,8 +44,12 @@ export interface AxisLabelConfig {
   getFont: () => string
   /** 数值格式化（按 pane 语义：K 线价格 / 成交量万·亿 / 指标值） */
   format: (price: number) => string
-  /** 中间刻度固定值（可选）：设置后中间刻度标签固定显示该值（如 MACD 中间 = 0） */
-  fixedMiddleValue?: number
+  /**
+   * 中间刻度固定值获取器（可选）：返回 number 时中间刻度标签固定显示该值
+   * （如 MACD 中间 = 0）；返回 undefined 时按 scale 中间值显示。
+   * 动态获取使同一 pane 切换指标（MACD ⇄ 其他）无需重建刻度 primitive。
+   */
+  getFixedMiddleValue?: () => number | undefined
 }
 
 export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
@@ -121,7 +125,7 @@ export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
           coordinate: y,
           // 中间刻度固定值（如 MACD 中间刻度 = 0，不受 scale 中间值影响）
           fixedValue:
-            i === Math.floor(hCount / 2) ? this.config.fixedMiddleValue : undefined,
+            i === Math.floor(hCount / 2) ? this.config.getFixedMiddleValue?.() : undefined,
         }),
       )
     }

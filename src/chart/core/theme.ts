@@ -148,19 +148,6 @@ export const themeColors = (name: ChartThemeName): ChartThemeColors => chartThem
 /* ==================== 指标配色（深浅系通用，不随主题变化） ==================== */
 
 /**
- * MACD 指标配色（东方财富风格）：
- *  - DIF / DEA 线固定配色（深浅系通用）；
- *  - 柱体红绿由 MacdBarPrimitive 自绘（取主题 upColor / downColor，红涨绿跌，
- *    与 pane1 / pane3 一致）。
- */
-export const macdColors = {
-  /** DIF 线 */
-  difLine: '#A0A0A0',
-  /** DEA 线 */
-  deaLine: '#F4AA0A',
-} as const
-
-/**
  * 主图指标配色（pane1 叠加线，深浅系通用；东方财富标准色，见各指标文件注释）：
  *  - MA：5 / 10 / 20 / 30 / 60 五线（白 / 黄 / 粉 / 深绿 / 蓝）；
  *  - EXPMA：12 / 50 两线（白 / 黄）；
@@ -177,4 +164,32 @@ export const mainIndicatorColors = {
   boll: ['#FFD54F', '#FFFFFF', '#F06292'],
   /** BBI 单线 */
   bbi: '#B0BEC5',
+} as const
+
+/**
+ * 附图指标线颜色（东财标准色，深浅系通用；下标顺序与各指标 calc 返回线序一致）。
+ *  - MACD 第三色用于指标信息行 MACD 柱值文本（柱体渲染仍为红涨 / 绿跌）；
+ *  - 深 / 浅系共用同一配色（与主图指标一致，不随主题变化）。
+ */
+export const subIndicatorColors = {
+  /** RSI：RSI6 / RSI12 / RSI24 */
+  rsi: ['#A0A0A0', '#F4AA0A', '#FF1DFF'],
+  /** KDJ：K / D / J */
+  kdj: ['#A0A0A0', '#F4AA0A', '#FF1DFF'],
+  /** MACD：DIF / DEA / MACD 柱值（柱体渲染红涨绿跌，第三色仅供信息行文本） */
+  macd: ['#A0A0A0', '#F4AA0A', '#FF1DFF'],
+  /** WR：WR10 / WR6 */
+  wr: ['#A0A0A0', '#F4AA0A'],
+  /** DMI：PDI / MDI / ADX / ADXR */
+  dmi: ['#A0A0A0', '#F4AA0A', '#FF1DFF', '#007130'],
+  /** BIAS：BIAS6 / BIAS12 / BIAS24 */
+  bias: ['#A0A0A0', '#F4AA0A', '#FF1DFF'],
+  /** OBV：OBV / OBVMA */
+  obv: ['#A0A0A0', '#F4AA0A'],
+  /** CCI：单线 */
+  cci: ['#A0A0A0'],
+  /** ROC：ROC / ROCMA */
+  roc: ['#A0A0A0', '#F4AA0A'],
+  /** CR：CR / MA5 / MA10 / MA20 */
+  cr: ['#A0A0A0', '#F4AA0A', '#FF1DFF', '#007130'],
 } as const

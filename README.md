@@ -1,9 +1,9 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.67（2026-10-14）**
+> **当前版本：v1.4.69（2026-10-14）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
-多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部空 Pane（"测试"文字）、K 线主图、成交量、附图指标（MACD），指标 Pane 可动态开关。
+多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
 ---
 
@@ -17,8 +17,8 @@
 │ pane1  K 线主图（Candlestick）         │  ← main 组 60%
 │ pane2  成交量信息行（成交量 + MA5/MA10）│
 │ pane3  成交量（自绘红绿柱）             │  ← volume 组 20%
-│ pane4  空 Pane（"测试"文字，固定 22px） │
-│ pane5  MACD（DIF/DEA 线 + 红绿柱）      │  ← indicator 组 20%
+│ pane4  指标信息行（各线数值，固定 22px）│
+│ pane5  附图指标（十指标互斥）         │  ← indicator 组 20%
 └──────────────────────────────────────┘
     底部：共享时间轴（timeScale，可开关）
 ```
@@ -62,7 +62,7 @@
 
 | 按钮 | 功能 |
 |---|---|
-| 指标开/关 | 动态创建 / 删除 pane4 / pane5（布局 60:20:20 ⇄ 80:20） |
+| 附图指标（互斥） | RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR：选中 = 开指标层（60:20:20）、取消选中 = 关指标层（80:20）；pane4 显示各线数值 |
 | 时间轴开/关 | 底部时间轴显示 / 隐藏（重算 pane 高度） |
 | 左刻度开/关 | 左刻度区显隐（所有 Pane 统一，宽度 72px，切换后 fitContent） |
 | 右刻度开/关 | 右刻度区显隐（同左） |
@@ -87,7 +87,7 @@ src/
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
 │   │   ├── KLineChartController.ts # 控制器：Pane 创建 / 布局 / 主题 / 数据 / 十字星联动
 │   │   ├── layout.ts          # 布局常量与高度计算（60/20/20 ⇄ 80/20）
-│   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）+ MACD 指标配色
+│   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）+ 主图 / 附图指标配色
 │   │   ├── mock.ts            # mock 数据（日 K，纯函数可单测）
 │   │   └── candlestickWidth.ts# 蜡烛 / 柱体宽度（库原版 optimalCandlestickWidth）
 │   ├── axis/                  # 左刻度标签（与栅格横线对齐，文字与指示值一致）
@@ -127,9 +127,6 @@ src/
 │   ├── overlay/               # pane0 顶层遮罩（遮住十字星竖线）
 │   │   ├── topPaneOverlayPrimitive.ts
 │   │   └── topPaneOverlayPaneView.ts
-│   ├── testLabel/             # 空 Pane "测试" 文字自绘
-│   │   ├── testLabelPrimitive.ts
-│   │   └── testLabelPaneView.ts
 │   └── util/
 │       └── format.ts          # 数值格式化（价格 / 成交量 / 指标刻度 / 日期）
 └── types/
@@ -182,7 +179,7 @@ npm run build      # vue-tsc 类型检查 + 构建
 
 ## 八、后续规划（用户逐步提出）
 
-- 附图指标扩展（RSI / KDJ / WR / DMI / BIAS / OBV / CCI / ROC / CR）
+- （已实现 v1.4.68）附图指标十项：RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR 互斥切换
 - K 线主图指标（MA / EXPMA / BOLL / SAR / BBI）
 - 分时线（1d~5d）与周期切换
 - 数据服务接入（HTTP / SSE / WebSocket，`types/chart.ts` 数据点结构已预留）

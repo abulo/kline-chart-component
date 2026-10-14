@@ -2,7 +2,7 @@
  * theme.test.ts —— 主题色配置单测（v1.2.1）
  */
 import { describe, expect, it } from 'vitest'
-import { chartThemes, themeColors, defaultTheme, mainIndicatorColors } from '../src/chart/core/theme'
+import { chartThemes, themeColors, defaultTheme, mainIndicatorColors, subIndicatorColors } from '../src/chart/core/theme'
 
 describe('主题配置', () => {
   it('深系 / 浅系都存在且默认深系', () => {
@@ -120,5 +120,19 @@ describe('主题配置', () => {
     expect(chartThemes.dark.volMa10).toBe('#F06292')
     expect(chartThemes.light.volMa5).toBe(chartThemes.dark.volMa5)
     expect(chartThemes.light.volMa10).toBe(chartThemes.dark.volMa10)
+  })
+
+  it('附图指标配色 subIndicatorColors：十指标线数与东财标准色一致（v1.4.68）', () => {
+    // 线数：RSI3 / KDJ3 / MACD3 / WR2 / DMI4 / BIAS3 / OBV2 / CCI1 / ROC2 / CR4
+    expect(subIndicatorColors.rsi).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF'])
+    expect(subIndicatorColors.kdj).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF'])
+    expect(subIndicatorColors.macd).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF'])
+    expect(subIndicatorColors.wr).toEqual(['#A0A0A0', '#F4AA0A'])
+    expect(subIndicatorColors.dmi).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF', '#007130'])
+    expect(subIndicatorColors.bias).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF'])
+    expect(subIndicatorColors.obv).toEqual(['#A0A0A0', '#F4AA0A'])
+    expect(subIndicatorColors.cci).toEqual(['#A0A0A0'])
+    expect(subIndicatorColors.roc).toEqual(['#A0A0A0', '#F4AA0A'])
+    expect(subIndicatorColors.cr).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF', '#007130'])
   })
 })

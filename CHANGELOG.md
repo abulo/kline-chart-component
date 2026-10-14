@@ -8,6 +8,58 @@
 
 ---
 
+## v1.4.69（2026-10-14）
+
+修复附图指标：点击指标后图表消失 / 布局错乱。
+
+### 根因
+`showIndicator` 状态标记未随指标层开 / 关同步（构造时 false 后不再更新）：
+- 点击指标 → `createIndicatorPanes()` 创建 6 Pane，但 `applyStretchFactors()` 仍按
+  4 Pane / 80:20 分配高度（paneHeights 仅 4 项）→ pane4 / pane5 高度异常（≈0），
+  指标图与信息行消失；
+- 同时 pane1 栅格横线等分数（指标关 8 / 开 6）也错误保持 8。
+
+### 修复
+- `createIndicatorPanes()` 开头置 `this.showIndicator = true`（开层即同步标记）；
+- `removeIndicatorPanes()` 开头置 `this.showIndicator = false`（关层先改标记再移除 Pane，
+  避免移除瞬间仍按 6 Pane 布局计算）。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.68（2026-10-14）
+
+附图指标层重构：MACD 专属 → 十指标通用（RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR）。
+
+### 新增
+- App.vue 底部新增「附图指标」按钮组（十指标互斥单选）：点击已选中指标 = 取消
+  （关闭指标层，布局 80:20）；点击其他指标 = 切换（打开指标层，布局 60:20:20）。
+  移除原「指标开/关」布尔按钮（语义被十按钮取代：无选中即关指标层）。
+- 控制器新增 `setSubIndicator(name | null)`（互斥单选）与 `removeIndicatorPanes`：
+  - 选中：指标层未开则创建 pane4 / pane5，再重建该指标数据；取消：移除两 Pane 并清空缓存；
+  - 新增 `rebuildSubIndicatorData`：`calcSubIndicators` 取当前指标分组线 →
+    `subIndicatorLines`（top 层自绘线缓存）+ `subIndicatorValueMaps`（pane4 信息行值缓存）
+    + `macdPoints`（仅 MACD）+ Y 轴锚点（Histogram 骨架首尾取全量线 min/max，
+    覆盖正负值域防裁剪）。
+- pane4 升级为「指标信息 Pane」：`InfoLabelPrimitive` 显示所选指标各线数值
+  （label + 线色，随十字星命中 bar / 最新 bar；MACD 显示 DIF / DEA / MACD）。
+- pane5 通用指标层：`IndicatorLinePrimitive` top 层自绘全部指标线（十字星之上）；
+  MACD 柱保留 `MacdBarPrimitive` 自绘（红空心 / 绿实心）；刻度中间值动态
+  `getFixedMiddleValue`（MACD = 0，其余指标 = scale 中间值，切换无需重建刻度）。
+
+### 变更
+- `AxisLabelPrimitive`：`fixedMiddleValue` 静态值 → `getFixedMiddleValue` 动态获取器。
+- theme.ts：新增 `subIndicatorColors`（十指标东财标准色集中管理）；删除已无引用的
+  `macdColors`（DIF/DEA 色并入 subIndicatorColors.macd）。
+- 控制器：删除 `difSeries / deaSeries`（MACD 线改 top 层自绘）；`KLineChartOptions`
+  移除 `showIndicator`（指标层初始关闭，由选中指标驱动）；BasicBar → ChartDataPoint
+  适配（补 tradeDate / pointType，构造时转换一次缓存）。
+- 删除已无使用的 `testLabel/` 目录（pane4 由 InfoLabelPrimitive 接管）。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿（新增 subIndicatorColors 十指标配色断言）；
+  未运行 / 未截图。
+
 ## v1.4.67（2026-10-14）
 
 修复窗口缩放时 pane1 / pane3 / pane5 最右 / 最下边框与画布边缘出现 subpixel 缝隙。

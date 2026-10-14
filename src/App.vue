@@ -13,6 +13,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import KLineChart from './components/kLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
 import type { MainIndicatorName } from './chart/core/kLineChartController'
+import type { SubIndicatorType } from './chart/indicator'
 
 /** 图表组件 ref（访问控制器） */
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
@@ -21,8 +22,9 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 const theme = ref<ChartThemeName>('dark')
 /** 时间轴开关 */
 const showTimeAxis = ref(true)
-/** 指标开关（指标 Pane pane4 / pane5，默认开启） */
-const showIndicator = ref(true)
+/** 附图指标（互斥单选，默认无选中 → 指标层关闭）。
+ * 点击已选中指标 = 取消（关闭指标层）；点击其他指标 = 切换。 */
+const activeSubIndicator = ref<SubIndicatorType | null>(null)
 /** 左刻度区开关（默认关） */
 const showLeftScale = ref(false)
 /** 右刻度区开关（默认关） */
@@ -65,10 +67,25 @@ const toggleTimeAxis = (): void => {
   chartRef.value?.controller?.toggleTimeAxis(showTimeAxis.value)
 }
 
-/** 指标开关：动态创建 / 删除指标 Pane（布局 60:20:20 ⇄ 80:20） */
-const toggleIndicator = (): void => {
-  showIndicator.value = !showIndicator.value
-  chartRef.value?.controller?.setShowIndicator(showIndicator.value)
+/** 附图指标按钮配置（十个指标，互斥；无选中时关闭指标层） */
+const subIndicatorOptions: ReadonlyArray<{ name: SubIndicatorType; label: string }> = [
+  { name: 'rsi', label: 'RSI' },
+  { name: 'kdj', label: 'KDJ' },
+  { name: 'macd', label: 'MACD' },
+  { name: 'wr', label: 'WR' },
+  { name: 'dmi', label: 'DMI' },
+  { name: 'bias', label: 'BIAS' },
+  { name: 'obv', label: 'OBV' },
+  { name: 'cci', label: 'CCI' },
+  { name: 'roc', label: 'ROC' },
+  { name: 'cr', label: 'CR' },
+]
+
+/** 附图指标开关（互斥）：点击已选中指标 = 关闭（null → 指标层关闭）；否则切换 */
+const toggleSubIndicator = (name: SubIndicatorType): void => {
+  const next = activeSubIndicator.value === name ? null : name
+  activeSubIndicator.value = next
+  chartRef.value?.controller?.setSubIndicator(next)
 }
 
 /** 左刻度区开关：显隐所有 Pane 左侧刻度，切换后 fitContent */
@@ -107,13 +124,10 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.67</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.69</span>
     </div>
 
     <div class="toolbar">
-      <button class="btn" :class="{ active: showIndicator }" @click="toggleIndicator">
-        指标{{ showIndicator ? '开' : '关' }}
-      </button>
       <button class="btn" :class="{ active: showTimeAxis }" @click="toggleTimeAxis">
         时间轴{{ showTimeAxis ? '开' : '关' }}
       </button>
@@ -146,6 +160,21 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         class="btn"
         :class="{ active: activeMainIndicator === option.name }"
         @click="toggleMainIndicator(option.name)"
+      >
+        {{ option.label }}
+      </button>
+    </div>
+
+    <!-- 底部容器：附图指标（RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR，
+         互斥开关，画在 pane5；无选中时关闭指标层） -->
+    <div class="sub-indicator-bar">
+      <span class="hint">附图指标</span>
+      <button
+        v-for="option in subIndicatorOptions"
+        :key="option.name"
+        class="btn"
+        :class="{ active: activeSubIndicator === option.name }"
+        @click="toggleSubIndicator(option.name)"
       >
         {{ option.label }}
       </button>
@@ -216,6 +245,22 @@ body,
   padding: 10px 12px;
   box-sizing: border-box;
   margin-top: 12px;
+  margin-bottom: 12px;
+  background: v-bind('themeColors(theme).toolbarBackground');
+  border: 1px solid v-bind('themeColors(theme).toolbarBorder');
+  border-radius: 4px;
+}
+
+/* 底部容器：附图指标（RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR，
+   样式与主图指标容器一致） */
+.sub-indicator-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 80%;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  margin-top: 0;
   margin-bottom: 12px;
   background: v-bind('themeColors(theme).toolbarBackground');
   border: 1px solid v-bind('themeColors(theme).toolbarBorder');
