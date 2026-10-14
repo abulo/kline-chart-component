@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.64（2026-10-14）**
+> **当前版本：v1.4.66（2026-10-14）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部空 Pane（"测试"文字）、K 线主图、成交量、附图指标（MACD），指标 Pane 可动态开关。
@@ -33,6 +33,7 @@
 
 ## 二、视觉与交互
 
+- **主题切换**：深 / 浅两套配色全部集中在 `theme.ts`（`ChartThemeColors` + `chartThemes`，页面无散落硬编码色值）；切换时 App.vue 同步 **html 页面背景**（独立 `pageBackground`：深系 #0B0E13 / 浅系 #EDEFF3，与图表背景 #131722 / #FFFFFF 区分形成对比）+ 图表 `applyTheme`；
 - **红涨绿跌**：上涨 `#FF0000`、下跌 `#008000`（深浅系一致，`theme.ts` 集中管理）；
 - **上涨柱空心**：K 线 / 成交量 / MACD 柱 > 0 均为"背景色填充 + 红框"的空心红柱，下跌绿色实心；
 - **柱宽一致**：pane1 / pane3 / pane5 柱宽 = `candlestickBarWidth(barSpacing, dpr)`（库源码原版 `optimalCandlestickWidth` + 奇偶修正，见 `chart/core/candlestickWidth.ts`），宽度 / 间隔绝对一致；
@@ -52,6 +53,7 @@
   - 坐标：库 `point.y` 为 Pane 本地坐标，直接注入，不做前序 Pane 高度换算；
   - 文字右对齐绘制（`textAlign = 'right'`），避免超出价格轴 canvas 被裁剪；
 - **十字星不贯穿 pane0**：pane0 内不触发十字星（controller 清除），pane0 顶层遮罩（`TopPaneOverlayPrimitive`，zOrder 'top'）以背景色覆盖竖线；
+- **指标叠加绘图在十字星之上**（`IndicatorLinePrimitive`，zOrder 'top' top canvas 自绘）：主图指标线（MA / EXPMA / BOLL / BBI）与成交量均量线（VOL MA5 / MA10）自绘折线，绘制在十字星之上 —— 十字星横线穿过时指标线完整可见（库十字星画在 top canvas 的 series 之上，LineSeries 必被横线压住，故改自绘）；坐标 = timeScale.timeToCoordinate × anchorSeries.priceToCoordinate，按可视时间范围裁剪，坐标缺失断开路径；
 - **内容 Pane 边框**（`PaneBorderPrimitive`）：pane1 / pane3 / pane5 自绘 1px 直角矩形边框，颜色随主题；
 - **最高 / 最低价标注**（`HighLowMarkerPrimitive` + `HighLowMarkerPaneView`）：pane1 可视区域内 high 最大 / low 最小的 bar —— 最高价 12px 黄色文字标注在柱顶上方、最低价 12px 蓝色文字标注在柱底下方，各带同色实线从文字块连到柱体上 / 下边缘中间；随平移 / 缩放实时重算、文字左右不越界；颜色深浅系区分（theme.highMarkerColor / lowMarkerColor）；
 - **空 Pane "测试"文字**（`TestLabelPrimitive`）：垂直居中、距左 6px、跟随主题文字色。
@@ -156,9 +158,10 @@ npm run build      # vue-tsc 类型检查 + 构建
 ## 六、内存与性能
 
 - **primitive 视图单例复用**：所有 primitive 的 `paneViews()` / `priceAxisPaneViews()` 返回构造时创建的单例视图，避免每帧 `new` 对象产生 GC 压力；
-- **渲染裁剪**：成交量 / MACD 柱、SAR 圆点自绘按可见逻辑范围（`getVisibleLogicalRange`）裁剪，仅遍历可视柱体，不遍历全量数据；
+- **渲染裁剪**：成交量 / MACD 柱、SAR 圆点自绘按可见逻辑范围（`getVisibleLogicalRange`）裁剪；指标折线（`IndicatorLinePrimitive`）按 `getVisibleRange()` 裁剪可视点区间 —— 均只遍历可视元素，不遍历全量数据；
+- **指标值 O(1) 现取**：pane0 / pane2 信息行按 `Map<time, value>` 现取（`mainIndicatorValueMaps` / `volumeInfoMap` / `sarValueMap`），切换指标 / 换数据时重建、清空指标时置空，无累积；
 - **标签缓存**：刻度标签在 `updateAllViews`（图表更新）时重建，渲染 draw 只读取缓存集合，不重复计算；
-- **生命周期**：controller `destroy()` 移除十字星监听、断开 ResizeObserver、`detachPrimitive`（SAR 圆点）、`chart.remove()`、清除容器标记；指标关闭时 series 先 `removePane` 再置 null；primitive `detached()` 清空引用；
+- **生命周期**：controller `destroy()` 移除十字星监听、断开 ResizeObserver、`detachPrimitive`（SAR 圆点 / 主图指标线 / 成交量均量线）、`chart.remove()`、清除容器标记；指标关闭时 series 先 `removePane` 再置 null；primitive `detached()` 清空引用；
 - **实例保护**：容器 `dataset.lwcMounted` 标记防止重复创建 chart 实例。
 
 ## 七、固定依赖版本

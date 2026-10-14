@@ -8,6 +8,40 @@
 
 ---
 
+## v1.4.66（2026-10-14）
+
+全量质量审计（内存 / 缓存 / 命名 / 颜色 / 效率 / 文档 / 测试 / 清理）。
+
+### 审计结果与修复
+- **颜色集中**：扫描确认除 theme.ts 外无实际散落硬编码色值（指标库文件中的 # 色值均为注释说明，属用户库，未改动）；全部主题字段经脚本核对使用情况；
+- **修复未使用字段**：`theme.pageBackground` 定义后未被引用 —— App.vue html 背景原用 `background`，现改回 `pageBackground`（深系 #0B0E13 / 浅系 #EDEFF3，与图表背景区分）；
+- **命名**：函数 / 变量均驼峰语义化（`buildInfoSegments` / `buildVolumeInfoSegments` / `volumeMaLines` / `mainIndicatorValueMaps` 等）；常量按惯例全大写（`LIBRARY_TIME_AXIS_HEIGHT` 等），无下划线小写变量；
+- **内存**：订阅成对（仅 subscribeCrosshairMove / unsubscribeCrosshairMove）；destroy 显式 detach 三个 primitive（SAR / 主图指标线 / 成交量均量线）+ chart.remove；指标开 / 关与 applyData 换数据时各缓存（mainIndicatorLines / mainIndicatorValueMaps / sarValueMap / volumeMaLines / volumeInfoMap / macdPoints）统一重建或置空，无累积；
+- **效率**：渲染裁剪复查齐全（成交量 / MACD 柱 / SAR 圆点按逻辑范围、指标折线按可视时间范围）；信息行按 Map O(1) 现取；primitive 视图单例复用；
+- **未使用**：全量扫描 src/chart 无孤儿文件、无未使用 import / 私有方法（脚本 + 人工复核）；
+- **测试**：theme.test.ts 新增 pageBackground 与 volMa 配色 2 用例，72 → 74；验证 vue-tsc 通过、vitest 74/74 全绿；未运行 / 未截图。
+
+## v1.4.65（2026-10-14）
+
+指标叠加绘图提升到十字星之上（修复十字星横线穿过时指标线被遮挡"一部分看不见"）。
+
+### 变更
+- 根因（已核库源码 PaneWidget._internal_paint）：十字星画在 **top canvas**
+  （drawCrosshair），所有 series / normal primitive 画在 bottom canvas ——
+  永远在十字星之下，十字星横线会压住指标线；
+- 方案：新增 `IndicatorLinePrimitive`（zOrder 'top'，top canvas 自绘折线）：
+  - 主图指标线（MA / EXPMA / BOLL / BBI）：从 LineSeries 改为缓存
+    （mainIndicatorLines）+ top 层自绘，挂在 klineSeries 上；
+  - 成交量均量线（VOL MA5 / MA10）：同样从 LineSeries 改为 volumeMaLines 缓存 +
+    top 层自绘，挂在 volumeSeries 上；
+  - 绘制：x = timeScale.timeToCoordinate、y = anchorSeries.priceToCoordinate；
+    按 getVisibleRange() 裁剪可视点区间（数据升序线性扫描），坐标缺失断开路径；
+  - 切换指标后显式 `chart.applyOptions({})` 触发重绘（不再有 series 增删自动重绘）；
+  - applyTheme 时同步刷新成交量均量线颜色（数据不变仅换色）；
+  - destroy 显式 detach 两个 primitive（防内存泄漏）；
+- 叠加顺序达成：**指标绘图 → 十字星 → K线 / 成交量**；
+- 验证：vue-tsc 通过、vitest 72/72 全绿；未运行 / 未截图。
+
 ## v1.4.64（2026-10-14）
 
 pane2 升级为成交量信息行（成交量 + VOL MA5/MA10 值）；pane3 叠加成交量均量线。

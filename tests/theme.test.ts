@@ -105,4 +105,20 @@ describe('主题配置', () => {
     // v1.2.1 清理验证：单 Pane 无分隔线 + 栅格关闭，这些字段/常量不应存在
     expect('separatorColor' in chartThemes.dark).toBe(false)
   })
+
+  it('页面背景 pageBackground：深浅系存在且与图表背景区分', () => {
+    // v1.4.66 审计修复：App.vue html 背景改用 pageBackground（未使用字段排查）
+    expect(chartThemes.dark.pageBackground).toBe('#0B0E13')
+    expect(chartThemes.light.pageBackground).toBe('#EDEFF3')
+    // 页面背景与图表背景不同（深系更暗 / 浅系更亮，形成对比）
+    expect(chartThemes.dark.pageBackground).not.toBe(chartThemes.dark.background)
+    expect(chartThemes.light.pageBackground).not.toBe(chartThemes.light.background)
+  })
+
+  it('成交量均量线配色 volMa5 / volMa10：深浅系一致（黄 / 粉）', () => {
+    expect(chartThemes.dark.volMa5).toBe('#FFD54F')
+    expect(chartThemes.dark.volMa10).toBe('#F06292')
+    expect(chartThemes.light.volMa5).toBe(chartThemes.dark.volMa5)
+    expect(chartThemes.light.volMa10).toBe(chartThemes.dark.volMa10)
+  })
 })

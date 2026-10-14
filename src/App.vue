@@ -54,7 +54,8 @@ const toggleTheme = (): void => {
 /** 主题变化 → 同步 html 背景与图表 */
 watch(theme, (name) => {
   const themeColorSet = themeColors(name)
-  document.documentElement.style.backgroundColor = themeColorSet.background
+  // 页面 html 背景用独立 pageBackground（与图表背景区分：深系更深 / 浅系更浅）
+  document.documentElement.style.backgroundColor = themeColorSet.pageBackground
   chartRef.value?.controller?.applyTheme(name)
 })
 
@@ -90,7 +91,7 @@ const shiftRight = (): void => chartRef.value?.controller?.shiftRight()
 
 /** 首次进入：设置页面背景 */
 onMounted(() => {
-  document.documentElement.style.backgroundColor = themeColors(theme.value).background
+  document.documentElement.style.backgroundColor = themeColors(theme.value).pageBackground
 })
 
 /** 卸载：恢复默认背景 */
@@ -106,7 +107,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.64</span>
+      <span class="hint">指标开关 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + MACD v1.4.66</span>
     </div>
 
     <div class="toolbar">

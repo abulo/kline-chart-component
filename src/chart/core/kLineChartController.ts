@@ -76,6 +76,7 @@ import {
 import { TestLabelPrimitive } from '../testLabel/testLabelPrimitive'
 import { TopPaneOverlayPrimitive, type TextSegment } from '../overlay/topPaneOverlayPrimitive'
 import { InfoLabelPrimitive } from '../overlay/infoLabelPrimitive'
+import { IndicatorLinePrimitive, type IndicatorLineSet } from '../overlay/indicatorLinePrimitive'
 import { HighLowMarkerPrimitive } from '../highLow/highLowMarkerPrimitive'
 import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
 import { MacdBarPrimitive, type MacdPoint } from '../indicator/macdBarPrimitive'
@@ -102,6 +103,16 @@ import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrim
  *  MA / EXPMA / BOLL / SAR / BBI，null = 关闭
  */
 export type MainIndicatorName = 'ma' | 'expma' | 'boll' | 'sar' | 'bbi'
+
+/**
+ * 主图指标线规格（颜色 + 升序数据点）。
+ * 由 IndicatorLinePrimitive 在 top canvas（十字星之上）自绘，
+ * 因此不再创建 LineSeries（库 LineSeries 会被十字星横线压住）。
+ */
+interface IndicatorLineSpec {
+  color: string
+  points: IndicatorLine[]
+}
 
 /**
  * 指标 Pane 布局说明：
@@ -149,8 +160,10 @@ export class KLineChartController {
   /* ===== series（pane0/pane2/pane4 空线 = 文字载体；pane1 K 线；pane3 成交量；pane5 指标） ===== */
   private klineSeries: ISeriesApi<'Candlestick'>
   private volumeSeries: ISeriesApi<'Histogram'>
-  /** pane3 成交量均量线（VOL MA5 / MA10，LineSeries 叠加在成交量柱上，同 priceScaleId 'left'） */
-  private volumeMaSeries: ISeriesApi<'Line'>[] = []
+  /** pane3 成交量均量线（VOL MA5 / MA10）数据缓存：top 层 primitive 自绘（十字星之上） */
+  private volumeMaLines: { color: string; points: IndicatorLine[] }[] = []
+  /** pane3 成交量均量线自绘 primitive（挂 volumeSeries，zOrder 'top' → 十字星之上） */
+  private volumeMaPrimitive: IndicatorLinePrimitive | null = null
   /** pane2 成交量信息行缓存（time → 成交量 + MA5/MA10 值；MA 前 N-1 根为 null，O(1) 现取） */
   private volumeInfoMap: Map<number, { volume: number; ma5: number | null; ma10: number | null }> = new Map()
   /** pane5 指标柱（Histogram，指标通用；开启时创建，关闭时销毁置 null） */
@@ -161,8 +174,11 @@ export class KLineChartController {
   private deaSeries: ISeriesApi<'Line'> | null = null
   /** 各内容 Pane 的十字星左刻度指示值 primitive（pane1 / pane3 常驻，pane5 随指标开关增删） */
   private crosshairAxisLabelPrimitives: CrosshairAxisLabelPrimitive[] = []
-  /** pane1 主图指标线（当前激活指标的 LineSeries 集合；互斥，切换时清空重建） */
-  private mainIndicatorSeries: ISeriesApi<'Line'>[] = []
+  /** pane1 主图指标线缓存（{ 线色, 数据点 }[]；IndicatorLinePrimitive 自绘 top-canvas，
+   *  位于十字星之上 —— 库 LineSeries 会被十字星横线压住，故不再用 LineSeries 渲染） */
+  private mainIndicatorLines: IndicatorLineSpec[] = []
+  /** 主图指标线自绘 primitive（挂 klineSeries，zOrder 'top' → 十字星之上，不被横线遮挡） */
+  private indicatorLinePrimitive: IndicatorLinePrimitive | null = null
   /** 主图线型指标值缓存（label + 线色 + time→value Map），供 pane0 信息行分段着色现取
    *  （O(1)）；在 setMainIndicator 构建、clearMainIndicatorSeries 清空 */
   private mainIndicatorValueMaps: { label: string; color: string; values: Map<number, number> }[] = []
@@ -367,6 +383,16 @@ export class KLineChartController {
     )
     this.sarMarkerPrimitive.setVisible(false)
     this.klineSeries.attachPrimitive(this.sarMarkerPrimitive)
+    // pane1 主图指标线：IndicatorLinePrimitive 自绘（top canvas，十字星之上，
+    // 不被十字星横线遮挡）；数据由 setMainIndicator 写入 mainIndicatorLines 缓存现取
+    this.indicatorLinePrimitive = new IndicatorLinePrimitive(
+      (): IndicatorLineSet => ({
+        lines: this.mainIndicatorLines,
+        getTimeScale: () => this.chart.timeScale(),
+        anchorSeries: () => this.klineSeries,
+      }),
+    )
+    this.klineSeries.attachPrimitive(this.indicatorLinePrimitive)
 
     /* ---------- 3.1 pane2：成交量信息行（自绘分段文字，设置与 pane0 一致） ----------
      * 显示 "成交量: x  MA5: x  MA10: x"（数值随十字星命中 bar / 最新 bar）；
@@ -450,24 +476,17 @@ export class KLineChartController {
     this.crosshairAxisLabelPrimitives.push(pane3CrosshairLabel)
 
     /* 成交量均量线 VOL MA5 / MA10（东财成交量副图默认）：
-     * 与成交量柱同 priceScaleId 'left'（同一量刻度），LineSeries 叠加；
-     * 颜色 = theme.volMa5（黄）/ volMa10（粉），构造创建、applyData 复用 setData */
-    const volMa5Color = initialThemeColors.volMa5
-    const volMa10Color = initialThemeColors.volMa10
-    this.volumeMaSeries = [volMa5Color, volMa10Color].map((color) =>
-      this.chart.addSeries(
-        LineSeries,
-        {
-          priceScaleId: 'left',
-          color,
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
-        },
-        3,
-      ),
+     * 与成交量柱同 priceScaleId 'left'（同一量刻度）；
+     * 用 IndicatorLinePrimitive 自绘（top canvas，十字星之上，不被横线遮挡）——
+     * 数据由 applyData 写入 volumeMaLines 缓存现取；颜色 = theme.volMa5 / volMa10 */
+    this.volumeMaPrimitive = new IndicatorLinePrimitive(
+      (): IndicatorLineSet => ({
+        lines: this.volumeMaLines,
+        getTimeScale: () => this.chart.timeScale(),
+        anchorSeries: () => this.volumeSeries,
+      }),
     )
+    this.volumeSeries.attachPrimitive(this.volumeMaPrimitive)
 
     /* ---------- 3.3 pane4 / pane5：指标组（仅 showIndicator 开启时创建） ----------
      * 指标开启：pane4 底部空 Pane（自绘"测试"文字，设置与 pane0 一致）+
@@ -694,15 +713,14 @@ export class KLineChartController {
       })),
     )
     // 成交量均量线 VOL MA5 / MA10：东财指标库 calcVolMA（前 N-1 根跳过），
-    // 与成交量柱同量纲；同时构建 pane2 成交量信息行缓存（数值现取 O(1)）
+    // 与成交量柱同量纲；写入 volumeMaLines 缓存（IndicatorLinePrimitive 自绘现取），
+    // 同时构建 pane2 成交量信息行缓存（数值现取 O(1)）
     const volMa5Line = calcVolMA(this.bars, 5)
     const volMa10Line = calcVolMA(this.bars, 10)
-    this.volumeMaSeries[0]?.setData(
-      volMa5Line.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })),
-    )
-    this.volumeMaSeries[1]?.setData(
-      volMa10Line.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })),
-    )
+    this.volumeMaLines = [
+      { color: themeColors(this.theme).volMa5, points: volMa5Line },
+      { color: themeColors(this.theme).volMa10, points: volMa10Line },
+    ]
     const volMa5Map = new Map(volMa5Line.map((point) => [point.time, point.value]))
     const volMa10Map = new Map(volMa10Line.map((point) => [point.time, point.value]))
     this.volumeInfoMap = new Map(
@@ -793,6 +811,13 @@ export class KLineChartController {
     this.indicatorsBarSeries?.applyOptions({ color: themeColorSet.background })
     // SAR 圆点颜色（多头红 / 空头绿）随主题更新（SarMarkerPrimitive setTheme）
     this.sarMarkerPrimitive?.setTheme(themeColorSet)
+    // 成交量均量线颜色跟随主题（数据不变，仅换色；MA5/MA10 色值见 theme.volMa5/volMa10）
+    if (this.volumeMaLines.length === 2) {
+      this.volumeMaLines = [
+        { ...this.volumeMaLines[0], color: themeColorSet.volMa5 },
+        { ...this.volumeMaLines[1], color: themeColorSet.volMa10 },
+      ]
+    }
     // 空 Pane 文字颜色在 draw 时动态取色，applyOptions 触发重绘即自动更新
   }
 
@@ -881,12 +906,16 @@ export class KLineChartController {
         break
       }
     }
+    // 指标线由 IndicatorLinePrimitive 自绘（top canvas）：切换指标不再有 LineSeries
+    // 增删自动触发重绘，这里显式触发一次全量重绘（applyOptions 内部无条件 fullUpdate）
+    this.chart.applyOptions({})
   }
 
-  /** 清空当前所有主图指标（LineSeries removeSeries 释放渲染；SAR primitive 仅隐藏，防内存泄漏） */
+  /** 清空当前所有主图指标（缓存置空 + 值缓存清空；SAR primitive 仅隐藏，防内存泄漏） */
   private clearMainIndicatorSeries = (): void => {
-    this.mainIndicatorSeries.forEach((series) => this.chart.removeSeries(series))
-    this.mainIndicatorSeries = []
+    // 指标线由 IndicatorLinePrimitive 自绘（top canvas），清空数据缓存即可
+    // （下一次库重绘时不再绘制旧线）
+    this.mainIndicatorLines = []
     // 清空指标值缓存（pane0 信息行不再显示旧指标值）
     this.mainIndicatorValueMaps = []
     this.sarValueMap = new Map()
@@ -894,20 +923,6 @@ export class KLineChartController {
   }
 
   /** 在 pane1 创建一条指标 LineSeries（与 K 线同 priceScaleId 'left' → 同刻度叠加） */
-  private createMainIndicatorLine = (color: string, lineWidth: 1 | 2 | 3 | 4): ISeriesApi<'Line'> =>
-    this.chart.addSeries(
-      LineSeries,
-      {
-        priceScaleId: 'left',
-        color,
-        lineWidth,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      },
-      1,
-    )
-
   /**
    * 构建 pane0 信息行分段文字（首段"股票名称 [代码] 时间" + 各指标值段，逐段着色）：
    *  - 首段颜色 = 主题文字色；
@@ -958,11 +973,11 @@ export class KLineChartController {
     return segments
   }
 
-  /** 创建指标线并写入数据（颜色 / 宽度按指标配置；label 供 pane0 信息行显示） */
+  /** 创建指标线并写入数据（颜色 / 宽度按指标配置；label 供 pane0 信息行显示）。
+   *  指标线只入缓存（IndicatorLinePrimitive top canvas 自绘），不创建 LineSeries */
   private appendMainIndicatorLine = (points: IndicatorLine[], color: string, label: string): void => {
-    const series = this.createMainIndicatorLine(color, 1)
-    this.mainIndicatorSeries.push(series)
-    series.setData(points.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })))
+    // 数据缓存：IndicatorLinePrimitive draw 时按可视范围现取并连线
+    this.mainIndicatorLines.push({ color, points })
     // 同步值缓存（pane0 信息行按 time 现取指标值，O(1)；颜色 = 指标线颜色）
     this.mainIndicatorValueMaps.push({
       label,
@@ -1050,6 +1065,16 @@ export class KLineChartController {
     if (this.sarMarkerPrimitive) {
       this.klineSeries.detachPrimitive(this.sarMarkerPrimitive)
       this.sarMarkerPrimitive = null
+    }
+    // 卸载主图指标线 primitive（同挂在 klineSeries 上）
+    if (this.indicatorLinePrimitive) {
+      this.klineSeries.detachPrimitive(this.indicatorLinePrimitive)
+      this.indicatorLinePrimitive = null
+    }
+    // 卸载成交量均量线 primitive（挂在 volumeSeries 上）
+    if (this.volumeMaPrimitive) {
+      this.volumeSeries.detachPrimitive(this.volumeMaPrimitive)
+      this.volumeMaPrimitive = null
     }
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
