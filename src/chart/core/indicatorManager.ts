@@ -51,6 +51,19 @@ import { subIndicatorLabels } from './indicatorMeta'
 import { type MainIndicatorName, type IndicatorLineSpec } from './types'
 import type { TextSegment } from '../overlay/topPaneOverlayPrimitive'
 
+/**
+ * 以 0 为对称中心的附图指标集合：
+ *  - MACD：DIF/DEA/柱以 0 轴为正负分界（柱 base=0），scale 值域 [-absMax, +absMax]、
+ *    中间刻度固定 0、首尾刻度固定 ±absMax（|max| = |min|）；
+ *  - CCI：以 0 为中心正负摆动（常用 ±100 / ±200），同样要求刻度对称、中间为 0。
+ * 其余指标（RSI 0-100、KDJ 0-100 等）按实际值域显示。
+ */
+const zeroCenteredSubIndicators = ['macd', 'cci'] as const
+
+/** 判断指标是否要求 0 对称刻度（scale 值域 [-absMax, +absMax] + 中间固定 0） */
+const isZeroCenteredSubIndicator = (name: string): boolean =>
+  (zeroCenteredSubIndicators as readonly string[]).includes(name)
+
 /** 十字星指示值 primitive 管理接口（CrosshairManager 提供） */
 export interface CrosshairPrimitiveRegistry {
   /** 注册（pane1 / pane3 由控制器注册，pane5 由本管理器注册） */
@@ -450,7 +463,7 @@ export class IndicatorManager {
         getBackColor: () => themeColors(this.getTheme()).background,
         getFont: () => chartFont,
         format: (value) => formatAxisSmart(value),
-        getFixedMiddleValue: () => (this.activeSubIndicator === 'macd' ? 0 : undefined),
+        getFixedMiddleValue: () => (isZeroCenteredSubIndicator(this.activeSubIndicator ?? '') ? 0 : undefined),
         // 首尾刻度固定显示 scale 边界值（±absMax）：避免内嵌 8px 位置经
         // coordinateToPrice 反推产生顶/底不同溢出率导致 |max| ≠ |min|（0.27/-0.28）；
         // MACD 与全部附图指标通用（RSI 等首尾显示其值域边界，更直观）
@@ -524,11 +537,12 @@ export class IndicatorManager {
     // 首 / 尾两点替换为全部线的最大 / 最小值 → scale 值域覆盖全部线（正负双方向），
     // 避免中间极值线超出 Y 轴被裁剪
     const allValues = lines.flat().map((point) => point.value)
-    // MACD 特殊：首根 DIF/DEA/柱 = 0（EMA 首日以收盘起步）且柱以 0 轴为正负分界，
-    // 若全正 / 全负值域不含 0 → 首根（0 值）线起点与柱被 priceToCoordinate 判 null
-    // 裁剪（"第一个数据不渲染"）；强制 scale 覆盖 0。
+    // 0 对称指标（MACD / CCI）特殊：MACD 首根 DIF/DEA/柱 = 0（EMA 首日以收盘起步）
+    // 且柱以 0 轴为正负分界，若全正 / 全负值域不含 0 → 首根（0 值）线起点与柱被
+    // priceToCoordinate 判 null 裁剪（"第一个数据不渲染"）；CCI 以 0 为自然中心。
+    // 统一处理：强制 scale 覆盖 0 且对称（见下方）。
     // 其他指标（OBV 等累计值）按实际值域，避免 0 拉宽 scale 压缩图形。
-    const forceZero = name === 'macd'
+    const forceZero = isZeroCenteredSubIndicator(name)
     // 单趟扫描极值（数据量小；用循环避免 spread 大数组栈风险）
     let maxValue = -Infinity
     let minValue = Infinity
@@ -537,9 +551,9 @@ export class IndicatorManager {
       if (value < minValue) minValue = value
     }
     if (forceZero) {
-      // MACD 刻度对称：Y 轴以 0 为对称中心，左刻度最大值与最小值绝对值相等
-      // （|max| = |min| = 全量极值绝对值的最大值；如 DIF 最大 2.1 / 柱最小 -1.3
-      //  → 刻度范围 [-2.1, +2.1]，正负刻度值镜像对齐）
+      // 0 对称指标刻度对称：Y 轴以 0 为对称中心，左刻度最大值与最小值绝对值相等
+      // （|max| = |min| = 全量极值绝对值的最大值；如 MACD DIF 最大 2.1 / 柱最小 -1.3
+      //  → 刻度范围 [-2.1, +2.1]；CCI 同理，±值镜像对齐）
       const absMax = Math.max(Math.abs(maxValue), Math.abs(minValue), 0)
       maxValue = absMax
       minValue = -absMax

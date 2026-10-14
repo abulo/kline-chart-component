@@ -8,6 +8,25 @@
 
 ---
 
+## v1.4.80（2026-10-14）
+
+CCI 附图指标刻度与 MACD 对齐：中间值固定 0、刻度对称（|max| = |min|）。
+
+### 变更
+- `indicatorManager.ts`：新增 0 对称中心指标集合
+  `zeroCenteredSubIndicators = ['macd', 'cci']` 与判定函数
+  `isZeroCenteredSubIndicator`（语义化，后续 0 中心指标直接加入集合）：
+  - `rebuildSubIndicatorData`：`forceZero` 改用集合判定 →
+    CCI 与 MACD 一样 scale 值域强制对称 `[-absMax, +absMax]`（CCI 以 0 为
+    自然中心，常用 ±100/±200 摆动）；
+  - pane5 中间刻度：`getFixedMiddleValue` 改用集合判定 → CCI 中间固定 0；
+  - 首尾固定值（v1.4.79 的 getEdgeFixedValues）本已通用 → CCI 首尾自动显示
+    ±absMax；
+  - 刻度对称锚点 series（交替 ±absMax）本已通用 → CCI 平移时 0 值线同样固定。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
 ## v1.4.79（2026-10-14）
 
 彻底修复附图指标左刻度 |max| ≠ |min|（实测 0.27 / -0.28，差 0.01）。
