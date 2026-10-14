@@ -529,7 +529,10 @@ export class IndicatorManager {
     if (lines.length === 0 || lines[0].length === 0) return
     const colors = subIndicatorColors[name]
     // pane5 线缓存（IndicatorLinePrimitive 自绘现取；线色 = subIndicatorColors 对应下标）
-    this.subIndicatorLines = lines.map((points, index) => ({
+    // MACD：只画 DIF / DEA 两条线，MACD 柱（第三条）由 MacdBarPrimitive 红绿柱自绘，
+    // 不再画线（避免柱与线重复叠加）；其余指标全部线型绘制。
+    const lineCount = name === 'macd' ? Math.min(2, lines.length) : lines.length
+    this.subIndicatorLines = lines.slice(0, lineCount).map((points, index) => ({
       color: colors[index] ?? colors[0],
       points,
     }))

@@ -8,6 +8,22 @@
 
 ---
 
+## v1.4.81（2026-10-14）
+
+MACD 去掉 MACD 柱的线条：只保留 DIF / DEA 两条线 + 红绿柱。
+
+### 变更
+- `indicatorManager.ts` `rebuildSubIndicatorData`：
+  - `subIndicatorLines` 对 MACD 只取前两条（DIF / DEA）画线；
+    MACD 柱（第三条）由 MacdBarPrimitive 红绿柱自绘，不再画线
+    （此前柱与线重复叠加）；
+  - 其余指标仍全部线型绘制；
+  - pane4 信息行值缓存（subIndicatorValueMaps）保持全量三条
+    （DIF / DEA / MACD 值继续显示，不受影响）。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
 ## v1.4.80（2026-10-14）
 
 CCI 附图指标刻度与 MACD 对齐：中间值固定 0、刻度对称（|max| = |min|）。
