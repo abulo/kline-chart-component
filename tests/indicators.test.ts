@@ -9,19 +9,22 @@
  *  - BBI：(MA3 + MA6 + MA12 + MA24) / 4。
  */
 import { describe, expect, it } from 'vitest'
-import type { BasicBar } from '../src/chart/core/mock'
+import type { ChartDataPoint } from '../src/types/chart'
 import { calcMA } from '../src/chart/indicator/ma'
 import { calcEXPMA } from '../src/chart/indicator/expma'
 import { calcBOLL } from '../src/chart/indicator/boll'
 import { calcSAR } from '../src/chart/indicator/sar'
 import { calcBBI } from '../src/chart/indicator/bbi'
 
-/** 构造单根 K 线（指标计算只用 time / open / high / low / close / volume） */
-const makeBar = (index: number, close: number, high?: number, low?: number): BasicBar => {
+/** 构造单根 K 线（统一数据点类型：pointType='kline'；指标计算只用 time/open/high/low/close/volume） */
+const makeBar = (index: number, close: number, high?: number, low?: number): ChartDataPoint => {
   const h = high ?? close
   const l = low ?? close
   return {
     time: 1_700_000_000 + index * 86_400,
+    tradeDate: '2026-01-05',
+    preClose: close,
+    pointType: 'kline',
     open: close,
     high: h,
     low: l,

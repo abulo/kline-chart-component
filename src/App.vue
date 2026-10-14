@@ -5,7 +5,9 @@
  * 职责：
  *  - 页面背景跟随主题（html 背景色，深系 / 浅系切换）；
  *  - 图表容器占浏览器 80% 宽高、居中；
- *  - 全局控制按钮：时间轴开关 / 缩小 / 放大 / 风格切换。
+ *  - 全局控制按钮：时间轴 / 左刻度 / 右刻度 / 风格 / 主图指标 / 附图指标
+ *    （按钮只维护状态，通过 Props 单向数据流驱动 KLineChart.vue）；
+ *  - 放大 / 缩小 / 左移 / 右移（瞬时动作）经 chartRef 直接调用控制器。
  *
  * 所有开关操作不得破坏整体布局尺寸，仅控制可见性 / 样式。
  */
@@ -41,11 +43,11 @@ const mainIndicatorOptions: ReadonlyArray<{ name: MainIndicatorName; label: stri
   { name: 'bbi', label: 'BBI' },
 ]
 
-/** 主图指标开关（互斥）：点击已激活指标 = 关闭；否则切换 */
+/** 主图指标开关（互斥）：点击已激活指标 = 关闭；否则切换。
+ * 仅维护状态，图表由 KLineChart.vue 的 mainIndicator Props watch 驱动 */
 const toggleMainIndicator = (name: MainIndicatorName): void => {
   const next = activeMainIndicator.value === name ? null : name
   activeMainIndicator.value = next
-  chartRef.value?.controller?.setMainIndicator(next)
 }
 
 /** 主题切换：更新 html 背景 + 图表主题 */
@@ -53,18 +55,16 @@ const toggleTheme = (): void => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
 }
 
-/** 主题变化 → 同步 html 背景与图表 */
+/** 主题变化 → 仅同步页面 html 背景（图表主题由 KLineChart.vue 的
+ * theme Props watch 驱动，页面背景用独立 pageBackground：深系更深 / 浅系更浅） */
 watch(theme, (name) => {
   const themeColorSet = themeColors(name)
-  // 页面 html 背景用独立 pageBackground（与图表背景区分：深系更深 / 浅系更浅）
   document.documentElement.style.backgroundColor = themeColorSet.pageBackground
-  chartRef.value?.controller?.applyTheme(name)
 })
 
-/** 时间轴开关：显隐由控制器调库 timeScale.visible */
+/** 时间轴开关：仅维护状态（图表由 KLineChart.vue 的 timeAxis Props watch 驱动） */
 const toggleTimeAxis = (): void => {
   showTimeAxis.value = !showTimeAxis.value
-  chartRef.value?.controller?.toggleTimeAxis(showTimeAxis.value)
 }
 
 /** 附图指标按钮配置（十个指标，互斥；无选中时关闭指标层） */
@@ -81,23 +81,21 @@ const subIndicatorOptions: ReadonlyArray<{ name: SubIndicatorType; label: string
   { name: 'cr', label: 'CR' },
 ]
 
-/** 附图指标开关（互斥）：点击已选中指标 = 关闭（null → 指标层关闭）；否则切换 */
+/** 附图指标开关（互斥）：点击已选中指标 = 关闭（null → 指标层关闭）；否则切换。
+ * 仅维护状态，图表由 KLineChart.vue 的 subIndicator Props watch 驱动 */
 const toggleSubIndicator = (name: SubIndicatorType): void => {
   const next = activeSubIndicator.value === name ? null : name
   activeSubIndicator.value = next
-  chartRef.value?.controller?.setSubIndicator(next)
 }
 
-/** 左刻度区开关：显隐所有 Pane 左侧刻度，切换后 fitContent */
+/** 左刻度区开关：仅维护状态（图表由 KLineChart.vue 的 leftScale Props watch 驱动） */
 const toggleLeftScale = (): void => {
   showLeftScale.value = !showLeftScale.value
-  chartRef.value?.controller?.setLeftScaleVisible(showLeftScale.value)
 }
 
-/** 右刻度区开关：显隐所有 Pane 右侧刻度，切换后 fitContent */
+/** 右刻度区开关：仅维护状态（图表由 KLineChart.vue 的 rightScale Props watch 驱动） */
 const toggleRightScale = (): void => {
   showRightScale.value = !showRightScale.value
-  chartRef.value?.controller?.setRightScaleVisible(showRightScale.value)
 }
 
 /** 放大 / 缩小 / 左移 / 右移（X 轴全局） */
@@ -124,7 +122,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.73</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.75</span>
     </div>
 
     <div class="toolbar">
@@ -148,7 +146,17 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
 
     <!-- 图表容器：占浏览器 80% 宽高、居中（symbol / name 在 pane0 顶部信息行显示） -->
     <div class="chart-wrap">
-      <KLineChart ref="chartRef" symbol="300750" name="宁德时代" />
+      <KLineChart
+        ref="chartRef"
+        symbol="300750"
+        name="宁德时代"
+        :time-axis="showTimeAxis"
+        :left-scale="showLeftScale"
+        :right-scale="showRightScale"
+        :theme="theme"
+        :main-indicator="activeMainIndicator ?? ''"
+        :sub-indicator="activeSubIndicator ?? ''"
+      />
     </div>
 
     <!-- 底部容器：主图指标（MA / EXPMA / BOLL / SAR / BBI，互斥开关，画在 pane1） -->

@@ -77,12 +77,12 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
             const centerBitmap = Math.round(centerX * pixelRatio)
             const leftBitmap = centerBitmap - Math.floor(barWidthBitmap / 2)
             const barX = leftBitmap / pixelRatio
-            const yTop = seriesApi.priceToCoordinate(bar.volume)
+            const yTop = seriesApi.priceToCoordinate(bar.volume!) // pointType='kline' 必含 volume
             if (yTop === null) continue
             const barHeight = yBase - yTop
             if (barHeight <= 0) continue
 
-            if (bar.close >= bar.open) {
+            if (bar.close! >= bar.open!) { // pointType='kline' 必含 OHLC
               // 上涨：空心红柱（背景填充 + 红色边框，同 pane1 上涨柱）
               context.fillStyle = colors.background
               context.fillRect(barX, yTop, barWidth, barHeight)

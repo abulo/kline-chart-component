@@ -20,13 +20,13 @@ import {
   type IChartApiBase,
   type Time,
 } from 'lightweight-charts'
-import type { BasicBar } from '../core/mock'
+import type { ChartDataPoint } from '../../types/chart'
 import type { VolumeThemeColors } from './volumeBarPaneView'
 import { VolumeBarPaneView } from './volumeBarPaneView'
 
 export class VolumeBarPrimitive implements ISeriesPrimitive<Time> {
   /** 成交量数据获取器（只读；每次 draw 现取，数据更新无需额外通知） */
-  public readonly getBars: () => readonly BasicBar[]
+  public readonly getBars: () => readonly ChartDataPoint[]
   /** 主题颜色获取器（只读；draw 时动态取色，主题切换无需额外刷新） */
   public readonly getThemeColors: () => VolumeThemeColors
 
@@ -38,7 +38,7 @@ export class VolumeBarPrimitive implements ISeriesPrimitive<Time> {
   /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
   private readonly paneView: VolumeBarPaneView
 
-  constructor(getBars: () => readonly BasicBar[], getThemeColors: () => VolumeThemeColors) {
+  constructor(getBars: () => readonly ChartDataPoint[], getThemeColors: () => VolumeThemeColors) {
     this.getBars = getBars
     this.getThemeColors = getThemeColors
     this.paneView = new VolumeBarPaneView(this)

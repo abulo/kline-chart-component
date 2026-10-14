@@ -1,8 +1,9 @@
 /**
- * types/chart.ts —— 通用数据点类型定义（保留目录，供后续接入后端/分时扩展使用）
+ * types/chart.ts —— 通用数据点类型定义（统一数据源）
  *
- * 说明：本文件当前不被精简版组件引用（BasicChartController 使用内部 BasicBar），
- * 按用户要求保留 types 目录；接入真实后端或扩展分时/指标时在此扩展。
+ * 说明：图表组件（KLineChartController）直接使用本类型作为 K 线数据源
+ * （mock.genMockBars 返回 ChartDataPoint[]，pointType='kline'），
+ * 不再使用内部 BasicBar；接入真实后端或扩展分时/指标时在此扩展。
  */
 
 /** 数据点类型标记：K 线 / 分时 / 集合竞价 */

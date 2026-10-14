@@ -61,7 +61,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, chartFont, type ChartThemeName } from './theme'
-import { genMockBars, type BasicBar } from './mock'
+import { genMockBars } from './mock'
 import type { ChartDataPoint } from '../../types/chart'
 import {
   fixedPaneCount,
@@ -79,7 +79,7 @@ import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
 import { SarMarkerPrimitive } from '../indicator/sarMarkerPrimitive'
 import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
 import { GridPrimitive } from '../grid/gridPrimitive'
-import { formatVolume, formatPrice, formatDate } from '../util/format'
+import { formatVolume, formatPrice } from '../util/format'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import { IndicatorManager } from './indicatorManager'
@@ -98,10 +98,9 @@ export class KLineChartController {
   private readonly chart: ReturnType<typeof createChart>
   /** 挂载容器（布局高度 / 实例标记 / ResizeObserver） */
   private readonly container: HTMLElement
-  /** K 线数据（BasicBar：time/open/high/low/close/volume/preClose，mock 120 根） */
-  private readonly bars: BasicBar[]
-  /** 东财指标库输入（BasicBar 适配后的 ChartDataPoint[]，构造时转换一次） */
-  private readonly chartDataPoints: ChartDataPoint[]
+  /** K 线数据（ChartDataPoint：统一数据点类型，pointType='kline'，mock 120 根。
+   *  直接作为指标库 / primitive / series 数据源，无内部中间类型） */
+  private readonly bars: ChartDataPoint[]
   /** 股票名称（pane0 顶部信息行显示：名称 [代码]） */
   private readonly name: string
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
@@ -218,7 +217,6 @@ export class KLineChartController {
       getKlineSeries: () => this.klineSeries,
       getVolumeSeries: () => this.volumeSeries,
       getBars: () => this.bars,
-      getChartDataPoints: () => this.chartDataPoints,
       getTheme: () => this.theme,
       getOverlayTime: () => this.crosshairManager.getOverlayTime(),
       getName: () => this.name,
@@ -449,13 +447,6 @@ export class KLineChartController {
 
     /* ---------- 9. 数据 + 首绘 ---------- */
     this.bars = genMockBars(120)
-    // 东财指标库输入适配：BasicBar → ChartDataPoint（tradeDate 由时间戳格式化，
-    // pointType = 'kline'）；数据固定，构造时转换一次，各指标计算共用
-    this.chartDataPoints = this.bars.map((bar) => ({
-      ...bar,
-      tradeDate: formatDate(bar.time),
-      pointType: 'kline',
-    }))
     this.applyData()
     this.chart.timeScale().fitContent()
 
@@ -502,10 +493,10 @@ export class KLineChartController {
     this.klineSeries.setData(
       this.bars.map((bar) => ({
         time: bar.time as UTCTimestamp,
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
+        open: bar.open!, // pointType='kline' 必含 OHLC（mock 已填全，非空断言）
+        high: bar.high!,
+        low: bar.low!,
+        close: bar.close!,
       })),
     )
     // 成交量：Histogram 仅作 scale 锚点，颜色统一走 options.color（背景色，不可见），
@@ -513,7 +504,7 @@ export class KLineChartController {
     this.volumeSeries.setData(
       this.bars.map((bar) => ({
         time: bar.time as UTCTimestamp,
-        value: bar.volume,
+        value: bar.volume!, // pointType='kline' 必含 volume
       })),
     )
     // 成交量均量线 VOL MA5 / MA10 + pane2 信息行缓存（IndicatorManager 构建）

@@ -20,14 +20,14 @@ import {
   type SeriesType,
   type Time,
 } from 'lightweight-charts'
-import type { BasicBar } from '../core/mock'
+import type { ChartDataPoint } from '../../types/chart'
 import { HighLowMarkerPaneView } from './highLowMarkerPaneView'
 
 export interface HighLowMarkerConfig {
   /** 所属 series（价格反算用：priceToCoordinate 取柱顶 / 柱底 y） */
   series: ISeriesApi<SeriesType>
   /** K 线数据源（可视范围极值遍历用，随数据更新实时生效） */
-  getBars: () => BasicBar[]
+  getBars: () => ChartDataPoint[]
   /** 最高价标注颜色（主题 highMarkerColor，深浅系区分） */
   getHighColor: () => string
   /** 最低价标注颜色（主题 lowMarkerColor，深浅系区分） */

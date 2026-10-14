@@ -12,7 +12,7 @@
  *
  * 依赖注入（controller 提供，series 惰性 getter —— 构造时 series 可能尚未创建，
  * getter 在 draw / 调用时才求值，保证构建顺序安全）：
- *  - chart / klineSeries / volumeSeries / bars / chartDataPoints；
+ *  - chart / klineSeries / volumeSeries / bars（ChartDataPoint[]）；
  *  - theme / overlayTime（十字星当前时间）/ 股票名 / 代码；
  *  - crosshairManager（pane5 十字星指示值注册与移除）；
  *  - onIndicatorStateChange（指标开 / 关后由 controller 重算 pane 高度）。
@@ -23,9 +23,8 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts'
-import { themeColors, mainIndicatorColors, subIndicatorColors, type ChartThemeName } from './theme'
-import type { BasicBar } from './mock'
 import type { ChartDataPoint } from '../../types/chart'
+import { themeColors, mainIndicatorColors, subIndicatorColors, type ChartThemeName } from './theme'
 import { InfoLabelPrimitive } from '../overlay/infoLabelPrimitive'
 import { IndicatorLinePrimitive } from '../overlay/indicatorLinePrimitive'
 import { MacdBarPrimitive, type MacdPoint } from '../indicator/macdBarPrimitive'
@@ -68,10 +67,8 @@ export interface IndicatorManagerDeps {
   getKlineSeries: () => ISeriesApi<'Candlestick'>
   /** 成交量 series 惰性 getter（同上） */
   getVolumeSeries: () => ISeriesApi<'Histogram'>
-  /** K 线数据（构造时已生成） */
-  getBars: () => BasicBar[]
-  /** 东财指标库输入（BasicBar 适配后的 ChartDataPoint[]） */
-  getChartDataPoints: () => ChartDataPoint[]
+  /** K 线数据（ChartDataPoint[]，pointType='kline'；构造时已生成，指标库 / 信息行共用） */
+  getBars: () => ChartDataPoint[]
   /** 当前主题名（深浅系切换时 updateThemeColors 使用） */
   getTheme: () => ChartThemeName
   /** 十字星当前时间（null = 未命中 → 显示最新 bar；CrosshairManager 提供） */
@@ -102,7 +99,6 @@ export class IndicatorManager {
   private readonly getKlineSeries: IndicatorManagerDeps['getKlineSeries']
   private readonly getVolumeSeries: IndicatorManagerDeps['getVolumeSeries']
   private readonly getBars: IndicatorManagerDeps['getBars']
-  private readonly getChartDataPoints: IndicatorManagerDeps['getChartDataPoints']
   private readonly getTheme: IndicatorManagerDeps['getTheme']
   private readonly getOverlayTime: IndicatorManagerDeps['getOverlayTime']
   private readonly getName: IndicatorManagerDeps['getName']
@@ -153,7 +149,6 @@ export class IndicatorManager {
     this.getKlineSeries = deps.getKlineSeries
     this.getVolumeSeries = deps.getVolumeSeries
     this.getBars = deps.getBars
-    this.getChartDataPoints = deps.getChartDataPoints
     this.getTheme = deps.getTheme
     this.getOverlayTime = deps.getOverlayTime
     this.getName = deps.getName
@@ -296,7 +291,7 @@ export class IndicatorManager {
       bars.map((bar) => [
         bar.time,
         {
-          volume: bar.volume,
+          volume: bar.volume!, // pointType='kline' 必含 volume
           ma5: volMa5Map.get(bar.time) ?? null,
           ma10: volMa10Map.get(bar.time) ?? null,
         },
@@ -466,7 +461,7 @@ export class IndicatorManager {
     const name = this.activeSubIndicator
     if (name === null) return
     // 东财指标库：calcSubIndicators 返回十指标全量 Record，取当前选中指标的分组线
-    const lines = calcSubIndicators(this.getChartDataPoints())[name]
+    const lines = calcSubIndicators(this.getBars())[name]
     if (lines.length === 0 || lines[0].length === 0) return
     const colors = subIndicatorColors[name]
     // pane5 线缓存（IndicatorLinePrimitive 自绘现取；线色 = subIndicatorColors 对应下标）

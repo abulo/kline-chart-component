@@ -19,7 +19,7 @@
 import { type IPrimitivePaneView, type IPrimitivePaneRenderer } from 'lightweight-charts'
 import type { CanvasRenderingTarget2D } from 'fancy-canvas'
 import type { Time } from 'lightweight-charts'
-import type { BasicBar } from '../core/mock'
+import type { ChartDataPoint } from '../../types/chart'
 import { chartFont } from '../core/theme'
 import { formatPrice } from '../util/format'
 import type { HighLowMarkerPrimitive } from './highLowMarkerPrimitive'
@@ -38,9 +38,9 @@ const MARKER_LINE_WIDTH = 1
 /** 极值标注结果（最高价与最低价各一个，可能同时存在） */
 export interface HighLowExtremes {
   /** 可视区域内 high 最大的 bar（无数据时为 null） */
-  high: BasicBar | null
+  high: ChartDataPoint | null
   /** 可视区域内 low 最小的 bar（无数据时为 null） */
-  low: BasicBar | null
+  low: ChartDataPoint | null
 }
 
 /**
@@ -49,15 +49,15 @@ export interface HighLowExtremes {
  *  - 最高价与最低价**互不抢占**：即使同根 bar 也分别返回（标注需要两者都显示）；
  *  - 区间为空或数据为空时返回 { high: null, low: null }。
  */
-export const findExtremeBars = (bars: readonly BasicBar[], from: number, to: number): HighLowExtremes => {
+export const findExtremeBars = (bars: readonly ChartDataPoint[], from: number, to: number): HighLowExtremes => {
   if (from > to || bars.length === 0) return { high: null, low: null }
-  let highBar: BasicBar | null = null
-  let lowBar: BasicBar | null = null
+  let highBar: ChartDataPoint | null = null
+  let lowBar: ChartDataPoint | null = null
   for (let i = from; i <= to; i++) {
     const bar = bars[i]
     if (bar === undefined) continue
-    if (highBar === null || bar.high > highBar.high) highBar = bar
-    if (lowBar === null || bar.low < lowBar.low) lowBar = bar
+    if (highBar === null || bar.high! > highBar.high!) highBar = bar // pointType='kline' 必含 OHLC
+    if (lowBar === null || bar.low! < lowBar.low!) lowBar = bar
   }
   return { high: highBar, low: lowBar }
 }
@@ -88,7 +88,7 @@ class HighLowMarkerRenderer implements IPrimitivePaneRenderer {
       // 最高价标注（黄色，柱顶上方）
       if (extremes.high !== null) {
         const x = chartApi.timeScale().timeToCoordinate(extremes.high.time as Time)
-        const y = this.source.config.series.priceToCoordinate(extremes.high.high)
+        const y = this.source.config.series.priceToCoordinate(extremes.high.high!)
         if (x !== null && y !== null) {
           this.drawMarker(
             ctx,
@@ -105,7 +105,7 @@ class HighLowMarkerRenderer implements IPrimitivePaneRenderer {
       // 最低价标注（蓝色，柱底下方）
       if (extremes.low !== null) {
         const x = chartApi.timeScale().timeToCoordinate(extremes.low.time as Time)
-        const y = this.source.config.series.priceToCoordinate(extremes.low.low)
+        const y = this.source.config.series.priceToCoordinate(extremes.low.low!)
         if (x !== null && y !== null) {
           this.drawMarker(
             ctx,

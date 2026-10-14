@@ -2,12 +2,15 @@
  * highLow.test.ts —— 最高价 / 最低价标注极值查找纯函数单测（v1.4.49）
  */
 import { describe, expect, it } from 'vitest'
-import type { BasicBar } from '../src/chart/core/mock'
+import type { ChartDataPoint } from '../src/types/chart'
 import { findExtremeBars } from '../src/chart/highLow/highLowMarkerPaneView'
 
-/** 构造单根 K 线（仅标注需要 high / low 字段） */
-const makeBar = (index: number, high: number, low: number): BasicBar => ({
+/** 构造单根 K 线（统一数据点类型：pointType='kline'，标注需要 high / low 字段） */
+const makeBar = (index: number, high: number, low: number): ChartDataPoint => ({
   time: 1_700_000_000 + index * 86_400,
+  tradeDate: '2026-01-05',
+  preClose: (high + low) / 2,
+  pointType: 'kline',
   open: (high + low) / 2,
   high,
   low,

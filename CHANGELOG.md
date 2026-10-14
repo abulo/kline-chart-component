@@ -8,6 +8,55 @@
 
 ---
 
+## v1.4.75（2026-10-14）
+
+统一数据源：去掉内部 BasicBar，全链路直接使用 ChartDataPoint（types/chart.ts）。
+
+### 变更
+- `mock.ts`：`genMockBars` 返回 `ChartDataPoint[]`（pointType='kline' + tradeDate +
+  preClose + OHLC + volume），删除 `BasicBar` 接口；
+- `kLineChartController.ts`：`bars` 类型改 `ChartDataPoint[]`；删除
+  `chartDataPoints` 适配字段与 BasicBar→ChartDataPoint 转换（mock 直接产出）；
+  series.setData 字段加非空断言（pointType='kline' 必含 OHLC/volume）；
+- `indicatorManager.ts`：`getBars: () => ChartDataPoint[]`（指标库 K 输入
+  兼容 ChartDataPoint），删除 `getChartDataPoints` 依赖，指标计算直接消费 bars；
+- `volumeBarPrimitive/PaneView`、`highLowMarkerPrimitive/PaneView`：数据源类型
+  改 ChartDataPoint[]，OHLC/volume 访问加非空断言；
+- `types/chart.ts` 注释更新（组件直接使用 ChartDataPoint）；
+- tests（mock / indicators / highLow）：makeBar 与断言适配 ChartDataPoint。
+
+### 说明
+- ChartDataPoint 的 K 线字段为可选（统一类型需承载分时/竞价），
+  消费方在 pointType='kline' 语义下使用非空断言（mock 已填全字段）；
+- 指标库内部 `K = Pick<ChartDataPoint, ...>` + `!` 断言，无需改动。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
+## v1.4.74（2026-10-14）
+
+KLineChart.vue 工具栏状态 Props 化（单向数据流）。
+
+### 变更
+- `kLineChart.vue` 新增 6 个 Props：
+  - `timeAxis: boolean`（时间轴开关，默认开）
+  - `leftScale: boolean`（左刻度区开关，默认关）
+  - `rightScale: boolean`（右刻度区开关，默认关）
+  - `theme: string`（风格 'dark' | 'light'，默认深系）
+  - `mainIndicator: string`（主图指标，'' = 关闭）
+  - `subIndicator: string`（附图指标，'' = 关闭指标层）
+  组件 onMounted 创建控制器后立即应用全部初始值；watch 各 Props 变化驱动
+  对应控制器方法（applyTheme / toggleTimeAxis / setLeftScaleVisible /
+  setRightScaleVisible / setMainIndicator / setSubIndicator）。
+- `App.vue` 按钮只维护状态，模板经 Props 传给图表组件（activeMainIndicator /
+  activeSubIndicator 以 `?? ''` 映射空串）；放大 / 缩小 / 左移 / 右移等
+  瞬时动作仍经 chartRef 直接调用控制器。
+- 主题切换：App.vue 仅同步 html 背景（pageBackground），图表主题由 Props
+  watch 驱动（职责分离）。
+
+### 验证
+- vue-tsc 通过；vitest 75/75 全绿；未运行 / 未截图。
+
 ## v1.4.73（2026-10-14）
 
 按功能拆分 `kLineChartController.ts`（1173 行 → 6 个文件），功能零变化（纯重构）。
