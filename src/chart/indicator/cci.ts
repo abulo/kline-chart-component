@@ -6,7 +6,7 @@
  *   MA  = MA(TYP, 14)
  *   CCI = (TYP - MA) / (0.015 * AVEDEV(TYP, 14))
  * 返回单条线（下标 0）。
- * 颜色见控制器 SUB_INDICATOR_META：CCI #A0A0A0。
+ * 颜色见控制器 SUB_INDICATOR_META：CCI #666666。
  * 刻度特殊：中间值精确为 0（对称 ±max×1.1）。
  */
 import type { ChartDataPoint } from '../../types/chart'

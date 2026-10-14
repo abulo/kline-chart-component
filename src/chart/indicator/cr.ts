@@ -8,7 +8,7 @@
  *   CRMA1/2/3 = MA(CR, 5/10/20)
  * 返回四条线（下标 0=CR、1/2/3=MA5/MA10/MA20）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   CR #A0A0A0 / MA1 #F4AA0A / MA2 #FF1DFF / MA3 #007130。
+ *   CR #666666 / MA1 #F4AA0A / MA2 #FF1DFF / MA3 #007130。
  */
 import type { IndicatorLine, K } from './types'
 import { tdxSum, toLines } from './utils'

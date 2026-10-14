@@ -105,7 +105,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     lowMarkerColor: '#2962FF',
     sarUp: '#FF0000',
     sarDown: '#008000',
-    volMa5: '#FFD54F',
+     volMa5: '#FFD54F',
     volMa10: '#F06292',
 
     pageBackground: '#0B0E13',
@@ -159,48 +159,52 @@ export const themeColors = (name: ChartThemeName): ChartThemeColors => chartThem
 /* ==================== 指标配色（深浅系通用，不随主题变化） ==================== */
 
 /**
- * 主图指标配色（pane1 叠加线，深浅系通用；东方财富标准色，见各指标文件注释）：
- *  - MA：5 / 10 / 20 / 30 / 60 五线（白 / 黄 / 粉 / 深绿 / 蓝）；
- *  - EXPMA：12 / 50 两线（白 / 黄）；
- *  - BOLL：上轨 / 中轨 / 下轨（黄 / 白 / 粉）；
+ * 主图指标配色（pane1 叠加线，深浅系通用）。
+ * 注意（v1.4.92）：原东财标准色中的"白线"（MA5 / EXPMA12 / 附图第一线 #A0A0A0）、
+ * BOLL 中轨纯白（#FFFFFF）、BBI 浅蓝灰（#B0BEC5）在浅系（白底）下过淡 / 不可见，
+ * 统一替换为深浅系均清晰可见的深色：灰线 → #666666、BOLL 中轨 → #33373E、BBI → #607D8B。
+ *  - MA：5 / 10 / 20 / 30 / 60 五线（深灰 / 黄 / 粉 / 深绿 / 蓝）；
+ *  - EXPMA：12 / 50 两线（深灰 / 黄）；
+ *  - BOLL：上轨 / 中轨 / 下轨（黄 / 深灰 / 粉）；
  *  - SAR：抛物点按趋势着色（多头 = K 线上涨色、空头 = K 线下跌色，取主题 up/down）；
- *  - BBI：多空指标（浅蓝灰）。
+ *  - BBI：多空指标（蓝灰）。
  */
 export const mainIndicatorColors = {
   /** MA 五线（MA5 / MA10 / MA20 / MA30 / MA60） */
-  ma: ['#A0A0A0', '#DD9900', '#FF00FF', '#007130', '#0079D5'],
+  ma: ['#666666', '#DD9900', '#FF00FF', '#007130', '#0079D5'],
   /** EXPMA 两线（EXPMA12 / EXPMA50） */
-  expma: ['#A0A0A0', '#DD9900'],
+  expma: ['#666666', '#DD9900'],
   /** BOLL 三轨（上轨 / 中轨 / 下轨） */
-  boll: ['#FFD54F', '#FFFFFF', '#F06292'],
+  boll: ['#FFD54F', '#33373E', '#F06292'],
   /** BBI 单线 */
-  bbi: '#B0BEC5',
+  bbi: '#607D8B',
 } as const
 
 /**
  * 附图指标线颜色（东财标准色，深浅系通用；下标顺序与各指标 calc 返回线序一致）。
  *  - MACD 第三色用于指标信息行 MACD 柱值文本（柱体渲染仍为红涨 / 绿跌）；
- *  - 深 / 浅系共用同一配色（与主图指标一致，不随主题变化）。
+ *  - 深 / 浅系共用同一配色（与主图指标一致，不随主题变化）；
+ *  - v1.4.92：第一线（东财标准白线）由 #A0A0A0 加深为 #666666，浅系白底下清晰可见。
  */
 export const subIndicatorColors = {
   /** RSI：RSI6 / RSI12 / RSI24 */
-  rsi: ['#A0A0A0', '#F4AA0A', '#FF1DFF'],
+  rsi: ['#666666', '#F4AA0A', '#FF1DFF'],
   /** KDJ：K / D / J */
-  kdj: ['#A0A0A0', '#F4AA0A', '#FF1DFF'],
+  kdj: ['#666666', '#F4AA0A', '#FF1DFF'],
   /** MACD：DIF / DEA / MACD 柱值（柱体渲染红涨绿跌，第三色仅供信息行文本） */
-  macd: ['#A0A0A0', '#F4AA0A', '#FF1DFF'],
+  macd: ['#666666', '#F4AA0A', '#FF1DFF'],
   /** WR：WR10 / WR6 */
-  wr: ['#A0A0A0', '#F4AA0A'],
+  wr: ['#666666', '#F4AA0A'],
   /** DMI：PDI / MDI / ADX / ADXR */
-  dmi: ['#A0A0A0', '#F4AA0A', '#FF1DFF', '#007130'],
+  dmi: ['#666666', '#F4AA0A', '#FF1DFF', '#007130'],
   /** BIAS：BIAS6 / BIAS12 / BIAS24 */
-  bias: ['#A0A0A0', '#F4AA0A', '#FF1DFF'],
+  bias: ['#666666', '#F4AA0A', '#FF1DFF'],
   /** OBV：OBV / OBVMA */
-  obv: ['#A0A0A0', '#F4AA0A'],
+  obv: ['#666666', '#F4AA0A'],
   /** CCI：单线 */
-  cci: ['#A0A0A0'],
+  cci: ['#666666'],
   /** ROC：ROC / ROCMA */
-  roc: ['#A0A0A0', '#F4AA0A'],
+  roc: ['#666666', '#F4AA0A'],
   /** CR：CR / MA5 / MA10 / MA20 */
-  cr: ['#A0A0A0', '#F4AA0A', '#FF1DFF', '#007130'],
+  cr: ['#666666', '#F4AA0A', '#FF1DFF', '#007130'],
 } as const

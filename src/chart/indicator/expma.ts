@@ -5,7 +5,7 @@
  *   EMA[0] = close[0]；
  *   EMA[i] = close[i] * k + EMA[i-1] * (1 - k)，k = 2 / (N + 1)。
  * 从首根即输出（与 MA 不同，无预热期）。
- * 颜色见 theme.ts（expma12 #A0A0A0 / expma50 #DD9900）。
+ * 颜色见 theme.ts（expma12 #666666 / expma50 #DD9900）。
  */
 import type { IndicatorLine, K } from './types'
 

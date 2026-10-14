@@ -1,5 +1,5 @@
 /**
- * kLineChartController.ts —— 多 Pane K 线图表控制器（v1.4.73 功能拆分版）
+ * KLineChartController.ts —— 多 Pane K 线图表控制器（v1.4.73 功能拆分版）
  *
  * 布局：一个 chart 内多 Pane（lightweight-charts 原生多 Pane，指标层可开关）：
  *   指标开启（6 Pane）：
@@ -106,6 +106,8 @@ export class KLineChartController {
   private readonly name: string
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
   private readonly symbol: string
+  /** 内置演示数据条数（KLineChartOptions.dataCount，默认 120；极限压测可传 10000） */
+  private readonly dataCount: number
 
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心） */
   private klineSeries: ISeriesApi<'Candlestick'>
@@ -144,6 +146,8 @@ export class KLineChartController {
     // 股票信息（pane0 顶部信息行显示，格式：名称 [代码]）
     this.name = options.name ?? ''
     this.symbol = options.symbol ?? ''
+    // 内置演示数据条数（默认 120；极限压测 10000：指标 / 十字星 / 指示值全量走 O(n) 路径）
+    this.dataCount = options.dataCount ?? 120
 
     /* ---------- 0. 实例保护：容器打标记防重复创建 chart 实例 ----------
      * 组件重复挂载 / HMR / 路由切换时可能再次进入构造；标记在 destroy 时清除，
@@ -458,7 +462,7 @@ export class KLineChartController {
     this.applyStretchFactors()
 
     /* ---------- 9. 数据 + 首绘 ---------- */
-    this.bars = genMockBars(120)
+    this.bars = genMockBars(this.dataCount)
     this.applyData()
     this.chart.timeScale().fitContent()
 

@@ -7,7 +7,7 @@
  *   MACD = (DIF - DEA) * 2
  * 返回三条线（下标 0/1/2 对应 DIF/DEA/MACD 柱值）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   DIF #A0A0A0 / DEA #F4AA0A / MACD 柱 #FF1DFF
+ *   DIF #666666 / DEA #F4AA0A / MACD 柱 #FF1DFF
  * （柱体由 macdBarPrimitive 插件绘制：红空心 / 绿实心，宽与 K 线柱一致）。
  */
 import type { ChartDataPoint } from '../../types/chart'

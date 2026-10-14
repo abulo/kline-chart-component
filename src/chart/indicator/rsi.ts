@@ -6,7 +6,7 @@
  * 其中 LC=REF(C,1)（首根取自身，涨/跌为 0）；SMA 为通达信递推平滑。
  * 默认参数 6/12/24，返回三条线（下标 0/1/2）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   RSI6 #A0A0A0 / RSI12 #F4AA0A / RSI24 #FF1DFF。
+ *   RSI6 #666666 / RSI12 #F4AA0A / RSI24 #FF1DFF。
  */
 import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'

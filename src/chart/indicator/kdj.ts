@@ -8,7 +8,7 @@
  *   J   = 3 * K - 2 * D
  * 返回三条线（下标 0/1/2 对应 K/D/J）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   K #A0A0A0 / D #F4AA0A / J #FF1DFF。
+ *   K #666666 / D #F4AA0A / J #FF1DFF。
  */
 import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'

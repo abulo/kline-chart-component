@@ -7,7 +7,7 @@
  *   OBVMA  = MA(OBV, 30)（东财 OBV 副图含 OBV + OBVMA 两条线）
  * 返回两条线（下标 0=OBV、1=OBVMA）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   OBV #A0A0A0 / OBV_MA #F4AA0A。
+ *   OBV #666666 / OBV_MA #F4AA0A。
  */
 import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'

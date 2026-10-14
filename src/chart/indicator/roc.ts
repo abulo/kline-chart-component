@@ -6,7 +6,7 @@
  *   ROCMA = MA(ROC, 6)
  * 返回两条线（下标 0=ROC、1=ROCMA）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   ROC #A0A0A0 / ROC_MA #F4AA0A。
+ *   ROC #666666 / ROC_MA #F4AA0A。
  */
 import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'

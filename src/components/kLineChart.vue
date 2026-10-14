@@ -26,7 +26,7 @@
  *  - onBeforeUnmount：销毁控制器并置空引用（防内存泄漏）。
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { KLineChartController, type MainIndicatorName } from '../chart/core/kLineChartController'
+import { KLineChartController, type MainIndicatorName } from '../chart/core/KLineChartController'
 import type { ChartThemeName } from '../chart/core/theme'
 import type { SubIndicatorType } from '../chart/indicator'
 
@@ -49,6 +49,8 @@ const props = withDefaults(
     mainIndicator?: string
     /** 附图指标（'' = 关闭指标层；互斥单选，由父组件保证） */
     subIndicator?: string
+    /** 内置演示数据条数（默认 120；极限压测可传 10000） */
+    dataCount?: number
   }>(),
   {
     symbol: '',
@@ -59,6 +61,7 @@ const props = withDefaults(
     theme: 'dark',
     mainIndicator: '',
     subIndicator: '',
+    dataCount: 120,
   },
 )
 
@@ -76,6 +79,7 @@ onMounted(() => {
     container: containerRef.value,
     symbol: props.symbol,
     name: props.name,
+    dataCount: props.dataCount,
   })
   // 创建后立即应用全部 Props 初始值（与控制器构造默认值一致时幂等无副作用）
   controller.value.applyTheme(props.theme as ChartThemeName)

@@ -86,19 +86,19 @@ describe('主题配置', () => {
     expect(d.sarUp).not.toBe(d.sarDown)
   })
 
-  it('主图指标配色：MA 五线 / EXPMA 两线 / BOLL 三轨 / BBI 单线齐全', () => {
+  it('主图指标配色：MA 五线 / EXPMA 两线 / BOLL 三轨 / BBI 单线齐全（v1.4.92 白线加深，浅系可见）', () => {
     // MA5/10/20/30/60 五条线各一个颜色
     expect(mainIndicatorColors.ma).toHaveLength(5)
-    expect(mainIndicatorColors.ma[0]).toBe('#A0A0A0')
+    expect(mainIndicatorColors.ma[0]).toBe('#666666')
     expect(mainIndicatorColors.ma[4]).toBe('#0079D5')
     // EXPMA12/50 两线
     expect(mainIndicatorColors.expma).toHaveLength(2)
-    expect(mainIndicatorColors.expma[0]).toBe('#A0A0A0')
+    expect(mainIndicatorColors.expma[0]).toBe('#666666')
     // BOLL 上/中/下三轨
     expect(mainIndicatorColors.boll).toHaveLength(3)
     expect(mainIndicatorColors.boll[0]).toBe('#FFD54F')
     // BBI 单线
-    expect(mainIndicatorColors.bbi).toBe('#B0BEC5')
+    expect(mainIndicatorColors.bbi).toBe('#607D8B')
   })
 
   it('清理后无 separatorColor / CHART_FONT 残留', () => {
@@ -124,15 +124,15 @@ describe('主题配置', () => {
 
   it('附图指标配色 subIndicatorColors：十指标线数与东财标准色一致（v1.4.68）', () => {
     // 线数：RSI3 / KDJ3 / MACD3 / WR2 / DMI4 / BIAS3 / OBV2 / CCI1 / ROC2 / CR4
-    expect(subIndicatorColors.rsi).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF'])
-    expect(subIndicatorColors.kdj).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF'])
-    expect(subIndicatorColors.macd).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF'])
-    expect(subIndicatorColors.wr).toEqual(['#A0A0A0', '#F4AA0A'])
-    expect(subIndicatorColors.dmi).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF', '#007130'])
-    expect(subIndicatorColors.bias).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF'])
-    expect(subIndicatorColors.obv).toEqual(['#A0A0A0', '#F4AA0A'])
-    expect(subIndicatorColors.cci).toEqual(['#A0A0A0'])
-    expect(subIndicatorColors.roc).toEqual(['#A0A0A0', '#F4AA0A'])
-    expect(subIndicatorColors.cr).toEqual(['#A0A0A0', '#F4AA0A', '#FF1DFF', '#007130'])
+    expect(subIndicatorColors.rsi).toEqual(['#666666', '#F4AA0A', '#FF1DFF'])
+    expect(subIndicatorColors.kdj).toEqual(['#666666', '#F4AA0A', '#FF1DFF'])
+    expect(subIndicatorColors.macd).toEqual(['#666666', '#F4AA0A', '#FF1DFF'])
+    expect(subIndicatorColors.wr).toEqual(['#666666', '#F4AA0A'])
+    expect(subIndicatorColors.dmi).toEqual(['#666666', '#F4AA0A', '#FF1DFF', '#007130'])
+    expect(subIndicatorColors.bias).toEqual(['#666666', '#F4AA0A', '#FF1DFF'])
+    expect(subIndicatorColors.obv).toEqual(['#666666', '#F4AA0A'])
+    expect(subIndicatorColors.cci).toEqual(['#666666'])
+    expect(subIndicatorColors.roc).toEqual(['#666666', '#F4AA0A'])
+    expect(subIndicatorColors.cr).toEqual(['#666666', '#F4AA0A', '#FF1DFF', '#007130'])
   })
 })

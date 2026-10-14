@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.91（2026-10-14）**
+> **当前版本：v1.4.93（2026-10-14）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
@@ -82,10 +82,10 @@ src/
 ├── App.vue                    # 工具栏 + 容器（80% 宽高居中）
 ├── main.ts                    # 入口
 ├── components/
-│   └── KLineChart.vue         # 图表组件（props: symbol / name → pane0 信息行"名称[代码] 时间 + 指标值"，随十字星）
+│   └── KLineChart.vue         # 图表组件（props: symbol / name / timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator / dataCount；dataCount=内置演示数据条数，默认 120，压测可传 10000）
 ├── chart/                     # 按功能分组的图表源码
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
-│   │   ├── kLineChartController.ts # 控制器（v1.4.73 功能拆分版）：Pane 创建 / 布局 / 主题 / 数据 / 缩放平移 / 刻度开关 / 生命周期，职责委托给下方管理器
+│   │   ├── KLineChartController.ts # 控制器（v1.4.73 功能拆分版）：Pane 创建 / 布局 / 主题 / 数据 / 缩放平移 / 刻度开关 / 生命周期，职责委托给下方管理器
 │   │   ├── indicatorManager.ts # 指标管理器（主图五指标 + 成交量均量线 + pane0/pane2 信息行；setMainIndicator / setSubIndicator 转发附图指标层）
 │   │   ├── subIndicatorPaneManager.ts # 附图指标 Pane 管理器（pane4 指标信息行 + pane5 指标图：创建/销毁/数据/信息行/主题；v1.4.89 拆分）
 │   │   ├── crosshairManager.ts # 十字星管理器（十字星移动联动 + overlayTime + 左刻度指示值注册表）
@@ -145,6 +145,7 @@ tests/
 ├── candlestickWidth.test.ts   # 蜡烛宽度单测
 ├── macd.test.ts               # MACD 计算单测
 ├── multipane.test.ts          # 布局常量 / 高度算法单测
+├── stress.test.ts             # 数据极限压力测试（10000 条 × 全指标：完整性 / 无 NaN / O(n) 缓存语义 / 耗时上限，v1.4.93）
 └── util.test.ts               # 格式化函数单测
 ```
 

@@ -8,6 +8,47 @@
 
 ---
 
+## v1.4.93（2026-10-14）
+
+数据极限压力测试：10000 条数据全指标验证 + 组件支持数据条数配置。
+
+### 变更
+- `KLineChart.vue` / `KLineChartOptions`：新增 `dataCount` prop（默认 120，
+  压测 / 演示可传 10000；controller 构造即用 `genMockBars(dataCount)` 生成）；
+- 新增 `tests/stress.test.ts`（6 项，10000 条）：
+  ① 数据完整性（time 严格递增唯一 / tradeDate 格式 / OHLC 值域自洽）；
+  ② 主图指标 MA×5 / EXPMA×2 / BOLL×3 / SAR / BBI 全量计算无 NaN；
+  ③ 成交量均量 VOL MA5 / MA10；
+  ④ 附图指标十种（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR）全量无 NaN；
+  ⑤ 缓存语义：每条线 time 唯一（O(1) 查询 Map 前提，无重复 / 无乱序）；
+  ⑥ 性能：10000 条 × 全部指标一次性计算耗时上限（实为 O(n) 线性）；
+- 各指标文件注释色值同步 v1.4.92 去白化（#A0A0A0 → #666666）；
+- 修复：theme.ts `volMa5` / `volMa10` 被环境回滚为错误值（#DD9900 / #FF00FF）
+  → 恢复为 v1.4.92 正确值（#FFD54F / #F06292）；
+- 文件名驼峰规范（K 线专有名词大写 K）：`kLineChart.vue` → `KLineChart.vue`、
+  `kLineChartController.ts` → `KLineChartController.ts`，全部 import / README / CHANGELOG 引用同步修正。
+
+### 验证
+vue-tsc 通过；vitest 84/84 全绿（11 文件，新增 stress 6 项）；
+压测数据 10000 条全指标计算 < 100ms（O(n)）；未运行 / 未截图。
+
+## v1.4.92（2026-10-14）
+
+指标配色去白化：浅系（白底）下所有指标线清晰可见。
+
+### 变更（theme.ts 统一管理，主 / 附图指标共 10+ 处）
+- MA5 / EXPMA12 及全部附图指标第一线（RSI6 / K / DIF / WR10 / PDI / BIAS6 / OBV /
+  CCI / ROC / CR）：东财标准白线 `#A0A0A0` 在浅系下过淡 → 统一加深为 `#666666`；
+- BOLL 中轨 `#FFFFFF`（浅系白底完全不可见）→ `#33373E`（深灰黑，深浅系均清晰）；
+- BBI `#B0BEC5`（浅蓝灰过淡）→ `#607D8B`（蓝灰）；
+- 深浅系共用同一配色（不随主题变化），替换色均满足深系（#131722）与浅系（#FFFFFF）
+  双背景对比度；
+- 同步更新 theme.ts 头注释（说明东财标准色 → 适配深色版原因）与 tests/theme.test.ts
+  断言（10 处色值）。
+
+### 验证
+vue-tsc 通过；vitest 78/78 全绿；未运行 / 未截图。
+
 ## v1.4.91（2026-10-14）
 
 代码质量收尾（清理未使用声明 / 依赖瘦身）。
@@ -44,7 +85,7 @@
   top 层（库竖线之后）补画最后一段虚线段长度（6 / dpr CSS px）的实线 ——
   无缺口时与最后实线段重叠（无视觉变化）、有缺口时恰好填满空白段，
   虚线主体（LargeDashed）观感不变；
-- 挂载：pane1 / pane2 / pane3（kLineChartController）、pane4 / pane5
+- 挂载：pane1 / pane2 / pane3（KLineChartController）、pane4 / pane5
   （SubIndicatorPaneManager）各一个实例；pane0 不挂（被信息行背景遮住）。
   颜色 / 时间 / x 全部动态获取（主题切换、十字星移动即时生效）。
 
@@ -112,7 +153,7 @@ vue-tsc 通过；vitest 78/78 全绿（新增 3 项 macdLineContinuity）；未�
 - `theme.ts`：新增 `crosshairLineColor`（半透明）——
   深系 `rgba(149,152,161,0.6)`（#9598A1 @ 60%）、浅系 `rgba(90,96,112,0.6)`
   （中灰，白底更清晰）；
-- `kLineChartController.ts`：初始 options 与主题切换（applyTheme）同步设置
+- `KLineChartController.ts`：初始 options 与主题切换（applyTheme）同步设置
   `crosshair.vertLine.color / horzLine.color` —— 虚线间隙与线体均透出柱体，
   "不被遮盖"，同时十字星仍清晰（层级保持"十字星在柱上方"不变）。
 
@@ -330,7 +371,7 @@ MACD 左刻度对称：附图指标 MACD 的 Y 轴最大值与最小值绝对值
 ### 变更
 - `mock.ts`：`genMockBars` 返回 `ChartDataPoint[]`（pointType='kline' + tradeDate +
   preClose + OHLC + volume），删除 `BasicBar` 接口；
-- `kLineChartController.ts`：`bars` 类型改 `ChartDataPoint[]`；删除
+- `KLineChartController.ts`：`bars` 类型改 `ChartDataPoint[]`；删除
   `chartDataPoints` 适配字段与 BasicBar→ChartDataPoint 转换（mock 直接产出）；
   series.setData 字段加非空断言（pointType='kline' 必含 OHLC/volume）；
 - `indicatorManager.ts`：`getBars: () => ChartDataPoint[]`（指标库 K 输入
@@ -374,10 +415,10 @@ KLineChart.vue 工具栏状态 Props 化（单向数据流）。
 
 ## v1.4.73（2026-10-14）
 
-按功能拆分 `kLineChartController.ts`（1173 行 → 6 个文件），功能零变化（纯重构）。
+按功能拆分 `KLineChartController.ts`（1173 行 → 6 个文件），功能零变化（纯重构）。
 
 ### 拆分结构（每个 class / 常量一个文件）
-- `src/chart/core/kLineChartController.ts`（瘦身至 ~700 行）：
+- `src/chart/core/KLineChartController.ts`（瘦身至 ~700 行）：
   仅保留图表创建 / Pane 构建 / 数据写入（applyData）/ 布局（applyStretchFactors）/
   主题（applyTheme）/ 缩放平移 / 刻度开关 / 生命周期（destroy），职责委托给管理器；
 - `src/chart/core/indicatorManager.ts`（新）：
@@ -683,7 +724,7 @@ invalidate —— primitive 的 draw 由库重绘驱动，仅改标志时画面�
 - tests/theme.test.ts：新增 SAR 圆点色断言（深浅系红涨绿跌一致）+ 主图指标配色断言
   （MA 五线 / EXPMA 两线 / BOLL 三轨 / BBI 单线），测试 64 → 66；
 - README：内存与性能章节补充标签缓存 / SAR 圆点裁剪 / detachPrimitive 说明；
-- kLineChartController.ts：头部模块注释更新至当前架构（v1.4.57，六 Pane + 主图指标 +
+- KLineChartController.ts：头部模块注释更新至当前架构（v1.4.57，六 Pane + 主图指标 +
   东财指标库 + 各自绘 primitive 职责）；
 - 验证：vue-tsc 通过、vitest 66/66 全绿；未运行 / 未截图。
 
@@ -1329,7 +1370,7 @@ Pane 分组：main / volume / indicator = 60 : 20 : 20（时间轴开 / 关一�
 所有文件名统一为小驼峰命名（camelCase）。
 
 ### 变更
-- `src/chart/`：`KLineChartController.ts → kLineChartController.ts`、
+- `src/chart/`：`KLineChartController.ts → KLineChartController.ts`、
   `TestLabelPrimitive.ts → testLabelPrimitive.ts`、`TestLabelPaneView.ts → testLabelPaneView.ts`、
   `VolumeBarPrimitive.ts → volumeBarPrimitive.ts`、`VolumeBarPaneView.ts → volumeBarPaneView.ts`；
 - `src/components/`：`KLineChart.vue → kLineChart.vue`；

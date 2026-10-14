@@ -1,5 +1,5 @@
 /**
- * indicatorMeta.ts —— 附图指标元信息（v1.4.73 拆分自 kLineChartController.ts）
+ * indicatorMeta.ts —— 附图指标元信息（v1.4.73 拆分自 KLineChartController.ts）
  *
  * 线名集中管理：下标顺序与各指标 calc 返回线序一致，
  * 颜色见 theme.subIndicatorColors（全部颜色集中在公共文件）。

@@ -13,7 +13,7 @@
  *   ADXR = (ADX + REF(ADX,6)) / 2
  * 返回四条线（下标 0/1/2/3 对应 PDI/MDI/ADX/ADXR）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   PDI #A0A0A0 / MDI #F4AA0A / ADX #FF1DFF / ADXR #007130。
+ *   PDI #666666 / MDI #F4AA0A / ADX #FF1DFF / ADXR #007130。
  */
 import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'

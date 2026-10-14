@@ -1,5 +1,5 @@
 /**
- * crosshairManager.ts —— 十字星管理器（v1.4.73 拆分自 kLineChartController.ts）
+ * crosshairManager.ts —— 十字星管理器（v1.4.73 拆分自 KLineChartController.ts）
  *
  * 职责：十字星移动联动（订阅 / 退订 + 回调处理）：
  *  - pane0 内不触发十字星（清除十字星位置，十字星仅可在 pane1 ~ pane5 触发）；

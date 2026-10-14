@@ -6,7 +6,7 @@
  * MA 前 N-1 根不输出（东财 BIAS 从第 N 根起画）。
  * 默认参数 6/12/24，返回三条线（下标 0/1/2）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   BIAS6 #A0A0A0 / BIAS12 #F4AA0A / BIAS24 #FF1DFF。
+ *   BIAS6 #666666 / BIAS12 #F4AA0A / BIAS24 #FF1DFF。
  */
 import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'

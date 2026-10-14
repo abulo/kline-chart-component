@@ -1,5 +1,5 @@
 /**
- * constants.ts —— 图表核心常量（v1.4.73 拆分自 kLineChartController.ts）
+ * constants.ts —— 图表核心常量（v1.4.73 拆分自 KLineChartController.ts）
  *
  * 集中管理控制器 / 管理器共享的固定数值，避免散落各文件。
  */

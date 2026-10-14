@@ -1,5 +1,5 @@
 /**
- * indicatorManager.ts —— 指标管理器（v1.4.73 拆分自 kLineChartController.ts）
+ * indicatorManager.ts —— 指标管理器（v1.4.73 拆分自 KLineChartController.ts）
  *
  * 职责：集中管理主图 / 附图指标与信息行数据源，包含：
  *  - 主图指标（MA / EXPMA / BOLL / SAR / BBI，互斥）：setMainIndicator，

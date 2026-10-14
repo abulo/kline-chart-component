@@ -3,7 +3,7 @@
  *
  * 参数 5/10/20/30/60（东财标准五线）；前 N-1 根不输出
  * （东财从第 N 根起画线），首值 = 前 N 根收盘均值。
- * 颜色见 theme.ts（ma5 #A0A0A0 / ma10 #DD9900 / ma20 #FF00FF /
+ * 颜色见 theme.ts（ma5 #666666 / ma10 #DD9900 / ma20 #FF00FF /
  * ma30 #007130 / ma60 #0079D5）。
  */
 import type { IndicatorLine, K } from './types'

@@ -1,5 +1,5 @@
 /**
- * types.ts —— 图表核心公共类型（v1.4.73 拆分自 kLineChartController.ts）
+ * types.ts —— 图表核心公共类型（v1.4.73 拆分自 KLineChartController.ts）
  *
  * 集中定义控制器 / 管理器共享的选项与数据结构：
  *  - KLineChartOptions：控制器构造选项；
@@ -19,6 +19,8 @@ export interface KLineChartOptions {
   name?: string
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
   symbol?: string
+  /** 内置演示数据条数（默认 120；极限压测可传 10000） */
+  dataCount?: number
 }
 
 /**

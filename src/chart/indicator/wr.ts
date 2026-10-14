@@ -5,7 +5,7 @@
  *   WR(N) = 100 * (HHV(H,N) - C) / (HHV(H,N) - LLV(L,N))
  * 默认参数 10/6，返回两条线（下标 0=WR10、1=WR6，顺序与东财副图一致）。
  * 颜色见控制器 SUB_INDICATOR_META：
- *   WR10 #A0A0A0 / WR6 #F4AA0A。
+ *   WR10 #666666 / WR6 #F4AA0A。
  */
 import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'
