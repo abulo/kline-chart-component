@@ -74,7 +74,7 @@ import {
   calcPaneHeights,
 } from './layout'
 import { TestLabelPrimitive } from '../testLabel/testLabelPrimitive'
-import { TopPaneOverlayPrimitive } from '../overlay/topPaneOverlayPrimitive'
+import { TopPaneOverlayPrimitive, type TextSegment } from '../overlay/topPaneOverlayPrimitive'
 import { HighLowMarkerPrimitive } from '../highLow/highLowMarkerPrimitive'
 import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
 import { MacdBarPrimitive, type MacdPoint } from '../indicator/macdBarPrimitive'
@@ -157,6 +157,11 @@ export class KLineChartController {
   private crosshairAxisLabelPrimitives: CrosshairAxisLabelPrimitive[] = []
   /** pane1 主图指标线（当前激活指标的 LineSeries 集合；互斥，切换时清空重建） */
   private mainIndicatorSeries: ISeriesApi<'Line'>[] = []
+  /** 主图线型指标值缓存（label + 线色 + time→value Map），供 pane0 信息行分段着色现取
+   *  （O(1)）；在 setMainIndicator 构建、clearMainIndicatorSeries 清空 */
+  private mainIndicatorValueMaps: { label: string; color: string; values: Map<number, number> }[] = []
+  /** SAR 值缓存（time → SarPoint），SAR 无固定线色，颜色按 trend（多头红 / 空头绿）逐 bar 决定 */
+  private sarValueMap: Map<number, SarPoint> = new Map()
   /** SAR 圆点数据缓存（SarMarkerPrimitive 自绘现取；每次开启指标时全量重算） */
   private sarPoints: SarPoint[] = []
   /** SAR 圆点自绘 primitive（挂在 klineSeries 上，visible 控制显隐，复用单例防泄漏） */
@@ -265,18 +270,14 @@ export class KLineChartController {
       },
       0,
     ).attachPrimitive(
-      // pane0 顶层遮罩（topPaneViews）：背景填充 + 信息行文字，绘制在十字星之上，
+      // pane0 顶层遮罩（topPaneViews）：背景填充 + 信息行分段文字，绘制在十字星之上，
       // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）。
-      // 文字格式："股票名称 [代码] 时间"；时间由 handleCrosshairMove 更新 ——
-      // 十字星命中时 = 命中 bar 日期、未命中时 = 最新 bar 日期（overlayTime 为 null）
+      // 分段结构：首段"股票名称 [代码] 时间"（主题文字色）+ 各指标值段
+      // （MA/EXPMA/BOLL/BBI 用对应线色、SAR 随 trend 红/绿，见 buildInfoSegments）；
+      // 时间与指标值均随十字星 —— 命中时 = 命中 bar、未命中时 = 最新 bar
       new TopPaneOverlayPrimitive(
-        () => {
-          const base = this.symbol ? `${this.name} [${this.symbol}]` : this.name || '测试'
-          const time = this.overlayTime ?? this.bars[this.bars.length - 1]?.time ?? null
-          return `${base} ${formatDate(time)}`
-        },
+        () => this.buildInfoSegments(),
         () => themeColors(this.theme).background,
-        () => themeColors(this.theme).textColor,
       ),
     )
 
@@ -790,7 +791,7 @@ export class KLineChartController {
         // MA5 / MA10 / MA20 / MA30 / MA60 五条线（东财标准五线）
         const periods = [5, 10, 20, 30, 60]
         periods.forEach((period, index) => {
-          this.appendMainIndicatorLine(calcMA(this.bars, period), colors.ma[index])
+          this.appendMainIndicatorLine(calcMA(this.bars, period), colors.ma[index], `MA${period}`)
         })
         break
       }
@@ -798,29 +799,31 @@ export class KLineChartController {
         // EXPMA12 / EXPMA50 两条线（东财默认参数）
         const periods = [12, 50]
         periods.forEach((period, index) => {
-          this.appendMainIndicatorLine(calcEXPMA(this.bars, period), colors.expma[index])
+          this.appendMainIndicatorLine(calcEXPMA(this.bars, period), colors.expma[index], `EXPMA${period}`)
         })
         break
       }
       case 'boll': {
         // BOLL 上轨 / 中轨 / 下轨三条线（东财周期 20、倍数 2）
         const [upper, mid, lower] = calcBOLL(this.bars)
-        this.appendMainIndicatorLine(upper, colors.boll[0])
-        this.appendMainIndicatorLine(mid, colors.boll[1])
-        this.appendMainIndicatorLine(lower, colors.boll[2])
+        this.appendMainIndicatorLine(upper, colors.boll[0], 'BOLL上')
+        this.appendMainIndicatorLine(mid, colors.boll[1], 'BOLL中')
+        this.appendMainIndicatorLine(lower, colors.boll[2], 'BOLL下')
         break
       }
       case 'sar': {
         // SAR：SarMarkerPrimitive 自绘圆点（多头红 / 空头绿，挂在 klineSeries 上），
         // 无需独立 LineSeries；数据全量重算后置入缓存，setVisible(true) 内部触发重绘。
-        // 圆点颜色由 applyTheme 同步（构造时已用当前主题初始化），此处无需再 setTheme
+        // 圆点颜色由 applyTheme 同步（构造时已用当前主题初始化），此处无需再 setTheme。
+        // 同时构建 SAR 值缓存（pane0 信息行显示 "SAR: x"，颜色按 trend 红/绿）
         this.sarPoints = calcSAR(this.bars)
+        this.sarValueMap = new Map(this.sarPoints.map((point) => [point.time, point]))
         this.sarMarkerPrimitive?.setVisible(true)
         break
       }
       case 'bbi': {
         // BBI 单线（(MA3 + MA6 + MA12 + MA24) / 4）
-        this.appendMainIndicatorLine(calcBBI(this.bars), colors.bbi)
+        this.appendMainIndicatorLine(calcBBI(this.bars), colors.bbi, 'BBI')
         break
       }
     }
@@ -830,6 +833,9 @@ export class KLineChartController {
   private clearMainIndicatorSeries = (): void => {
     this.mainIndicatorSeries.forEach((series) => this.chart.removeSeries(series))
     this.mainIndicatorSeries = []
+    // 清空指标值缓存（pane0 信息行不再显示旧指标值）
+    this.mainIndicatorValueMaps = []
+    this.sarValueMap = new Map()
     this.sarMarkerPrimitive?.setVisible(false)
   }
 
@@ -848,11 +854,47 @@ export class KLineChartController {
       1,
     )
 
-  /** 创建指标线并写入数据（颜色 / 宽度按指标配置） */
-  private appendMainIndicatorLine = (points: IndicatorLine[], color: string): void => {
+  /**
+   * 构建 pane0 信息行分段文字（首段"股票名称 [代码] 时间" + 各指标值段，逐段着色）：
+   *  - 首段颜色 = 主题文字色；
+   *  - 线型指标段（MA/EXPMA/BOLL/BBI）= 对应指标线颜色，格式 " MA5: 25.55"；
+   *  - SAR 段颜色 = 该 bar trend（多头红 / 空头绿），格式 " SAR: 25.55"；
+   *  - 时间与指标值同源（overlayTime ?? 最新 bar）；无指标 / 该 bar 无值自动跳过；
+   *  - 数据来自 setMainIndicator 构建的缓存（O(1) 现取，无每帧计算）。
+   */
+  private buildInfoSegments = (): TextSegment[] => {
+    const theme = themeColors(this.theme)
+    // 首段：股票名称 [代码] 时间（主题文字色）
+    const base = this.symbol ? `${this.name} [${this.symbol}]` : this.name || '测试'
+    const time = this.overlayTime ?? this.bars[this.bars.length - 1]?.time ?? null
+    const segments: TextSegment[] = [{ text: `${base} ${formatDate(time)}`, color: theme.textColor }]
+    if (time === null) return segments
+    // 指标值段：线型指标（MA/EXPMA/BOLL/BBI）按线色，SAR 按 trend 色
+    for (const line of this.mainIndicatorValueMaps) {
+      const value = line.values.get(time)
+      if (value !== undefined) segments.push({ text: ` ${line.label}: ${formatPrice(value)}`, color: line.color })
+    }
+    const sarPoint = this.sarValueMap.get(time)
+    if (sarPoint !== undefined) {
+      segments.push({
+        text: ` SAR: ${formatPrice(sarPoint.value)}`,
+        color: sarPoint.trend === 1 ? theme.sarUp : theme.sarDown,
+      })
+    }
+    return segments
+  }
+
+  /** 创建指标线并写入数据（颜色 / 宽度按指标配置；label 供 pane0 信息行显示） */
+  private appendMainIndicatorLine = (points: IndicatorLine[], color: string, label: string): void => {
     const series = this.createMainIndicatorLine(color, 1)
     this.mainIndicatorSeries.push(series)
     series.setData(points.map((point) => ({ time: point.time as UTCTimestamp, value: point.value })))
+    // 同步值缓存（pane0 信息行按 time 现取指标值，O(1)；颜色 = 指标线颜色）
+    this.mainIndicatorValueMaps.push({
+      label,
+      color,
+      values: new Map(points.map((point) => [point.time, point.value])),
+    })
   }
 
   /** 数据变化时刷新当前主图指标（applyData 末尾调用；指标未开时为空操作） */

@@ -25,22 +25,26 @@ import {
 } from 'lightweight-charts'
 import { TopPaneOverlayPaneView } from './topPaneOverlayPaneView'
 
+export interface TextSegment {
+  /** 分段文字（含前导空格，如 " MA5: 25.55"，保证段间自然分隔） */
+  text: string
+  /** 该段颜色（指标值 = 对应指标线颜色；SAR 随 trend 红/绿；首段 = 主题文字色） */
+  color: string
+}
+
 export class TopPaneOverlayPrimitive implements ISeriesPrimitive<Time> {
-  /** 信息行整段文字获取器（"股票名称 [代码] 时间"；只读，draw 时现取，
-   *  时间随十字星命中 bar / 最新 bar 动态变化） */
-  public readonly getLeftText: () => string
+  /** 信息行分段文字获取器（首段"股票名称 [代码] 时间" + 各指标值段；
+   *  只读，draw 时现取 —— 时间/指标值随十字星命中 bar、颜色随主题动态变化） */
+  public readonly getTextSegments: () => TextSegment[]
   /** 背景色获取器（只读，draw 时动态调用以跟随主题） */
   public readonly getBackground: () => string
-  /** 文字颜色获取器（只读，draw 时动态调用以跟随主题） */
-  public readonly getColor: () => string
 
   /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
   private readonly paneView: TopPaneOverlayPaneView
 
-  constructor(getLeftText: () => string, getBackground: () => string, getColor: () => string) {
-    this.getLeftText = getLeftText
+  constructor(getTextSegments: () => TextSegment[], getBackground: () => string) {
+    this.getTextSegments = getTextSegments
     this.getBackground = getBackground
-    this.getColor = getColor
     this.paneView = new TopPaneOverlayPaneView(this)
   }
 

@@ -8,6 +8,39 @@
 
 ---
 
+## v1.4.63（2026-10-14）
+
+pane0 信息行指标值按对应指标线颜色分段着色。
+
+### 变更
+- `mainIndicatorValueMaps` 缓存增加 `color` 字段（= 指标线颜色），
+  SAR 改用独立 `sarValueMap: Map<time, SarPoint>`（颜色按 bar trend 红/绿）；
+- `TopPaneOverlayPrimitive`：单一整段文字改为 `getTextSegments() => TextSegment[]`
+  （{ text, color } 分段结构）；渲染视图逐段绘制，x 用 measureText 精确推进，
+  段间距由段文本前导空格保证；
+- controller 新增 `buildInfoSegments()`：首段"股票名称 [代码] 时间"（主题文字色）+
+  各指标值段（MA/EXPMA/BOLL/BBI 线色、SAR trend 色）；时间/指标值仍随十字星；
+- 深浅系切换自动跟随（段颜色 draw 时从 theme 现取）；
+- 验证：vue-tsc 通过、vitest 69/69 全绿；未运行 / 未截图。
+
+## v1.4.62（2026-10-14）
+
+pane0 信息行追加主图指标值（MA / EXPMA / BOLL / SAR / BBI，随十字星联动）。
+
+### 变更
+- controller 新增 `mainIndicatorValueMaps` 缓存：setMainIndicator 构建指标线时同步
+  构建 `{ label, time→value Map }`（O(1) 现取，无每帧计算）；SAR 从 SarPoint[]
+  构建 Map；clearMainIndicatorSeries 一并清空；
+- pane0 文字格式升级为：`股票名称 [代码] 时间 [指标值...]`：
+  - MA：`MA5: x MA10: x MA20: x MA30: x MA60: x`；
+  - EXPMA：`EXPMA12: x EXPMA50: x`；BOLL：`BOLL上: x BOLL中: x BOLL下: x`；
+  - SAR：`SAR: x`；BBI：`BBI: x`（值统一 2 位小数，空格分隔）；
+- 联动：时间与指标值同源（overlayTime ?? 最新 bar）——十字星命中显示命中 bar
+  的指标值、未命中显示最新 bar 指标值；某 bar 无指标值（如 MA 前 N-1 根）自动跳过；
+- applyData 换数据后指标重建（refreshMainIndicatorData → setMainIndicator）自动
+  同步值缓存；
+- 验证：vue-tsc 通过、vitest 69/69 全绿；未运行 / 未截图。
+
 ## v1.4.61（2026-10-14）
 
 pane0 信息行格式改为 `股票名称 [代码] 时间`，时间跟随十字星。
