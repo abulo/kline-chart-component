@@ -82,6 +82,7 @@ import { GridPrimitive } from '../grid/gridPrimitive'
 import { formatVolume, formatPrice } from '../util/format'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+import { CrosshairLineCapPrimitive } from '../crosshair/crosshairLineCapPrimitive'
 import { IndicatorManager } from './indicatorManager'
 import { CrosshairManager } from './crosshairManager'
 import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH } from './constants'
@@ -108,6 +109,8 @@ export class KLineChartController {
 
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心） */
   private klineSeries: ISeriesApi<'Candlestick'>
+  /** pane2 成交量信息行 series（InfoLabelPrimitive 挂载；竖线补齐 primitive 也挂这里） */
+  private pane2InfoSeries: ISeriesApi<'Line'>
   /** 成交量 series（pane3；Histogram 仅作 scale 锚点，可见柱体由 primitive 自绘） */
   private volumeSeries: ISeriesApi<'Histogram'>
 
@@ -345,13 +348,15 @@ export class KLineChartController {
       }),
     )
     this.klineSeries.attachPrimitive(this.indicatorLinePrimitive)
+    // pane1 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
+    this.klineSeries.attachPrimitive(this.createCrosshairLineCap())
 
     /* ---------- 5. pane2：成交量信息行（自绘分段文字，设置与 pane0 一致） ----------
      * 显示 "成交量: x  MA5: x  MA10: x"（数值随十字星命中 bar / 最新 bar）；
      * 用 InfoLabelPrimitive（**不填背景**）—— 十字星竖线需贯穿 pane2，
      * 不能像 pane0 那样用背景遮罩遮挡竖线。
      */
-    this.chart.addSeries(
+    this.pane2InfoSeries = this.chart.addSeries(
       LineSeries,
       {
         priceScaleId: 'left',
@@ -360,9 +365,12 @@ export class KLineChartController {
         crosshairMarkerVisible: false,
       },
       2,
-    ).attachPrimitive(
+    )
+    this.pane2InfoSeries.attachPrimitive(
       new InfoLabelPrimitive(() => this.indicatorManager.buildVolumeInfoSegments()),
     )
+    // pane2 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
+    this.pane2InfoSeries.attachPrimitive(this.createCrosshairLineCap())
 
     /* ---------- 6. pane3：成交量（自绘柱体，视觉与 pane1 完全一致） ----------
      * HistogramSeries 仅作数据锚点：color = 背景色（不可见），
@@ -439,6 +447,8 @@ export class KLineChartController {
       }),
     )
     this.volumeSeries.attachPrimitive(this.volumeMaPrimitive)
+    // pane3 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
+    this.volumeSeries.attachPrimitive(this.createCrosshairLineCap())
 
     /* ---------- 7. pane4 / pane5：指标组（初始关闭） ----------
      * 指标层初始关闭（4 Pane：pane0..pane3，main : volume = 80 : 20）；
@@ -468,6 +478,19 @@ export class KLineChartController {
       this.crosshairManager.removeByPaneIndex(paneIndex)
     },
   }
+
+  /**
+   * 十字星竖线底部补齐 primitive（pane1/2/3/4/5 各挂一个）：
+   * 填库 LargeDashed 竖线因 pane 高度非虚线周期整数倍产生的底部空白段，
+   * 使竖线视觉到底（见 CrosshairLineCapPrimitive 头注释）。
+   * 颜色 / 时间 / x 全部动态获取（主题切换、十字星移动即时生效）。
+   */
+  private createCrosshairLineCap = (): CrosshairLineCapPrimitive =>
+    new CrosshairLineCapPrimitive({
+      getOverlayTime: () => this.crosshairManager.getOverlayTime(),
+      getTimeScale: () => this.chart.timeScale(),
+      getLineColor: () => themeColors(this.theme).crosshairLineColor,
+    })
 
   /* ===================== 布局 ===================== */
 

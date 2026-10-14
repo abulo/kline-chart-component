@@ -4,8 +4,12 @@
  * 集中定义控制器 / 管理器共享的选项与数据结构：
  *  - KLineChartOptions：控制器构造选项；
  *  - MainIndicatorName：主图指标互斥名称；
- *  - IndicatorLineSpec：指标线规格（颜色 + 升序数据点，top 层自绘数据源）。
+ *  - IndicatorLineSpec：指标线规格（颜色 + 升序数据点，top 层自绘数据源）；
+ *  - CrosshairPrimitiveRegistry：十字星指示值 primitive 注册表接口
+ *    （CrosshairManager 提供，pane1 / pane3 由控制器注册、pane5 由附图指标管理器注册）；
+ *  - IndicatorValueMap：信息行指标值缓存项（label + 线色 + time→value Map）。
  */
+import type { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 
 /** 控制器选项 */
 export interface KLineChartOptions {
@@ -33,4 +37,22 @@ export interface IndicatorLineSpec {
   color: string
   /** 升序数据点（time 单调递增） */
   points: { time: number; value: number }[]
+}
+
+/** 十字星指示值 primitive 管理接口（CrosshairManager 提供） */
+export interface CrosshairPrimitiveRegistry {
+  /** 注册（pane1 / pane3 由控制器注册，pane5 由附图指标管理器注册） */
+  registerPrimitive: (primitive: CrosshairAxisLabelPrimitive) => void
+  /** 按 pane 下标移除（指标层关闭时移除 pane5 的指示值 primitive） */
+  removeByPaneIndex: (paneIndex: number) => void
+}
+
+/** 信息行指标值缓存项（label + 线色 + time→value Map，现取 O(1)） */
+export interface IndicatorValueMap {
+  /** 指标线名（如 MA5 / DIF / RSI6） */
+  label: string
+  /** 指标线颜色（分段文字着色） */
+  color: string
+  /** time → 指标值 */
+  values: Map<number, number>
 }

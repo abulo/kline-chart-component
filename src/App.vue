@@ -59,7 +59,7 @@ const toggleTheme = (): void => {
  * theme Props watch 驱动，页面背景用独立 pageBackground：深系更深 / 浅系更浅） */
 watch(theme, (name) => {
   const themeColorSet = themeColors(name)
-  document.documentElement.style.backgroundColor = themeColorSet.pageBackground
+  document.documentElement.style.backgroundColor = themeColorSet.background
 })
 
 /** 时间轴开关：仅维护状态（图表由 KLineChart.vue 的 timeAxis Props watch 驱动） */
@@ -106,7 +106,7 @@ const shiftRight = (): void => chartRef.value?.controller?.shiftRight()
 
 /** 首次进入：设置页面背景 */
 onMounted(() => {
-  document.documentElement.style.backgroundColor = themeColors(theme.value).pageBackground
+  document.documentElement.style.backgroundColor = themeColors(theme.value).background
 })
 
 /** 卸载：恢复默认背景 */
@@ -122,7 +122,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.88</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.4.90</span>
     </div>
 
     <div class="toolbar">

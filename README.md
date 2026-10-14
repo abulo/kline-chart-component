@@ -1,6 +1,6 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.88（2026-10-14）**
+> **当前版本：v1.4.90（2026-10-14）**
 > 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
@@ -86,7 +86,8 @@ src/
 ├── chart/                     # 按功能分组的图表源码
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
 │   │   ├── kLineChartController.ts # 控制器（v1.4.73 功能拆分版）：Pane 创建 / 布局 / 主题 / 数据 / 缩放平移 / 刻度开关 / 生命周期，职责委托给下方管理器
-│   │   ├── indicatorManager.ts # 指标管理器（主图五指标 + 附图十指标 + 成交量均量线 + 信息行分段；setMainIndicator / setSubIndicator）
+│   │   ├── indicatorManager.ts # 指标管理器（主图五指标 + 成交量均量线 + pane0/pane2 信息行；setMainIndicator / setSubIndicator 转发附图指标层）
+│   │   ├── subIndicatorPaneManager.ts # 附图指标 Pane 管理器（pane4 指标信息行 + pane5 指标图：创建/销毁/数据/信息行/主题；v1.4.89 拆分）
 │   │   ├── crosshairManager.ts # 十字星管理器（十字星移动联动 + overlayTime + 左刻度指示值注册表）
 │   │   ├── constants.ts        # 共享常量（LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH）
 │   │   ├── types.ts            # 公共类型（KLineChartOptions / MainIndicatorName / IndicatorLineSpec）
@@ -99,9 +100,11 @@ src/
 │   │   ├── axisLabelPrimitive.ts
 │   │   ├── axisLabelView.ts
 │   │   └── axisLabelPaneView.ts  # 自绘渲染 + 公共 drawAxisLabel（指示值共用）
-│   ├── crosshair/             # 十字星左刻度指示值（文字与刻度标签一致）
+│   ├── crosshair/             # 十字星左刻度指示值 + 竖线底部补齐（虚线相位缺口）
 │   │   ├── crosshairAxisLabelPrimitive.ts
-│   │   └── crosshairAxisLabelPaneView.ts
+│   │   ├── crosshairAxisLabelPaneView.ts
+│   │   ├── crosshairLineCapPrimitive.ts # 竖线底部补齐（填 LargeDashed 最后空白段，v1.4.90）
+│   │   └── crosshairLineCapPaneView.ts
 │   ├── border/                # 内容 Pane 边框自绘
 │   │   ├── paneBorderPrimitive.ts
 │   │   └── paneBorderPaneView.ts

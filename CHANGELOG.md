@@ -8,6 +8,46 @@
 
 ---
 
+## v1.4.90（2026-10-14）
+
+修复十字星竖线"距底部还有距离，有些地方能到底、有些地方不能到底"。
+
+### 根因
+库 CrosshairRenderer 竖线为 LargeDashed 虚线（[6, 6] 物理像素，周期 12px），
+从 pane 顶部画到底部。pane 高度（物理像素）非 12 的整数倍时，虚线最后一段
+是空白段 → 竖线视觉上距 pane 底部有 0~6 CSS px 缺口；不同 pane 高度 /
+窗口尺寸变化 → 相位随机 → 表现时有时无。
+
+### 变更
+- 新增 `crosshairLineCapPrimitive.ts` / `crosshairLineCapPaneView.ts`：
+  top 层（库竖线之后）补画最后一段虚线段长度（6 / dpr CSS px）的实线 ——
+  无缺口时与最后实线段重叠（无视觉变化）、有缺口时恰好填满空白段，
+  虚线主体（LargeDashed）观感不变；
+- 挂载：pane1 / pane2 / pane3（kLineChartController）、pane4 / pane5
+  （SubIndicatorPaneManager）各一个实例；pane0 不挂（被信息行背景遮住）。
+  颜色 / 时间 / x 全部动态获取（主题切换、十字星移动即时生效）。
+
+### 验证
+vue-tsc 通过；vitest 78/78 全绿；未运行 / 未截图。
+
+## v1.4.89（2026-10-14）
+
+重构 pane4（指标信息行）与 pane5（指标图）：从 indicatorManager.ts 拆出为
+独立类 SubIndicatorPaneManager（subIndicatorPaneManager.ts）。
+
+### 变更
+- 新增 `src/chart/core/subIndicatorPaneManager.ts`：pane4 / pane5 的创建、销毁、
+  数据重建（线 / 红绿柱 / Y 轴对称锚点 / 信息行值）、pane4 信息行分段构建、
+  主题同步（锚点 series 保持全透明）、销毁清理 —— 每类一文件，职责单一；
+- `indicatorManager.ts`：749 → 374 行，只保留主图指标 / 成交量均量线 /
+  pane0 / pane2 信息行；setSubIndicator / getShowIndicator / rebuildIndicatorData /
+  updateThemeColors / destroy 转发 SubIndicatorPaneManager；
+- `types.ts`：新增公共类型 CrosshairPrimitiveRegistry / IndicatorValueMap
+  （原定义于 indicatorManager，供两个管理器共用）。
+
+### 验证
+vue-tsc 通过；vitest 78/78 全绿；未运行 / 未截图。
+
 ## v1.4.88（2026-10-14）
 
 十字星在 pane5 的逻辑照搬 pane3：指标线层级 'normal' → 'top'。
