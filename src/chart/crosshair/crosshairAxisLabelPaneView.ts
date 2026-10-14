@@ -68,14 +68,10 @@ class CrosshairAxisLabelRenderer implements IPrimitivePaneRenderer {
 
 /** 指示值标签 Pane 视图：zOrder 'top'（随十字星移动逐帧重绘） */
 export class CrosshairAxisLabelPaneView implements IPrimitivePaneView {
-  /** 所属 primitive（只读） */
-  private readonly source: CrosshairAxisLabelPrimitive
-
-  /** 渲染器（单例复用，避免重复创建与内存泄漏） */
+  /** 渲染器（单例复用，避免重复创建与内存泄漏；闭包持有 primitive 引用） */
   private readonly rendererImpl: CrosshairAxisLabelRenderer
 
   constructor(source: CrosshairAxisLabelPrimitive) {
-    this.source = source
     this.rendererImpl = new CrosshairAxisLabelRenderer(source)
   }
 

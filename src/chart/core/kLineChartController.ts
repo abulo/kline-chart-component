@@ -221,8 +221,6 @@ export class KLineChartController {
      */
     this.indicatorManager = new IndicatorManager({
       chart: this.chart,
-      getKlineSeries: () => this.klineSeries,
-      getVolumeSeries: () => this.volumeSeries,
       getBars: () => this.bars,
       getTheme: () => this.theme,
       getOverlayTime: () => this.crosshairManager.getOverlayTime(),

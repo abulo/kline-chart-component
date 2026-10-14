@@ -172,14 +172,10 @@ class HighLowMarkerRenderer implements IPrimitivePaneRenderer {
 
 /** 最高 / 最低价标注 Pane 视图（主图默认层，绘制在 K 线数据之上） */
 export class HighLowMarkerPaneView implements IPrimitivePaneView {
-  /** 所属 primitive（只读） */
-  private readonly source: HighLowMarkerPrimitive
-
-  /** 渲染器（单例复用，避免重复创建与内存泄漏） */
+  /** 渲染器（单例复用，避免重复创建与内存泄漏；闭包持有 primitive 引用） */
   private readonly rendererImpl: HighLowMarkerRenderer
 
   constructor(source: HighLowMarkerPrimitive) {
-    this.source = source
     this.rendererImpl = new HighLowMarkerRenderer(source)
   }
 

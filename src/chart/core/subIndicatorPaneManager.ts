@@ -22,7 +22,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
-import { themeColors, subIndicatorColors, chartFont, type ChartThemeName, type ChartThemeColors } from './theme'
+import { themeColors, subIndicatorColors, chartFont, type ChartThemeName } from './theme'
 import { InfoLabelPrimitive } from '../overlay/infoLabelPrimitive'
 import { IndicatorLinePrimitive } from '../overlay/indicatorLinePrimitive'
 import { MacdBarPrimitive, type MacdPoint } from '../indicator/macdBarPrimitive'
@@ -437,9 +437,9 @@ export class SubIndicatorPaneManager {
   /* ===================== 主题同步（applyTheme 调用） ===================== */
 
   /** 主题切换后同步指标相关颜色（数据不变，仅换色 + 触发重绘）。
-   *  锚点 series 保持全透明（仅建 scale，不可见不覆盖）；
-   *  可见柱体由 MacdBarPrimitive 动态取新主题色。 */
-  updateThemeColors = (themeColorSet: ChartThemeColors): void => {
+   *  锚点 series 保持全透明（仅建 scale，不可见不覆盖，与主题无关）；
+   *  可见柱体由 MacdBarPrimitive 动态取新主题色（其内部 getTheme 现取）。 */
+  updateThemeColors = (): void => {
     this.indicatorsBarSeries?.applyOptions({ color: invisibleSeriesColor })
     this.indicatorScaleAnchorSeries?.applyOptions({ color: invisibleSeriesColor })
   }

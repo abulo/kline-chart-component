@@ -18,7 +18,6 @@
  *  - crosshairManager（转发给 SubIndicatorPaneManager 注册 pane5 指示值）；
  *  - onIndicatorStateChange（指标开 / 关后由 controller 重算 pane 高度）。
  */
-import { type ISeriesApi } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
 import { themeColors, mainIndicatorColors, type ChartThemeName } from './theme'
 import { SarMarkerPrimitive } from '../indicator/sarMarkerPrimitive'
@@ -48,10 +47,6 @@ import type { TextSegment } from '../overlay/topPaneOverlayPrimitive'
 export interface IndicatorManagerDeps {
   /** chart 实例（addSeries / applyOptions / removePane） */
   chart: ReturnType<typeof import('lightweight-charts').createChart>
-  /** K 线 series 惰性 getter（构造时可能未创建，调用时求值） */
-  getKlineSeries: () => ISeriesApi<'Candlestick'>
-  /** 成交量 series 惰性 getter（同上） */
-  getVolumeSeries: () => ISeriesApi<'Histogram'>
   /** K 线数据（ChartDataPoint[]，pointType='kline'；构造时已生成，指标库 / 信息行共用） */
   getBars: () => ChartDataPoint[]
   /** 当前主题名（深浅系切换时 updateThemeColors 使用） */
@@ -62,7 +57,7 @@ export interface IndicatorManagerDeps {
   getName: () => string
   /** 股票代码（pane0 首段） */
   getSymbol: () => string
-  /** 十字星指示值注册表（CrosshairManager；pane5 的注册 / 移除由 SubIndicatorPaneManager 处理） */
+  /** 十字星指示值注册表（CrosshairManager；仅转发给 SubIndicatorPaneManager 注册 pane5 指示值） */
   crosshairRegistry: CrosshairPrimitiveRegistry
   /** 指标开 / 关状态变化回调（controller 据此重算 pane 高度） */
   onIndicatorStateChange: () => void
@@ -73,14 +68,11 @@ export interface IndicatorManagerDeps {
 export class IndicatorManager {
   /* ===== 依赖（构造注入，只读） ===== */
   private readonly chart: IndicatorManagerDeps['chart']
-  private readonly getKlineSeries: IndicatorManagerDeps['getKlineSeries']
-  private readonly getVolumeSeries: IndicatorManagerDeps['getVolumeSeries']
   private readonly getBars: IndicatorManagerDeps['getBars']
   private readonly getTheme: IndicatorManagerDeps['getTheme']
   private readonly getOverlayTime: IndicatorManagerDeps['getOverlayTime']
   private readonly getName: IndicatorManagerDeps['getName']
   private readonly getSymbol: IndicatorManagerDeps['getSymbol']
-  private readonly crosshairRegistry: CrosshairPrimitiveRegistry
   private readonly onIndicatorStateChange: IndicatorManagerDeps['onIndicatorStateChange']
 
   /* ===== 主图指标状态 ===== */
@@ -109,16 +101,14 @@ export class IndicatorManager {
 
   constructor(deps: IndicatorManagerDeps) {
     this.chart = deps.chart
-    this.getKlineSeries = deps.getKlineSeries
-    this.getVolumeSeries = deps.getVolumeSeries
     this.getBars = deps.getBars
     this.getTheme = deps.getTheme
     this.getOverlayTime = deps.getOverlayTime
     this.getName = deps.getName
     this.getSymbol = deps.getSymbol
-    this.crosshairRegistry = deps.crosshairRegistry
     this.onIndicatorStateChange = deps.onIndicatorStateChange
-    // 附图指标管理器：pane4 / pane5 独立成类（见 subIndicatorPaneManager.ts）
+    // 附图指标管理器：pane4 / pane5 独立成类（见 subIndicatorPaneManager.ts；
+    // crosshairRegistry 直接转发，本类不持有）
     this.subIndicatorPane = new SubIndicatorPaneManager({
       chart: deps.chart,
       getBars: deps.getBars,
@@ -291,7 +281,7 @@ export class IndicatorManager {
   updateThemeColors = (themeColorSet: ChartThemeColors): void => {
     // 附图指标锚点 series 保持全透明（仅建 scale，不可见不覆盖）
     // → SubIndicatorPaneManager.updateThemeColors 处理
-    this.subIndicatorPane.updateThemeColors(themeColorSet)
+    this.subIndicatorPane.updateThemeColors()
     // SAR 圆点颜色（多头红 / 空头绿）随主题更新
     this.sarMarkerPrimitive?.setTheme(themeColorSet)
     // 成交量均量线颜色跟随主题（数据不变，仅换色；MA5/MA10 色值见 theme.volMa5/volMa10）

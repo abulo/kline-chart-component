@@ -8,6 +8,27 @@
 
 ---
 
+## v1.4.91（2026-10-14）
+
+代码质量收尾（清理未使用声明 / 依赖瘦身）。
+
+### 清理
+- `axisLabelPaneView.ts` / `crosshairAxisLabelPaneView.ts` / `highLowMarkerPaneView.ts`：
+  删除只赋值未读取的 `source` 字段（渲染器 `rendererImpl` 闭包已持有 primitive 引用，
+  不持有冗余引用可减少内存驻留）；
+- `indicatorManager.ts`：删除 `IndicatorManagerDeps` 中未使用的
+  `getKlineSeries` / `getVolumeSeries` 惰性 getter（拆分后无人调用）及对应字段；
+  `crosshairRegistry` 仅构造时转发给 SubIndicatorPaneManager，不再冗余持有；
+- `subIndicatorPaneManager.ts`：`updateThemeColors(themeColorSet)` 删除未读参数
+  （锚点 series 固定全透明，与主题无关）；`ChartThemeColors` import 同步移除。
+
+### 质量核查（本轮扫描结论）
+- 硬编码颜色：全仓扫描 hex / rgba —— 除注释文档外无硬编码，颜色统一在 theme.ts；
+- 未使用文件：无（所有文件均有引用）；命名均驼峰语义化、无特殊符号；
+- 缓存管理：IndicatorLineSpec / InfoSegment / 指示值均按需重建 + 现取 O(1)，destroy 清理引用；
+- 验证：vue-tsc 通过（含 --noUnusedLocals --noUnusedParameters）；vitest 78/78 全绿；
+  未运行 / 未截图。
+
 ## v1.4.90（2026-10-14）
 
 修复十字星竖线"距底部还有距离，有些地方能到底、有些地方不能到底"。

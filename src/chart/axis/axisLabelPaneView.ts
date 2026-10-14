@@ -91,14 +91,10 @@ class AxisLabelRenderer implements IPrimitivePaneRenderer {
 
 /** 刻度标签 Pane 视图：zOrder 'top'（与指示值同一层级，文字设置一致） */
 export class AxisLabelPaneView implements IPrimitivePaneView {
-  /** 所属 primitive（只读） */
-  private readonly source: AxisLabelPrimitive
-
-  /** 渲染器（单例复用，避免重复创建与内存泄漏） */
+  /** 渲染器（单例复用，避免重复创建与内存泄漏；闭包持有 primitive 引用） */
   private readonly rendererImpl: AxisLabelRenderer
 
   constructor(source: AxisLabelPrimitive) {
-    this.source = source
     this.rendererImpl = new AxisLabelRenderer(source)
   }
 
