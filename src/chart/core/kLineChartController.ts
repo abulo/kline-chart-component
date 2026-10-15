@@ -116,15 +116,15 @@ export class KLineChartController {
    *  可变引用：service 拉取（setKlineData）整体替换、实时订阅（updateLastBar）原地更新） */
   private bars: ChartDataPoint[] = [];
   /** 股票名称（pane0 顶部信息行显示：名称 [代码]） */
-  private readonly name: string;
+  private name: string;
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
-  private readonly symbol: string;
+  private symbol: string;
   /** 时间格式模板（v1.6.9 透传 KLineChart.vue format；undefined → 按周期自动） */
   private readonly timeFormat: string | undefined;
   /** 当前周期（v1.6.9 setPeriod 更新；pane0 信息行时间格式按周期切换） */
   private period: PeriodValue;
   /** 数据服务（init / loadEarlier 经其拉取历史与订阅实时；组件构造时注入） */
-  private readonly service: ChartDataService | undefined;
+  private service: ChartDataService | undefined;
   /** 加载状态回调（可选；init 全流程状态通知） */
   private readonly onStatusChange: ((status: ChartLoadStatus) => void) | undefined;
   /** 数据加载请求序号（快速切换周期 / 标的时丢弃过期响应，防乱序覆盖） */
@@ -802,6 +802,24 @@ export class KLineChartController {
    * （日/周/月 → YYYY-MM-DD；分时 → HH:mm；分钟 K → YYYY-MM-DD HH:mm）。
    * 信息行分段在 draw 时现取 getPeriod，此处仅存值 + requestUpdate 触发重绘。
    */
+  /** 更新股票代码（v1.6.22 修复：props.symbol 变化时 init 用新标的拉数）；
+   *  惰性 getter 现取 this.symbol，触发重绘即刷新 pane0 信息行 */
+  setSymbol = (symbol: string): void => {
+    this.symbol = symbol;
+    this.chart.applyOptions({});
+  };
+
+  /** 更新股票名称（pane0 信息行：名称 [代码]） */
+  setName = (name: string): void => {
+    this.name = name;
+    this.chart.applyOptions({});
+  };
+
+  /** 更新数据服务实例（v1.6.22 修复：props.service 变化时 init 用新服务拉数） */
+  setService = (service: ChartDataService): void => {
+    this.service = service;
+  };
+
   setPeriod = (period: PeriodValue): void => {
     if (this.period === period) return;
     this.period = period;

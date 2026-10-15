@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.21（2026-10-15）**
+> **当前版本：v1.6.22（2026-10-15）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -197,6 +197,7 @@ tests/
 | 事件 | 参数 | 触发时机 |
 |---|---|---|
 | `period-change` | `value: PeriodValue` | 周期变化时触发（App 周期栏点击 / 内部切换） |
+| `status-change` | `status: ChartLoadStatus` | 加载状态变化：`'loading'`（首载）/ `'loading-older'`（左滑分页）/ `'ready'` / `'error'`（v1.6.18） |
 
 ### 5.4 控制器方法（ref 访问）
 
@@ -209,6 +210,13 @@ chartRef.value?.controller?.zoomOut()      // 缩小
 chartRef.value?.controller?.shiftLeft()    // 左移（逻辑范围平移一屏宽，到最左自然停）
 chartRef.value?.controller?.shiftRight()   // 右移（逻辑范围平移一屏宽，到最右自然停）
 
+// 数据与标的（v1.6.17+：数据流收进控制器）
+chartRef.value?.controller?.init()                    // 拉历史 + 重绘 + 订阅实时（组件自动调用）
+chartRef.value?.controller?.setSymbol('600519')       // 更新股票代码（pane0 显示 + 后续 init 生效）
+chartRef.value?.controller?.setName('贵州茅台')        // 更新股票名称
+chartRef.value?.controller?.setService(mockService)   // 更新数据服务实例（后续 init 生效）
+chartRef.value?.controller?.setPeriod('day')          // 更新周期（pane0 时间格式随之切换）
+
 // 状态设置（Props watch 已自动调用；手动调用仅用于编程式控制）
 chartRef.value?.controller?.applyTheme('light')
 chartRef.value?.controller?.toggleTimeAxis(false)
@@ -219,6 +227,9 @@ chartRef.value?.controller?.setSubIndicator('kdj')     // 附图指标名 / null
 
 // 生命周期（组件卸载自动调用，手动调用防重复挂载）
 chartRef.value?.controller?.destroy()
+
+// 加载状态（组件内部 ref；ref 访问当前值）
+chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 'error'
 ```
 
 ### 5.5 数据接入（src/services 集成）
@@ -248,9 +259,13 @@ chartRef.value?.controller?.destroy()
 `{ code: 200, data: ChartDataPoint[] }`（time 升序、返回条数 < limit 表示无更早数据）；
 实时推送与历史同结构，`time` 与最后一根相同 = 刷新该根、更大 = 追加新 K 线。
 
-**平移左滑自动加载更早历史**（v1.5.2）：可视范围到达最左边缘时，组件自动以当前
-最早一根 time 为 `before` 锚点拉取更早一页，经 `controller.prependHistory` 前置插入
-（去重 / 升序 + 视口保持原数据位置）；返回不足 limit 或合并新增 0 时停止触发。
+**数据流（v1.6.17）**：`controller.init()` 统一管理 —— 拉最新页 → `setKlineData`
+重绘 + fitContent → 订阅实时；`symbol` / `period` / `service` 变化时组件更新控制器后
+重新 `init()`（loadSeq 竞态丢弃过期响应）。
+
+**平移左滑自动加载更早历史**（v1.6.17 移入控制器 `loadEarlier`）：可视范围到达最左
+边缘时，控制器以当前最早一根 time 为 `before` 锚点拉取更早一页，经 `prependHistory`
+前置插入（去重 / 升序 + 视口保持原数据位置）；返回不足 limit 或合并新增 0 时停止触发。
 
 数据点类型 `ChartDataPoint`（`src/types/chart.ts`，K 线）：
 

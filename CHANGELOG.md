@@ -8,6 +8,32 @@
 
 ---
 
+## v1.6.22（2026-10-15）
+
+代码质量收尾 + 修复 v1.6.17 重构引入的 symbol / service 切换失效 bug。
+
+### 修复
+- `kLineChartController.ts`：`symbol` / `name` / `service` 由 readonly 改为可变，
+  新增 `setSymbol` / `setName` / `setService`（含 applyOptions 重绘刷新 pane0 信息行）。
+- `kLineChart.vue`：`symbol` watch → `setSymbol + setName + init`；新增 `name` watch →
+  `setName`；`service` watch → `setService + init`。
+  （此前 props.symbol / service 变化时 init 仍用构造时旧值，切标的 / 切服务不生效。）
+
+### 审计结论
+- 未使用导出：与 v1.6.13 一致（Deps/Config/Options 为内部类型注解；
+  periods 导出有 tests/periods.test.ts 保护保留；mock.ts 有 tests/mock.test.ts 保护保留）。
+- 硬编码颜色：无（全部集中在 theme.ts / indicatorMeta.ts / Primitive 渲染层）。
+- 内存管理：destroy 退订实时 + loadSeq++ 使在途请求失效；组件卸载仅调 destroy。
+- 命名：驼峰语义化；模块级常量 UPPER_SNAKE_CASE 惯例保留。
+
+### 文档
+- `README.md`：5.3 事件表补 `status-change`；5.4 控制器方法补 init / setSymbol /
+  setName / setService / setPeriod / loadStatus；5.5 数据流与左滑分页描述更新
+  （v1.6.17 已移入控制器 loadEarlier）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.21（2026-10-15）
 
 组件内部可读加载状态：`loadStatus` ref + defineExpose。
