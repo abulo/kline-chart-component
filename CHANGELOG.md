@@ -8,6 +8,46 @@
 
 ---
 
+## v1.6.0（2026-10-15）
+
+版本号按用户要求提升至 v1.6.0（主版本号升级，作为新基线）。
+
+- 代码 / 功能状态与 v1.5.11 交付一致：多 Pane K 线组件、timeAxis 构造透传、
+  按周期时间格式（pane0 信息行 + 十字星时间轴指示值）、十字星 rAF 节流、
+  分钟 K 真实化模拟数据等。
+
+### 验证
+vue-tsc 通过；vitest 108/108 全绿（14 文件）；未运行 / 未截图。
+
+## v1.5.11（2026-10-15）
+
+KLineChart.vue 的 timeAxis 透传给 KLineChartController 构造。
+
+### 变更
+- `src/chart/core/types.ts`：KLineChartOptions 新增 `timeAxis?: boolean`。
+- `src/chart/core/KLineChartController.ts`：构造内应用
+  `timeScale.applyOptions({ visible: options.timeAxis ?? true })`，置于布局初始化之前；
+  后续外部变化仍走 `toggleTimeAxis(visible)`；
+  移除外部注入的失效 `tickMarkFormatter`（依赖已删除的 formatTimeByFmt）。
+- `src/components/KLineChart.vue`：onMounted 构造传入 `timeAxis: props.timeAxis`，
+  移除构造后重复的 `toggleTimeAxis(props.timeAxis)`。
+
+### 验证
+vue-tsc 通过；vitest 108/108 全绿（14 文件）；未运行 / 未截图。
+
+## v1.5.10（2026-10-15）
+
+pane0 信息行与十字星时间轴指示值支持按周期区分的时间格式。
+
+- `format.ts` 新增 `formatClock` / `formatDateTime` / `formatAxisTime`：
+  日/周/月 K → YYYY-MM-DD；分时 1d~5d → HH:mm；60/30/15/5/1 分钟 K → YYYY-MM-DD HH:mm。
+- pane0 信息行时间改为 `formatAxisTime(time, getPeriod())`。
+- 十字星时间轴指示值：新增 `setOnCrosshairTime` 回调 + 组件自绘覆盖块
+  （不透明背景遮库时间 label，配色跟随深/浅系）。
+
+### 验证
+vue-tsc 通过；vitest 108/108 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.5.9（2026-10-15）
 
 修复拖拽平移 / 快速移动鼠标时的卡顿（平移性能优化）。

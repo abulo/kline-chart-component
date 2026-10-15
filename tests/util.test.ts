@@ -7,7 +7,7 @@
  *  - formatDate（pane0 顶部信息行最新 bar 时间，YYYY-MM-DD）。
  */
 import { describe, it, expect } from 'vitest'
-import { formatVolume, formatPrice, formatAxisSmart, formatDate } from '../src/chart/util/format'
+import { formatVolume, formatPrice, formatAxisSmart, formatDate, formatClock, formatDateTime, formatAxisTime } from '../src/chart/util/format'
 
 describe('formatVolume 成交量格式化（util/format.ts）', () => {
   it('亿级：两位小数 + 亿', () => {
@@ -105,5 +105,40 @@ describe('formatDate 日期格式化（pane0 顶部信息行时间）', () => {
     expect(formatDate(undefined)).toBe('--')
     expect(formatDate(null)).toBe('--')
     expect(formatDate(NaN)).toBe('--')
+  })
+})
+
+
+describe('formatAxisTime 按周期格式化时间（pane0 信息行 / 十字星时间轴指示值，v1.5.10）', () => {
+  const t0 = Math.floor(new Date(2026, 9, 14, 9, 35, 0).getTime() / 1000)
+
+  it('日 K / 周 K / 月 K → YYYY-MM-DD', () => {
+    expect(formatAxisTime(t0, 'day')).toBe('2026-10-14')
+    expect(formatAxisTime(t0, 'week')).toBe('2026-10-14')
+    expect(formatAxisTime(t0, 'month')).toBe('2026-10-14')
+  })
+
+  it('分时（1d~5d）→ HH:mm', () => {
+    expect(formatAxisTime(t0, '1d')).toBe('09:35')
+    expect(formatAxisTime(t0, '5d')).toBe('09:35')
+  })
+
+  it('分钟 K（60/30/15/5/1 分）→ YYYY-MM-DD HH:mm', () => {
+    expect(formatAxisTime(t0, '60min')).toBe('2026-10-14 09:35')
+    expect(formatAxisTime(t0, '30min')).toBe('2026-10-14 09:35')
+    expect(formatAxisTime(t0, '15min')).toBe('2026-10-14 09:35')
+    expect(formatAxisTime(t0, '5min')).toBe('2026-10-14 09:35')
+    expect(formatAxisTime(t0, '1min')).toBe('2026-10-14 09:35')
+  })
+
+  it('未知周期默认按日 K（YYYY-MM-DD）容错', () => {
+    expect(formatAxisTime(t0, 'unknown')).toBe('2026-10-14')
+    expect(formatAxisTime(t0)).toBe('2026-10-14')
+  })
+
+  it('非法输入返回 --', () => {
+    expect(formatAxisTime(undefined, 'day')).toBe('--')
+    expect(formatAxisTime(null, '1min')).toBe('--')
+    expect(formatAxisTime(NaN, '60min')).toBe('--')
   })
 })

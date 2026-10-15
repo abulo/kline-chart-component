@@ -58,3 +58,42 @@ export const formatDate = (seconds?: number | null): string => {
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+
+/** 秒级时间戳 → 本地 "HH:mm"（分时周期专用，与交易时段一致） */
+export const formatClock = (seconds?: number | null): string => {
+  if (seconds === undefined || seconds === null || Number.isNaN(seconds)) return '--'
+  const date = new Date(seconds * 1000)
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${hour}:${minute}`
+}
+
+/** 秒级时间戳 → 本地 "YYYY-MM-DD HH:mm"（分钟 K 周期专用） */
+export const formatDateTime = (seconds?: number | null): string => {
+  if (seconds === undefined || seconds === null || Number.isNaN(seconds)) return '--'
+  return `${formatDate(seconds)} ${formatClock(seconds)}`
+}
+
+/**
+ * 按周期格式化时间（pane0 信息行 / 十字星时间轴指示值，v1.5.10）：
+ *  - 日 K / 周 K / 月 K        → YYYY-MM-DD；
+ *  - 分时（1d~5d）              → HH:mm；
+ *  - 60/30/15/5/1 分钟 K       → YYYY-MM-DD HH:mm。
+ * 未知周期默认按日 K（YYYY-MM-DD），容错外部传入非常用周期值。
+ */
+export const formatAxisTime = (seconds?: number | null, period?: string): string => {
+  if (period === '1d' || period === '2d' || period === '3d' || period === '4d' || period === '5d') {
+    return formatClock(seconds)
+  }
+  if (
+    period === '60min' ||
+    period === '30min' ||
+    period === '15min' ||
+    period === '5min' ||
+    period === '1min'
+  ) {
+    return formatDateTime(seconds)
+  }
+  return formatDate(seconds)
+}
