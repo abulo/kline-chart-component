@@ -8,6 +8,23 @@
 
 ---
 
+## v1.6.16（2026-10-15）
+
+Mock 数据统一走服务层：控制器不再内置生成，App.vue 集中选择服务并注入组件。
+
+### 变更
+- `src/chart/core/kLineChartController.ts`：移除 `genMockBars` 依赖与构造时预生成；
+  `bars` 字段默认 `[]`（数据由组件经 `ChartDataService.fetchHistory` 拉取后
+  `setKlineData` 注入）。
+- `src/chart/core/mock.ts`：`genMockBars` 保留（仅测试 / 数据服务复用），注释标注用途。
+- `src/App.vue`：新增 `chartDataService` 实例（MockChartDataService），模板
+  `:service="chartDataService"` 注入组件；注释说明接入真实行情时替换为
+  HttpChartDataService 即可（组件 / 控制器零改动）。
+- 组件 `service` prop 保持默认 MockChartDataService 兜底（未传时行为不变）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.15（2026-10-15）
 
 删除 `pageSize` 参数（每页拉取条数固定为内部常量）。

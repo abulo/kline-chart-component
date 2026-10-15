@@ -17,9 +17,17 @@ import { themeColors, type ChartThemeName } from './chart/core/theme'
 import type { MainIndicatorName } from './chart/core/kLineChartController'
 import type { SubIndicatorType } from './chart/indicator'
 import { Periods, type PeriodValue } from './chart/periods'
+import { MockChartDataService } from './services/chartDataService'
 
 /** 图表组件 ref（访问控制器） */
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
+
+/**
+ * 数据服务实例（v1.6.16）：App 层集中选择并注入组件，组件内部管理。
+ * 当前为 MockChartDataService（内置模拟行情）；接入真实行情时替换为
+ * HttpChartDataService 即可（组件 / 控制器零改动）。
+ */
+const chartDataService = new MockChartDataService()
 
 /** 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入） */
 const activePeriod = ref<PeriodValue>('day')
@@ -136,7 +144,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.15</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.16</span>
     </div>
 
     <div class="toolbar">
@@ -171,6 +179,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         :main-indicator="activeMainIndicator ?? ''"
         :sub-indicator="activeSubIndicator ?? ''"
         :period="activePeriod"
+        :service="chartDataService"
         @period-change="onPeriodChange"
       />
     </div>

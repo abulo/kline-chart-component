@@ -68,7 +68,6 @@ import {
   chartFont,
   type ChartThemeName,
 } from "./theme";
-import { genMockBars } from "./mock";
 import { mergeBars } from "./mergeBars";
 import type { ChartDataPoint } from "../../types/chart";
 import {
@@ -97,7 +96,7 @@ import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrim
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
-import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH, DEFAULT_FETCH_LIMIT } from "./constants";
+import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH } from "./constants";
 import type { KLineChartOptions, MainIndicatorName } from "./types";
 
 /** 公共类型 re-export（App.vue 等外部使用者继续从本文件导入，保持接口稳定） */
@@ -114,7 +113,7 @@ export class KLineChartController {
   /** K 线数据（ChartDataPoint：统一数据点类型，pointType='kline'，mock 120 根。
    *  直接作为指标库 / primitive / series 数据源，无内部中间类型。
    *  可变引用：service 拉取（setKlineData）整体替换、实时订阅（updateLastBar）原地更新） */
-  private bars: ChartDataPoint[];
+  private bars: ChartDataPoint[] = [];
   /** 股票名称（pane0 顶部信息行显示：名称 [代码]） */
   private readonly name: string;
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
@@ -514,8 +513,9 @@ export class KLineChartController {
 
     this.applyStretchFactors();
 
-    /* ---------- 9. 数据 + 首绘 ---------- */
-    this.bars = genMockBars(DEFAULT_FETCH_LIMIT);
+    /* ---------- 9. 数据 + 首绘 ----------
+     * 数据由组件经 ChartDataService 拉取后 setKlineData 注入（v1.6.16：
+     * 控制器不再内置 Mock 生成，统一走 service 层，便于接入真实行情）。 */
     this.applyData();
     this.chart.timeScale().fitContent();
 

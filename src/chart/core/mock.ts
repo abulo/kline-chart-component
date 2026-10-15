@@ -2,7 +2,8 @@
  * mock.ts —— 内置演示数据（v1.4.75，纯函数可单测）
  *
  * 职责：
- *  - genMockBars：生成 n 根日 K（工作日序列 + 随机游走），
+ *  - genMockBars：生成 n 根日 K（工作日序列 + 随机游走），仅测试 / 数据服务复用；
+ *    KLineChartController 不再直接调用（数据统一走 ChartDataService 层，v1.6.16），
  *    直接返回统一数据点类型 ChartDataPoint（types/chart.ts，不再使用内部 BasicBar）：
  *      pointType = 'kline'（K 线类型守卫）；
  *      tradeDate = YYYY-MM-DD（随 time 同步生成，供 pane0 信息行 / 指标库使用）；
