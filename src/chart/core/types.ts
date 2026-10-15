@@ -10,6 +10,7 @@
  *  - IndicatorValueMap：信息行指标值缓存项（label + 线色 + time→value Map）。
  */
 import type { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+import type { ChartDataService } from '../../services/chartDataService'
 
 /** 控制器选项 */
 export interface KLineChartOptions {
@@ -23,13 +24,16 @@ export interface KLineChartOptions {
   name?: string
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
   symbol?: string
-  /**
-   * 平移左滑到最左边缘回调（v1.5.2）：
-   * 可视逻辑范围左边界 ≤ 0 时触发，由调用方（组件）经 service 拉取更早历史页，
-   * 再调用 controller.prependHistory 前置插入；未注入则不做边缘加载。
-   */
-  onNeedEarlierData?: () => void
+  /** 数据服务（必填语义：init / loadEarlier 经其拉取历史与订阅实时；
+   *  组件构造时透传 props.service ?? defaultService） */
+  service?: ChartDataService
+  /** 加载状态回调（v1.6.17 init 统一管理：'loading' | 'ready' | 'error'） */
+  onStatusChange?: (status: ChartLoadStatus) => void
 }
+
+/** 加载状态（controller 统一管理：init 拉最新页 → 'loading'；左滑分页 → 'loading-older'；
+ *  两者成功均 → 'ready'，失败 → 'error'） */
+export type ChartLoadStatus = 'idle' | 'loading' | 'loading-older' | 'ready' | 'error'
 
 /**
  * 主图指标名称（pane1 叠加线；互斥，同一时刻仅一个）：

@@ -96,8 +96,9 @@ import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrim
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
-import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH } from "./constants";
-import type { KLineChartOptions, MainIndicatorName } from "./types";
+import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH, DEFAULT_FETCH_LIMIT } from "./constants";
+import type { KLineChartOptions, MainIndicatorName, ChartLoadStatus } from "./types";
+import type { ChartDataService } from "../../services/chartDataService";
 
 /** 公共类型 re-export（App.vue 等外部使用者继续从本文件导入，保持接口稳定） */
 export type { MainIndicatorName, KLineChartOptions } from "./types";
@@ -122,13 +123,23 @@ export class KLineChartController {
   private readonly timeFormat: string | undefined;
   /** 当前周期（v1.6.9 setPeriod 更新；pane0 信息行时间格式按周期切换） */
   private period: PeriodValue;
-  /** 平移左滑到最左边缘回调（组件注入：拉更早历史 → prependHistory 前置插入） */
-  private readonly onNeedEarlierData: () => void;
-  /** 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载 */
+  /** 数据服务（init / loadEarlier 经其拉取历史与订阅实时；组件构造时注入） */
+  private readonly service: ChartDataService | undefined;
+  /** 加载状态回调（可选；init 全流程状态通知） */
+  private readonly onStatusChange: ((status: ChartLoadStatus) => void) | undefined;
+  /** 数据加载请求序号（快速切换周期 / 标的时丢弃过期响应，防乱序覆盖） */
+  private loadSeq = 0;
+  /** 是否还有更早历史（返回不足 limit 或合并 0 新增 → false，防死循环） */
+  private hasMoreHistory = true;
+  /** 更早历史加载中标志（防抖：一次只允许一个在途请求） */
+  private loadingEarlier = false;
+  /** 实时订阅退订函数（周期 / 标的切换与 destroy 时调用） */
+  private realtimeUnsubscribe: (() => void) | null = null;
+  /** 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载（内部 loadEarlier） */
   private readonly handleVisibleLogicalRangeChange = (
     range: LogicalRange | null,
   ): void => {
-    if (range && range.from <= 0) this.onNeedEarlierData();
+    if (range && range.from <= 0) void this.loadEarlier();
   };
 
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心） */
@@ -168,8 +179,9 @@ export class KLineChartController {
     // 股票信息（pane0 顶部信息行显示，格式：名称 [代码]）
     this.name = options.name ?? "";
     this.symbol = options.symbol ?? "";
-    // 平移左滑到最左边缘回调（组件注入：拉取更早历史页后 prependHistory 前置插入）
-    this.onNeedEarlierData = options.onNeedEarlierData ?? (() => {});
+    // 数据服务（组件构造时注入 props.service ?? defaultService；未注入则 init 报错不拉数）
+    this.service = options.service;
+    this.onStatusChange = options.onStatusChange;
 
     /* ---------- 0. 实例保护：容器打标记防重复创建 chart 实例 ----------
      * 组件重复挂载 / HMR / 路由切换时可能再次进入构造；标记在 destroy 时清除，
@@ -623,6 +635,88 @@ export class KLineChartController {
 
   /* ===================== 数据（service 集成） ===================== */
 
+  /** 更新加载状态并回调外部（可选；状态仅作通知，不持久化） */
+  private setStatus = (status: ChartLoadStatus): void => {
+    this.onStatusChange?.(status);
+  };
+
+  /**
+   * 首次初始化（v1.6.17 由组件统一调用，替代原组件 loadData + setupRealtime）：
+   * 拉取最新一页历史 → setKlineData 全量重绘 + fitContent → 订阅实时推送。
+   * 竞态保护：loadSeq 代际丢弃过期响应；失败 → status='error' 不抛异常。
+   * 状态：'loading'（首载）→ 'ready' / 'error'。
+   */
+  init = async (): Promise<void> => {
+    this.setStatus('loading');
+    const seq = ++this.loadSeq;
+    if (!this.service) {
+      console.error('[KLineChart] init: 未注入 ChartDataService（组件构造时传 service）');
+      this.setStatus('error');
+      return;
+    }
+    try {
+      const points = await this.service.fetchHistory({
+        symbol: this.symbol,
+        period: this.period,
+        limit: DEFAULT_FETCH_LIMIT,
+      });
+      if (seq !== this.loadSeq) return; // 期间又切换了周期 / 标的 → 丢弃过期响应
+      // 返回满页说明还有更早数据，允许后续左滑边缘自动加载
+      this.hasMoreHistory = points.length >= DEFAULT_FETCH_LIMIT;
+      this.setKlineData(points);
+      this.setStatus('ready');
+      this.startRealtime();
+    } catch (error) {
+      if (seq !== this.loadSeq) return;
+      console.error('[KLineChart] init failed:', error);
+      this.setStatus('error');
+    }
+  };
+
+  /** 订阅实时行情（先退订旧订阅保证唯一；回调 = 控制器增量更新最后一根） */
+  private startRealtime = (): void => {
+    this.realtimeUnsubscribe?.();
+    if (!this.service) return;
+    this.realtimeUnsubscribe = this.service.subscribeRealtime(
+      this.symbol,
+      this.period,
+      (point) => this.updateLastBar(point),
+    );
+  };
+
+  /**
+   * 加载更早一页历史（左滑到最左边缘自动触发）：
+   * 以当前最早一根 time 为 before 锚点拉取更早页 → prependHistory 前置插入。
+   * 停止条件：返回条数 < limit（服务语义：无更早数据）或合并新增 0（重复页）。
+   */
+  private loadEarlier = async (): Promise<void> => {
+    if (this.loadingEarlier || !this.hasMoreHistory || !this.service) return;
+    const earliest = this.getEarliestTime();
+    if (earliest === undefined) return;
+    this.loadingEarlier = true;
+    const seq = this.loadSeq;
+    // v1.6.20：左滑分页回传 'loading-older'（与首次加载 'loading' 区分）
+    this.setStatus('loading-older');
+    try {
+      const points = await this.service.fetchHistory({
+        symbol: this.symbol,
+        period: this.period,
+        before: earliest,
+        limit: DEFAULT_FETCH_LIMIT,
+      });
+      if (seq !== this.loadSeq) return; // 期间重新 init（周期 / 标的切换）→ 丢弃，状态由新 init 自己发
+      const added = this.prependHistory(points);
+      if (added === 0 || points.length < DEFAULT_FETCH_LIMIT) this.hasMoreHistory = false;
+      this.setStatus('ready');
+    } catch (error) {
+      if (seq !== this.loadSeq) return;
+      console.error('[KLineChart] loadEarlier failed:', error);
+      this.setStatus('error');
+    } finally {
+      this.loadingEarlier = false;
+    }
+  };
+
   /**
    * 外部数据整体写入（ChartDataService 拉取历史后调用）：
    * 过滤 pointType='kline' 的点（分时/集合竞价点暂不渲染）→
@@ -860,6 +954,10 @@ export class KLineChartController {
 
   /** 销毁：移除监听 / primitive / chart / 清除实例标记（防内存泄漏） */
   destroy = (): void => {
+    // 退订实时推送 + 使在途 init / loadEarlier 请求失效（destroyed 语义）
+    this.realtimeUnsubscribe?.();
+    this.realtimeUnsubscribe = null;
+    this.loadSeq++;
     // 十字星管理器退订监听 + 清空指示值 primitive 引用
     this.crosshairManager.destroy();
     // 指标管理器清空全部内部引用 / 缓存

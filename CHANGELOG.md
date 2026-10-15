@@ -8,6 +8,108 @@
 
 ---
 
+## v1.6.21（2026-10-15）
+
+组件内部可读加载状态：`loadStatus` ref + defineExpose。
+
+### 变更
+- `src/components/kLineChart.vue`：
+  - 新增 `loadStatus = ref<ChartLoadStatus>('idle')`：controller 状态回调同步赋值
+    （组件内部模板 / script 直接读取）；
+  - `defineExpose({ controller, loadStatus })`：父组件经 `chartRef.value.loadStatus`
+    读取当前状态（与 emit 并存）。
+
+### 组件内部用法
+```ts
+// script / 模板内直接引用
+if (loadStatus.value === 'loading-older') /* 左滑分页中 */
+```
+父组件 ref 用法：
+```ts
+const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
+chartRef.value?.loadStatus // 'idle' | 'loading' | 'loading-older' | 'ready' | 'error'
+```
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
+## v1.6.20（2026-10-15）
+
+`ChartLoadStatus` 区分首载与分页：新增 `'loading-older'`。
+
+### 变更
+- `src/chart/core/types.ts`：`ChartLoadStatus = 'idle' | 'loading' | 'loading-older'
+  | 'ready' | 'error'`（init 首载 → 'loading'；左滑分页 → 'loading-older'；成功 → 'ready'，
+  失败 → 'error'）。
+- `src/chart/core/kLineChartController.ts`：`loadEarlier` 改发 `'loading-older'`。
+
+### 父组件监听示例
+```ts
+@status-change="(status) => {
+  if (status === 'loading') /* 首次加载 */
+  if (status === 'loading-older') /* 左滑加载更早历史 */
+  if (status === 'ready' || status === 'error') /* 完成 / 失败 */
+}"
+```
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
+## v1.6.19（2026-10-15）
+
+左滑分页（loadEarlier）补齐加载状态回传。
+
+### 变更
+- `src/chart/core/kLineChartController.ts`：`loadEarlier` 增加
+  `setStatus('loading')` → 成功 `setStatus('ready')` / 失败 `setStatus('error')`，
+  与 init 一致；期间重新 init 时（seq 过期）不发状态（由新 init 自己发）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
+## v1.6.18（2026-10-15）
+
+加载状态回传组件：`onStatusChange` → `emit('status-change')` 事件。
+
+### 变更
+- `src/components/kLineChart.vue`：
+  - 新增 `defineEmits`：`'status-change': [status: ChartLoadStatus]`；
+  - 构造 controller 时把 `onStatusChange` 包装为 `(status) => emit('status-change', status)`。
+- `src/App.vue`：示例监听 `@status-change="onChartStatusChange"`（console.log 展示用法）。
+
+### 使用方式（父组件）
+```vue
+<KLineChart ... @status-change="(status) => { /* 'loading' | 'ready' | 'error' */ }" />
+```
+备选：如需回调式而非事件式，也可在组件加函数 prop `onStatusChange?` 直接透传
+（`KLineChartOptions.onStatusChange` 本就支持回调）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
+## v1.6.17（2026-10-15）
+
+加载流程收进控制器：`controller.init()` 统一管理（拉历史 + 订阅实时 + 更早分页）。
+
+### 变更
+- `src/chart/core/kLineChartController.ts`：
+  - 新增 `init()`（拉最新页 → setKlineData 重绘 + fitContent → 订阅实时），
+    `startRealtime()`（退订旧订阅保证唯一）、`loadEarlier()`（左滑边缘自动分页，
+    取代原组件 loadEarlier / onNeedEarlierData 回调）；
+  - 新增字段：`service` / `onStatusChange` / `loadSeq` / `hasMoreHistory` /
+    `loadingEarlier` / `realtimeUnsubscribe` / `status`；
+  - `handleVisibleLogicalRangeChange` 改为内部触发 `loadEarlier()`；
+  - `destroy()` 退订实时 + `loadSeq++`（使在途请求失效）。
+- `src/chart/core/types.ts`：`KLineChartOptions` 删除 `onNeedEarlierData`，新增
+  `service?` / `onStatusChange?`；新增 `ChartLoadStatus`（'idle'|'loading'|'ready'|'error'）。
+- `src/components/kLineChart.vue`：删除组件侧 loadData / setupRealtime / loadEarlier /
+  hasMoreHistory / loadSeq / unsubscribeRealtime；构造透传 `service`；onMounted 与
+  period / symbol / service watch 改调 `controller.init()`；onBeforeUnmount 仅 destroy。
+- 行为等价：竞态保护、左滑分页停止条件、实时唯一订阅语义均保留（从组件移入控制器）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.16（2026-10-15）
 
 Mock 数据统一走服务层：控制器不再内置生成，App.vue 集中选择服务并注入组件。

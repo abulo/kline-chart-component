@@ -29,6 +29,11 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
  */
 const chartDataService = new MockChartDataService()
 
+/** 图表加载状态（v1.6.18 示例：可从 controller.init 收到 loading / ready / error） */
+const onChartStatusChange = (status: string): void => {
+  console.log('[KLineChart] status:', status)
+}
+
 /** 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入） */
 const activePeriod = ref<PeriodValue>('day')
 
@@ -144,7 +149,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.16</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.21</span>
     </div>
 
     <div class="toolbar">
@@ -180,6 +185,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         :sub-indicator="activeSubIndicator ?? ''"
         :period="activePeriod"
         :service="chartDataService"
+        @status-change="onChartStatusChange"
         @period-change="onPeriodChange"
       />
     </div>
