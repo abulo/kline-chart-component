@@ -32,6 +32,16 @@ export class CrosshairManager {
   /** 十字星左刻度指示值 primitive 注册表（pane1 / pane3 / pane5 各一个） */
   private crosshairAxisLabelPrimitives: CrosshairAxisLabelPrimitive[] = []
 
+  /* ---------- 十字星 move rAF 节流（性能，v1.5.9） ----------
+   * 拖拽平移 / 快速 mousemove 时 crosshairMove 触发频率可能远高于帧率，
+   * 每次回调 setCrosshairY → requestUpdate → 库 fullUpdate 全图重绘 → 卡顿。
+   * 用 requestAnimationFrame 合并：同帧内多次 move 只处理最后一次，每帧最多一次重绘。
+   */
+  /** 待处理的最新 move 参数（节流窗口内合并） */
+  private pendingParam: MouseEventParams | null = null
+  /** 是否已调度下一帧处理（true = 帧内合并中） */
+  private frameScheduled = false
+
   constructor(deps: CrosshairManagerDeps) {
     this.chart = deps.chart
     this.chart.subscribeCrosshairMove(this.handleCrosshairMove)
@@ -52,16 +62,26 @@ export class CrosshairManager {
   /** 十字星当前时间（null = 未命中；IndicatorManager 构建 pane0/2/4 信息行取值） */
   getOverlayTime = (): number | null => this.overlayTime
 
+  /** 十字星移动订阅入口：rAF 节流合并（每帧最多处理一次，防拖拽平移卡顿） */
+  private handleCrosshairMove = (param: MouseEventParams): void => {
+    this.pendingParam = param
+    if (this.frameScheduled) return
+    this.frameScheduled = true
+    requestAnimationFrame(() => {
+      this.frameScheduled = false
+      if (this.pendingParam !== null) this.applyCrosshairMove(this.pendingParam)
+    })
+  }
+
   /**
-   * 十字星移动回调：pane0 清除十字星；内容 Pane 注入左刻度指示值。
+   * 十字星移动处理（每帧至多一次）：pane0 清除十字星；内容 Pane 注入左刻度指示值。
    *  - pane0 内不触发十字星（库十字星由内部 mousemove 驱动，此回调与库 set
    *    同帧执行，同一次 invalidate 重绘，视觉上 pane0 内十字星不出现）；
    *  - 命中内容 Pane：point.y 相对"十字星当前所在 pane 的 canvas"（数据区本地坐标），
-   *    因此 point.y 即为该 pane 内的本地 y，无需再减去前序 pane 高度和
-   *    （实测：pane3 鼠标绝对 y=560 - pane3 canvas 顶部 493 = point.y=67，完全一致）；
+   *    因此 point.y 即为该 pane 内的本地 y，无需再减去前序 pane 高度和；
    *  - 十字星离开图表 / 命中非内容 Pane 时，全部指示值置 null（清除残留）。
    */
-  private handleCrosshairMove = (param: MouseEventParams): void => {
+  private applyCrosshairMove = (param: MouseEventParams): void => {
     const point = param.point
     // pane0 内不触发十字星（库十字星由内部 mousemove 驱动，此回调与库 set
     // 同帧执行，同一次 invalidate 重绘，视觉上 pane0 内十字星不出现）
@@ -91,9 +111,11 @@ export class CrosshairManager {
     }
   }
 
-  /** 销毁：退订十字星监听 + 清空指示值 primitive 引用（防内存泄漏） */
+  /** 销毁：退订十字星监听 + 取消待处理帧 + 清空指示值 primitive 引用（防内存泄漏） */
   destroy = (): void => {
     this.chart.unsubscribeCrosshairMove(this.handleCrosshairMove)
+    this.pendingParam = null
+    this.frameScheduled = false
     this.crosshairAxisLabelPrimitives = []
     this.overlayTime = null
   }

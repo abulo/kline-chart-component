@@ -288,6 +288,15 @@ npm run build      # vue-tsc 类型检查 + 构建
 
 ## 七、内存与性能
 
+- **十字星事件 rAF 节流（v1.5.9）**：拖拽平移 / 快速 mousemove 时库 crosshairMove
+  可能高频触发，控制器将同帧多次事件合并为一次处理（每帧至多一次重绘）；
+  `setCrosshairY` 同值跳过，无变化的移动不再触发 fullUpdate。
+- 所有自绘 primitive（柱体 / 指标线 / SAR 点 / 最高最低价标注 / 栅格 / 十字星竖线）
+  均按**可视逻辑范围裁剪**，长数据（10000 条）下每帧仅绘制可视 ~120 根，
+  平移 / 缩放不会因数据总量线性变慢。
+
+## 七、内存与性能
+
 - **primitive 视图单例复用**：所有 primitive 的 `paneViews()` / `priceAxisPaneViews()` 返回构造时创建的单例视图，避免每帧 `new` 对象产生 GC 压力；
 - **渲染裁剪**：成交量 / MACD 柱、SAR 圆点自绘按可见逻辑范围（`getVisibleLogicalRange`）裁剪；指标折线（`IndicatorLinePrimitive`）按 `getVisibleRange()` 裁剪可视点区间 —— 均只遍历可视元素，不遍历全量数据；
 - **指标值 O(1) 现取**：pane0 / pane2 信息行按 `Map<time, value>` 现取（`mainIndicatorValueMaps` / `volumeInfoMap` / `sarValueMap`），切换指标 / 换数据时重建、清空指标时置空，无累积；

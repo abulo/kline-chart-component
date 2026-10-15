@@ -8,6 +8,28 @@
 
 ---
 
+## v1.5.9（2026-10-15）
+
+修复拖拽平移 / 快速移动鼠标时的卡顿（平移性能优化）。
+
+### 根因
+拖拽平移 = 持续 mousemove → 库 `crosshairMove` 高频触发（频率可远高于帧率）→
+每次回调 `setCrosshairY` → `requestUpdate` → 库 fullUpdate 全图重绘 → 卡顿。
+（自绘 primitive 均已按可视逻辑范围裁剪，10000 条数据下每帧仅绘制可视 ~120 根，
+非渲染热点；热点在十字星事件的无效高频重绘。）
+
+### 变更
+- `src/chart/core/crosshairManager.ts`：
+  - `handleCrosshairMove` 增加 **rAF 节流**：同帧内多次 move 合并为一次处理
+    （`pendingParam` + `frameScheduled`），每帧至多一次十字星联动与重绘；
+  - 处理逻辑抽到 `applyCrosshairMove`（行为不变：pane0 清除、命中 pane 注入指示值）；
+  - `destroy` 取消待处理帧并清空 pendingParam（防销毁后残留回调）。
+- `src/chart/crosshair/crosshairAxisLabelPrimitive.ts`：
+  - `setCrosshairY` **同值跳过**：y 未变化时不重复 requestUpdate（拖拽时连续相同 y 不再触发重绘）。
+
+### 验证
+vue-tsc 通过；vitest 103/103 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.5.8（2026-10-15）
 
 分钟 K（周/月/60/30/15/5/1 分）模拟数据真实化。

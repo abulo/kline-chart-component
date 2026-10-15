@@ -76,8 +76,13 @@ export class CrosshairAxisLabelPrimitive implements ISeriesPrimitive<Time> {
     this.crosshairY = null
   }
 
-  /** 注入十字星横线 y（controller 十字星移动回调调用）；null = 清除指示值 */
+  /**
+   * 注入十字星横线 y（controller 十字星移动回调调用）；null = 清除指示值。
+   * **同值跳过**：拖拽平移 / 高频 mousemove 时 y 可能连续相同，
+   * 避免无变化也触发 requestUpdate（库 fullUpdate 是平移卡顿主因之一）。
+   */
   setCrosshairY(y: number | null): void {
+    if (this.crosshairY === y) return
     this.crosshairY = y
   }
 
