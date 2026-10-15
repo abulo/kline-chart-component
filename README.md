@@ -223,7 +223,10 @@ chartRef.value?.controller?.destroy()
 历史分页 `fetchHistory` + 实时订阅 `subscribeRealtime`，组件 / 控制器零依赖具体实现。
 
 - **默认**：`MockChartDataService` 单例（内置约 3 年日 K 池 + 分时 / 分钟 K / 周 / 月聚合 +
-  模拟实时推送；同 symbol 同周期缓存复用，内存友好）；
+  模拟实时推送；同 symbol 同周期缓存复用，内存友好）。
+  分钟 K（60/30/15/5/1 分）为**真实化模拟**：布朗桥锚定日 K 开/收（跨周期价格自洽、
+  无跳空）、按真实交易时段聚合（60 分 4 段 / 30 分 8 段 / 15 分 16 段 / 5 分 48 段 /
+  1 分 241 段，段首 09:30/10:30/13:00…），成交量 U 型分布（开收盘放量）；
 - **接入真实行情**：父组件传 `HttpChartDataService` 实例（`src/services/httpChartDataService.ts`，
   HTTP 历史 + WS / SSE / Poll 三种实时模式 + LRU 历史缓存）：
 

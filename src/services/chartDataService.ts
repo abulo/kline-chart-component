@@ -76,6 +76,46 @@ const isMinutePeriod = (period: string): boolean =>
   Object.prototype.hasOwnProperty.call(MINUTE_GRANULARITY, period)
 
 /**
+ * 分钟 K 每日时段槽（[起, 止] 北京时间分钟，闭区间；止点 = 段收盘分钟，东财口径）：
+ *  - 60 分：09:30-10:30 / 10:30-11:30 / 13:00-14:00 / 14:00-15:00（4 段，上午 2 段下午 2 段）；
+ *  - 30 分：上午 4 段 + 下午 4 段（8 段）；
+ *  - 15 分：上午 8 段 + 下午 8 段（16 段）；
+ *  - 5 分：上午 24 段 + 下午 24 段（48 段）；
+ *  - 1 分：逐分钟一段（241 段，不走本表）。
+ * 段间不跨午休（11:30 → 13:00 直接断开）；相邻段 open ≈ 前段 close（分钟路径连续，
+ * 13:01 价 = 11:30 价的下一步，无跳空），time 统一取段首分钟（规范时间轴显示）。
+ */
+const stepRange = (start: number, end: number, step: number): number[] => {
+  const out: number[] = []
+  for (let m = start; m <= end; m += step) out.push(m)
+  return out
+}
+const pairSlots = (minutes: number[]): [number, number][] =>
+  minutes.slice(0, -1).map((b, i) => [b, minutes[i + 1]] as [number, number])
+
+const MINUTE_SESSION_SLOTS: Record<number, [number, number][]> = {
+  60: [
+    [570, 630],
+    [630, 690],
+    [780, 840],
+    [840, 900],
+  ],
+  30: [
+    [570, 600], [600, 630], [630, 660], [660, 690],
+    [780, 810], [810, 840], [840, 870], [870, 900],
+  ],
+  // 上午 / 下午分别 pairSlots（避免拼接数组在午休 690→780 处生成空档段 [690,780)）
+  15: [
+    ...pairSlots(stepRange(570, 690, 15)),
+    ...pairSlots(stepRange(780, 900, 15)),
+  ],
+  5: [
+    ...pairSlots(stepRange(570, 690, 5)),
+    ...pairSlots(stepRange(780, 900, 5)),
+  ],
+}
+
+/**
  * 把一组「数据点」按桶聚合为 K 线（OHLC + 累计量额）。
  * @param points  升序数据点：分时点（price 口径）或日 K 点（open/high/low/close 口径）
  * @param bucketOf 返回该点所属桶的 key（秒级时间戳，同 key 的点聚合为同一根 K）
@@ -122,31 +162,11 @@ const aggregateToBars = (
   return out
 }
 
-/**
- * 分时点 → 桶 key：按「当日分钟点序号」每 N 个点一段（N = 每根 K 聚合分钟数）。
- * 段 key = 当日 00:00（UTC+8 口径） + 段序号 × N × 60（即段内首个分钟点的 time）。
- * 用点序号而非 time 差：sessionMinutes 在午休（11:30→13:01）编号不连续，
- * 按 time 差分段会把午休前后的点错误拆入不同段（跳段）；按序号每 N 个点
- * 聚合则每日恒为 ceil(241/N) 段（60分=4、30分=8、15分=16、5分=48、1分=241）。
- * 注：Mock 简化口径——午休后段起点取「序号对齐」时刻（如 60 分第三段起点 11:30），
- * 与东财按交易时段 13:00 起略有差异，仅影响 Mock 展示不影响接口协议。
- */
-const minuteBucketOf = (N: number) => {
-  let base = 0
-  let idx = 0
-  let segKey = 0
-  return (p: ChartDataPoint): number => {
-    const b = p.time - ((p.time + 8 * 3600) % 86400) // 当日 00:00（UTC+8 口径）
-    if (b !== base) {
-      base = b
-      idx = 0
-      segKey = p.time
-    }
-    // 每段首个点（idx % N === 0）：段 key = 该点实际 time（如 60 分 K 首段 09:30）
-    if (idx % N === 0) segKey = p.time
-    idx += 1
-    return segKey
-  }
+/** 北京时间分钟（段首分钟）→ 当日 UTC 秒级 time（与分时点口径一致：UTC 00:00 − 8h + 分钟×60） */
+const minuteToTime = (day: ChartDataPoint, minuteOfDay: number): number => {
+  const dayUtc0 = new Date(day.time * 1000)
+  dayUtc0.setUTCHours(0, 0, 0, 0)
+  return Math.round(dayUtc0.getTime() / 1000) - 8 * 3600 + minuteOfDay * 60
 }
 
 /** 日 K 点 → 桶 key：按自然周（周一 00:00 本地） */
@@ -272,8 +292,6 @@ export class MockChartDataService implements ChartDataService {
   private pools = new Map<string, ChartDataPoint[]>()
   /** symbol → 该标的的最近 5 日分时数据池（懒生成，1d~5d 周期共用） */
   private tsPools = new Map<string, ChartDataPoint[]>()
-  /** `${symbol}|min` → 分钟 K 基础池（最近 60 交易日 × 241 分钟点，懒生成） */
-  private minutePools = new Map<string, ChartDataPoint[]>()
   /** `${symbol}|${period}` → 按周期聚合后的 K 线池（week/month/分钟 K 懒生成，day 直接用 pools） */
   private periodPools = new Map<string, ChartDataPoint[]>()
   /** 实时定时器：key = `${symbol}|${period}` */
@@ -326,8 +344,9 @@ export class MockChartDataService implements ChartDataService {
    * 生成（或获取）某标的的「最近 N 个交易日」分时数据池（升序，共 N×241 分钟点）。
    * 以 K 线池最近 N 个交易日的收盘价为当日基准：每根分时分钟点从昨收/前收
    * 随机游走产生 price，加权累计均价 avgPrice，volume 为单分钟随机量，
-   * amount 为当日累计成交额（东财分时口径）。
-   * @param days 覆盖的交易日数：分时 1d~5d 用 5；分钟 K 池用 MINUTE_POOL_DAYS（60）
+   * amount 为当日累计成交额（东财分时口径）。**仅分时周期（1d~5d）使用**；
+   * 分钟 K 由 buildMinuteKPool 独立生成（布朗桥锚定日开/收，见下）。
+   * @param days 覆盖的交易日数（分时 1d~5d 用 5）
    */
   private buildTsPool(symbol: string, days: number): ChartDataPoint[] {
     const kpool = this.ensurePool(symbol)
@@ -396,13 +415,110 @@ export class MockChartDataService implements ChartDataService {
     return out
   }
 
-  /** 分钟 K 基础池（最近 60 交易日 × 241 分钟点，60/30/15/5/1 分 K 共用） */
-  private ensureMinutePool(symbol: string): ChartDataPoint[] {
-    const key = `${symbol}|min`
-    const existed = this.minutePools.get(key)
-    if (existed) return existed
-    const out = this.buildTsPool(symbol, MINUTE_POOL_DAYS)
-    this.minutePools.set(key, out)
+  /**
+   * 生成当日 241 个分钟路径点（升序，价格口径）：
+   *  - 首点（09:30 集合竞价）= 日 K 开盘价，末点（15:00）= 日 K 收盘价（**与日/周/月 K 自洽**）；
+   *  - 中间点 = 线性锚点（open→close 插值）+ 布朗桥噪声（随机游走累计项做终值归零，
+   *    保证 15:00 精确收在日 close）；午休（11:30→13:01）价格连续（无跳空）；
+   *  - 单分钟成交量：开盘（09:30-09:45）/ 尾盘（14:45-15:00）放量（U 型），
+   *    其余均匀随机，偶尔放大（消息面冲击）。
+   */
+  private buildIntradayPath = (
+    day: ChartDataPoint,
+    rand: () => number,
+  ): { minute: number; price: number; volume: number }[] => {
+    const open = day.open!
+    const close = day.close!
+    const minutes = sessionMinutes()
+    const n = minutes.length // 241
+    // 随机游走累计项（walk[0]=0）：step ±0.006，偶尔 ×2.5 放大
+    const walk: number[] = [0]
+    for (let i = 1; i < n; i++) {
+      const shock = rand() < 0.04 ? 2.5 : 1
+      walk.push(walk[i - 1] + (rand() - 0.5) * 0.006 * shock)
+    }
+    // 日内波动幅度 ≈ 日振幅的 1/3（分钟级波动远小于日线振幅，路径不"离谱"）
+    const intradayRange = Math.max(day.high! - day.low!, close * 0.01)
+    const out: { minute: number; price: number; volume: number }[] = []
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1)
+      const anchor = open + (close - open) * t
+      const bridge = walk[i] - t * walk[n - 1] // 终值归零 → 末点 = 日 close
+      const price = Math.max(anchor + bridge * intradayRange * 0.3, 0.01)
+      const m = minutes[i]
+      const uK = m <= 9 * 60 + 45 || m >= 14 * 60 + 45 ? 3 : 1 // U 型放量
+      const volume = Math.round((20_000 + rand() * 280_000) * uK)
+      out.push({ minute: m, price, volume })
+    }
+    return out
+  }
+
+  /**
+   * 分钟 K 池（symbol × 粒度，懒生成 + 缓存）：最近 MINUTE_POOL_DAYS 交易日，
+   * 逐日生成 241 分钟路径 → 按真实交易时段槽聚合为 K 线（60分/30分/15分/5分）
+   * 或逐分钟成 K（1 分）。聚合自洽：open ≈ 前根 close、high ≥ max(open,close)、
+   * low ≤ min(open,close)、时间轴按段首分钟（09:30 / 10:30 / 13:00 …）。
+   */
+  private buildMinuteKPool(symbol: string, granularity: number): ChartDataPoint[] {
+    const kpool = this.ensurePool(symbol)
+    const rand = createRandom(hashSeed(symbol + '|min|' + granularity))
+    const lastDays = kpool.slice(-MINUTE_POOL_DAYS)
+    const slots = granularity === 1 ? null : MINUTE_SESSION_SLOTS[granularity]
+    const out: ChartDataPoint[] = []
+    for (const day of lastDays) {
+      const path = this.buildIntradayPath(day, rand)
+      if (!slots) {
+        // 1 分：逐分钟一根（241 段/日）；影线微扩保证 OHLC 自洽
+        for (const point of path) {
+          const h = point.price * (1 + rand() * 0.001)
+          const l = Math.max(point.price * (1 - rand() * 0.001), 0.01)
+          out.push({
+            time: minuteToTime(day, point.minute),
+            tradeDate: day.tradeDate,
+            preClose: day.preClose,
+            pointType: 'kline',
+            open: +point.price.toFixed(2),
+            high: +h.toFixed(2),
+            low: +l.toFixed(2),
+            close: +point.price.toFixed(2),
+            volume: point.volume,
+            amount: Math.round(point.volume * point.price),
+          })
+        }
+        continue
+      }
+      for (const [b, e] of slots) {
+        const seg = path.filter((p) => p.minute >= b && p.minute <= e)
+        if (!seg.length) continue
+        const open = seg[0].price
+        const close = seg[seg.length - 1].price
+        let high = -Infinity
+        let low = Infinity
+        let volSum = 0
+        let amtSum = 0
+        for (const p of seg) {
+          high = Math.max(high, p.price)
+          low = Math.min(low, p.price)
+          volSum += p.volume
+          amtSum += p.volume * p.price
+        }
+        // 上下影线微扩（保证 high ≥ max(open,close)、low ≤ min(open,close) 且带影线）
+        const h = Math.max(high, open, close) * (1 + rand() * 0.001)
+        const l = Math.max(Math.min(low, open, close) * (1 - rand() * 0.001), 0.01)
+        out.push({
+          time: minuteToTime(day, b),
+          tradeDate: day.tradeDate,
+          preClose: day.preClose,
+          pointType: 'kline',
+          open: +open.toFixed(2),
+          high: +h.toFixed(2),
+          low: +l.toFixed(2),
+          close: +close.toFixed(2),
+          volume: volSum,
+          amount: Math.round(amtSum),
+        })
+      }
+    }
     return out
   }
 
@@ -411,8 +527,7 @@ export class MockChartDataService implements ChartDataService {
    *  - day：直接复用日 K 池（ensurePool）；
    *  - week / month：从日 K 池按自然周 / 自然月聚合（OHLC 取组内高低收、量额累计、
    *    time 落在周初/月初 00:00、tradeDate 取组内末交易日、preClose 取组内首点昨收近似）；
-   *  - 60/30/15/5/1min：从分钟 K 基础池（60 交易日 × 241 分钟点）按粒度聚合
-   *    （每 N 分钟点一段：price → OHLC，time = 段首分钟 time，preClose = 当日昨收）。
+   *  - 60/30/15/5/1min：分钟 K 池（buildMinuteKPool，布朗桥锚定日开/收 + 真实时段聚合）。
    */
   private ensurePeriodPool(symbol: string, period: string): ChartDataPoint[] {
     if (period === 'day') return this.ensurePool(symbol)
@@ -425,11 +540,7 @@ export class MockChartDataService implements ChartDataService {
     } else if (period === 'month') {
       out = aggregateToBars(this.ensurePool(symbol), monthBucketOf, 'kline')
     } else if (isMinutePeriod(period)) {
-      out = aggregateToBars(
-        this.ensureMinutePool(symbol),
-        minuteBucketOf(MINUTE_GRANULARITY[period]),
-        'ts',
-      )
+      out = this.buildMinuteKPool(symbol, MINUTE_GRANULARITY[period])
     } else {
       // 未知周期：回退日 K（接口协议未知周期时后端行为由服务端决定，Mock 兜底）
       return this.ensurePool(symbol)
