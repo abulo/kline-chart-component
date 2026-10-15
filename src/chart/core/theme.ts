@@ -22,6 +22,9 @@
 export const chartFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif'
 
 /** 图表内自绘文字统一字体（12px + chartFontFamily，刻度标签 / 指示值 / 空 Pane 文字共用） */
+/** 全透明色（占位 series 统一透明，避免自绘柱体与库内建渲染叠加遮挡） */
+export const transparentColor = 'rgba(0, 0, 0, 0)'
+
 export const chartFont = `12px ${chartFontFamily}`
 
 /** 主题色定义 */

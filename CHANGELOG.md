@@ -8,6 +8,44 @@
 
 ---
 
+## v1.6.14（2026-10-15）
+
+按文件系统大小写敏感梳理全项目 import。
+
+### 梳理
+- 全项目静态扫描（src + tests + 根目录）所有相对 import 与磁盘文件名大小写：
+  - `src/` 内 **0 处不匹配**（文件名全小写、import 全小写，一致）；
+  - 无同名不同大小写的重复文件（`chart/core/types.ts` 与 `chart/indicator/types.ts`
+    属不同目录，正常）。
+- 修复唯一不匹配：`tests/periods.test.ts` import `../src/chart/Periods`（大写）
+  → `../src/chart/periods`（小写）—— macOS 大小写不敏感掩盖，大小写敏感环境（Linux / CI）
+  会报模块找不到。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
+## v1.6.13（2026-10-15）
+
+代码质量收尾（内存 / 缓存 / 命名 / 颜色 / 文档 / 清理审计）。
+
+### 审计结论（未改）
+- **资源清理完备**：组件 onBeforeUnmount 退订实时 + `controller.destroy()`；
+  controller 的 ResizeObserver 有 disconnect；Mock 服务 interval 均 clearInterval。
+- **命名合规**：变量 / 函数均驼峰语义化；模块级常量采用 UPPER_SNAKE_CASE 惯例（保留）。
+- **指标颜色**：已在 indicatorMeta.ts / theme.ts 公共文件集中管理（子文件注释仅为文档说明）。
+- **`httpChartDataService.ts`（HttpChartDataService）未被默认接线**：保留（后端真实行情实现，
+  父组件传 `service` 即接入），README 已补充接入说明。
+
+### 清理
+- `src/chart/core/theme.ts`：新增公共颜色 `transparentColor`（rgba(0,0,0,0)）；
+  `subIndicatorPaneManager.ts` 删除本文件硬编码色 `invisibleSeriesColor`，统一引用
+  `theme.transparentColor`（颜色提取到公共文件）。
+- 审计确认 `periods.ts` 的 `periodMap` / `getPeriodLabel` / `PeriodLabel` / `PeriodItem`
+  有测试保护（tests/periods.test.ts），属有意功能，保留。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.12（2026-10-15）
 
 `dataCount` 参数更名 → `pageSize`（意义：每页获取多少条数据）。

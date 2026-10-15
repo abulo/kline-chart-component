@@ -22,7 +22,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
-import { themeColors, subIndicatorColors, chartFont, type ChartThemeName } from './theme'
+import { transparentColor, themeColors, subIndicatorColors, chartFont, type ChartThemeName } from './theme'
 import { InfoLabelPrimitive } from '../overlay/infoLabelPrimitive'
 import { IndicatorLinePrimitive } from '../overlay/indicatorLinePrimitive'
 import { MacdBarPrimitive, type MacdPoint } from '../indicator/macdBarPrimitive'
@@ -57,7 +57,6 @@ export const isZeroCenteredSubIndicator = (name: string): boolean =>
  * 若锚点柱用不透明背景色，会在 main canvas 逐根覆盖红绿柱与灰黄线，
  * 表现为"柱被切割、线不连贯"）；scale 值域只取数据值，与颜色无关。
  */
-export const invisibleSeriesColor = 'rgba(0, 0, 0, 0)'
 
 /** 附图指标 Pane 管理器构造依赖 */
 export interface SubIndicatorPaneManagerDeps {
@@ -197,8 +196,8 @@ export class SubIndicatorPaneManager {
         priceScaleId: 'left',
         base: 0, // 柱从 0 轴绘制（正负双方向）
         // 全透明不可见（仅建 scale）：锚点柱不产生像素，避免在 normal 层
-        // 逐根覆盖自绘的 MACD 红绿柱与指标线（见 invisibleSeriesColor 说明）
-        color: invisibleSeriesColor,
+        // 逐根覆盖自绘的 MACD 红绿柱与指标线（见 transparentColor 说明）
+        color: transparentColor,
         priceLineVisible: false,
         lastValueVisible: false,
         // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
@@ -226,8 +225,8 @@ export class SubIndicatorPaneManager {
       {
         priceScaleId: 'left',
         // 全透明不可见（仅撑 scale 值域）：1px 背景色线在 normal 层也会与自绘内容
-        // 叠加产生遮挡，统一用透明色（见 invisibleSeriesColor 说明）
-        color: invisibleSeriesColor,
+        // 叠加产生遮挡，统一用透明色（见 transparentColor 说明）
+        color: transparentColor,
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -440,8 +439,8 @@ export class SubIndicatorPaneManager {
    *  锚点 series 保持全透明（仅建 scale，不可见不覆盖，与主题无关）；
    *  可见柱体由 MacdBarPrimitive 动态取新主题色（其内部 getTheme 现取）。 */
   updateThemeColors = (): void => {
-    this.indicatorsBarSeries?.applyOptions({ color: invisibleSeriesColor })
-    this.indicatorScaleAnchorSeries?.applyOptions({ color: invisibleSeriesColor })
+    this.indicatorsBarSeries?.applyOptions({ color: transparentColor })
+    this.indicatorScaleAnchorSeries?.applyOptions({ color: transparentColor })
   }
 
   /* ===================== 信息行分段文字 ===================== */

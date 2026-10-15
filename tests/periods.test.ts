@@ -5,7 +5,7 @@
  * periodMap 与 Periods 完全一致（O(1) 查询表）/ getPeriodLabel 命中与容错。
  */
 import { describe, expect, it } from 'vitest'
-import { Periods, periodMap, getPeriodLabel, type PeriodValue } from '../src/chart/Periods'
+import { Periods, periodMap, getPeriodLabel, type PeriodValue } from '../src/chart/periods'
 
 describe('周期配置 Periods', () => {
   it('清单完整：13 项（分时 5 + 日周月 3 + 分钟 5）', () => {

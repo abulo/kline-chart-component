@@ -47,3 +47,4 @@ export const periodMap: ReadonlyMap<PeriodValue, PeriodItem> = new Map(
  */
 export const getPeriodLabel = (value: string): string =>
   periodMap.get(value as PeriodValue)?.label ?? value
+
