@@ -8,6 +8,71 @@
 
 ---
 
+## v1.4.101（2026-10-15）
+
+十字星虚线周期改 [1, 1]（最密）。
+
+### 变更
+- `crosshairLineCapPaneView.ts`：`DASH_LENGTH_PHYSICAL` 2 → 1；
+  - 自绘细虚线（0.75 CSS px 亚像素抗锯齿保留）周期 [1, 1] 物理 px（最密，观感更细腻）；
+  - 底部补齐实线长度同步（1 物理 px），"竖线到底"不变；
+- `crosshairLineCapPrimitive.ts` / README：注释与说明同步 [1, 1]
+  （库 LargeDashed [6, 6] 事实描述保留）。
+
+### 验证
+vue-tsc 通过；vitest 90/90 全绿（12 文件）；未运行 / 未截图。
+
+## v1.4.100（2026-10-15）
+
+十字星虚线周期改 [2, 2]（更密更精致）。
+
+### 变更
+- `crosshairLineCapPaneView.ts`：`DASH_LENGTH_PHYSICAL` 6 → 2；
+  - 自绘细虚线（0.75 CSS px 亚像素抗锯齿保留）周期由 [6, 6] 改为 [2, 2] 物理 px，
+    虚线更密、视觉更精致；
+  - 底部补齐实线长度同步（2 物理 px），"竖线到底"不变；
+- `crosshairLineCapPrimitive.ts` / README：注释与说明同步 [2, 2]。
+
+### 验证
+vue-tsc 通过；vitest 90/90 全绿（12 文件）；未运行 / 未截图。
+
+## v1.4.99（2026-10-15）
+
+十字星虚线更细（亚像素自绘竖线 + 透明度降低）。
+
+### 背景
+库 crosshair 线宽仅支持整数（1 已最细），无法再细 → 视觉偏粗。
+
+### 变更
+- `crosshairLineCapPaneView.ts`：竖线改为 top 层**整条重绘细虚线**：
+  - 线宽 0.75 CSS px（= 0.75 × dpr 物理 px，canvas 亚像素抗锯齿 → 视觉细于库 1px）；
+  - 虚线周期 [6, 6] 物理 px 与库 LargeDashed 对齐（同色覆盖库竖线本体，无缝）；
+  - 底部补齐实线（同宽）保留，"竖线到底"修复不被破坏；
+  - 库竖线保留（时间轴时间 label 依赖库绘制）；
+- `crosshairLineCapPrimitive.ts`：注释同步（细虚线 + 补齐语义）；
+- `theme.ts`：`crosshairLineColor` 透明度 0.45 → 0.25（深系 rgba(149,152,161,0.25) /
+  浅系 rgba(90,96,112,0.25)）——横线（库 1px 淡色）与竖线（自绘同色）整体更淡；
+- README 视觉与交互章节补充"十字星细虚线"说明。
+
+### 验证
+vue-tsc 通过；vitest 90/90 全绿（12 文件）；未运行 / 未截图。
+
+## v1.4.98（2026-10-14）
+
+README 新增组件使用手册。
+
+### 变更
+- README 新增"五、组件使用手册（KLineChart）"章节（原 五~八 章节顺延为 六~九）：
+  5.1 快速开始 / 5.2 Props 一览（10 项，含 periodWhitelist）/ 5.3 事件（period-change）/
+  5.4 控制器方法（ref 访问：zoomIn/zoomOut/shiftLeft/shiftRight/applyTheme/
+  toggleTimeAxis/setLeftScaleVisible/setRightScaleVisible/setMainIndicator/
+  setSubIndicator/destroy）/ 5.5 周期白名单用法（数组|字符串）/ 5.6 数据接入
+  （ChartDataPoint 结构与 time 递增约束）/ 5.7 主题与配色（深浅系 + 去白化指标色）；
+- 运行章节测试条数修正为 90 项。
+
+### 验证
+vue-tsc 通过；vitest 90/90 全绿（12 文件）；未运行 / 未截图。
+
 ## v1.4.97（2026-10-14）
 
 周期白名单全局生效：App 周期栏按白名单渲染。

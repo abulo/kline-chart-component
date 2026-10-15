@@ -99,8 +99,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#1E222D',
     crosshairLabelBackground: '#2A2E39',
     crosshairLabelText: '#D1D4DC',
-    // 浅灰蓝半透明（#9598A1 @ 60%）：深背景上清晰、穿过柱体时透出
-    crosshairLineColor: 'rgba(149, 152, 161, 0.45)',
+    // 浅灰蓝半透明（#9598A1 @ 25%）：深背景上清晰、穿过柱体时透出、细虚线更淡
+    crosshairLineColor: 'rgba(149, 152, 161, 0.25)',
     highMarkerColor: '#F4AA0A',
     lowMarkerColor: '#2962FF',
     sarUp: '#FF0000',
@@ -129,8 +129,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#E6E8EC',
     crosshairLabelBackground: '#F0F2F5',
     crosshairLabelText: '#33373E',
-    // 中灰半透明（白底更清晰；穿过柱体时透出）
-    crosshairLineColor: 'rgba(90, 96, 112, 0.45)',
+    // 中灰半透明（白底更清晰；细虚线更淡）
+    crosshairLineColor: 'rgba(90, 96, 112, 0.25)',
     highMarkerColor: '#B8860B',
     lowMarkerColor: '#2452CC',
     sarUp: '#FF0000',

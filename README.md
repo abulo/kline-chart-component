@@ -1,8 +1,5 @@
 # 多 Pane K 线组件（Vue3 + TypeScript + lightweight-charts v5）
 
-> **当前版本：v1.4.95（2026-10-14）**
-> 版本号遵循语义化版本（主.次.修订），同步于 `package.json` version、App.vue 底部 hint、CHANGELOG.md，交付 zip 文件名带版本号。
-
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
 ---
@@ -53,6 +50,7 @@
   - 坐标：库 `point.y` 为 Pane 本地坐标，直接注入，不做前序 Pane 高度换算；
   - 文字右对齐绘制（`textAlign = 'right'`），避免超出价格轴 canvas 被裁剪；
 - **十字星不贯穿 pane0**：pane0 内不触发十字星（controller 清除），pane0 顶层遮罩（`TopPaneOverlayPrimitive`，zOrder 'top'）以背景色覆盖竖线；
+- **十字星细虚线**（`CrosshairLineCapPrimitive` + `CrosshairLineCapPaneView`，v1.4.101）：竖线在 top 层重绘为 0.75 CSS px 亚像素细虚线（虚线周期 [1,1] 物理 px（最密）），底部补齐实线保证"到底"；横竖线颜色 `crosshairLineColor` 透明度 0.25（深浅系区分，theme.ts），视觉更细更淡；库横竖线本体仍保留（时间轴时间 label 依赖库绘制）；
 - **指标叠加绘图在十字星之上**（`IndicatorLinePrimitive`，zOrder 'top' top canvas 自绘）：主图指标线（MA / EXPMA / BOLL / BBI）与成交量均量线（VOL MA5 / MA10）自绘折线，绘制在十字星之上 —— 十字星横线穿过时指标线完整可见（库十字星画在 top canvas 的 series 之上，LineSeries 必被横线压住，故改自绘）；坐标 = timeScale.timeToCoordinate × anchorSeries.priceToCoordinate，按可视时间范围裁剪，坐标缺失断开路径；
 - **内容 Pane 边框**（`PaneBorderPrimitive`）：pane1 / pane3 / pane5 自绘 1px 直角矩形边框，颜色随主题；bitmap 物理像素绘制（缩放时始终贴住画布最右边缘，无亚像素缝隙）；
 - **最高 / 最低价标注**（`HighLowMarkerPrimitive` + `HighLowMarkerPaneView`）：pane1 可视区域内 high 最大 / low 最小的 bar —— 最高价 12px 黄色文字标注在柱顶上方、最低价 12px 蓝色文字标注在柱底下方，各带同色实线从文字块连到柱体上 / 下边缘中间；随平移 / 缩放实时重算、文字左右不越界；颜色深浅系区分（theme.highMarkerColor / lowMarkerColor）；
@@ -151,12 +149,116 @@ tests/
 └── util.test.ts               # 格式化函数单测
 ```
 
-## 五、运行
+## 五、组件使用手册（KLineChart）
+
+### 5.1 快速开始
+
+```html
+<KLineChart
+  symbol="300750"
+  name="宁德时代"
+  :time-axis="true"
+  :left-scale="false"
+  :right-scale="false"
+  theme="dark"
+  main-indicator="ma"
+  sub-indicator="macd"
+  :data-count="120"
+  :period-whitelist="['day', 'week', 'month']"
+  @period-change="onPeriodChange"
+/>
+```
+
+父组件只需维护状态并传 Props（单向数据流）；放大 / 缩小 / 左移 / 右移等瞬时
+动作经 `ref` 直接调用控制器。
+
+### 5.2 Props 一览
+
+| Prop | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `symbol` | `string` | `''` | 股票代码（pane0 信息行：名称 [代码]） |
+| `name` | `string` | `''` | 股票名称（pane0 信息行：名称 [代码]） |
+| `timeAxis` | `boolean` | `true` | 时间轴显隐（重算 pane 高度） |
+| `leftScale` | `boolean` | `false` | 左刻度区显隐（统一宽度 72px，切换后 fitContent） |
+| `rightScale` | `boolean` | `false` | 右刻度区显隐（同左） |
+| `theme` | `string` | `'dark'` | 风格：`'dark'` 深系 / `'light'` 浅系 |
+| `mainIndicator` | `string` | `''` | 主图指标：`MA / EXPMA / BOLL / SAR / BBI`（`''` = 关，互斥） |
+| `subIndicator` | `string` | `''` | 附图指标：`RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR`（`''` = 关指标层，互斥） |
+| `dataCount` | `number` | `120` | 内置演示数据条数（极限压测可传 10000） |
+| `periodWhitelist` | `PeriodValue[] \| string` | `''` | 周期白名单：数组或逗号分隔字符串；有值时组件内渲染白名单周期按钮并 emit `period-change` |
+
+### 5.3 事件
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `period-change` | `value: PeriodValue` | 点击组件内白名单周期按钮（白名单外周期不渲染） |
+
+### 5.4 控制器方法（ref 访问）
+
+```ts
+const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
+
+// 瞬时动作
+chartRef.value?.controller?.zoomIn()       // 放大（barSpacing 限幅 2~80）
+chartRef.value?.controller?.zoomOut()      // 缩小
+chartRef.value?.controller?.shiftLeft()    // 左移（scrollToPosition -10 根）
+chartRef.value?.controller?.shiftRight()   // 右移（+10 根）
+
+// 状态设置（Props watch 已自动调用；手动调用仅用于编程式控制）
+chartRef.value?.controller?.applyTheme('light')
+chartRef.value?.controller?.toggleTimeAxis(false)
+chartRef.value?.controller?.setLeftScaleVisible(true)
+chartRef.value?.controller?.setRightScaleVisible(true)
+chartRef.value?.controller?.setMainIndicator('boll')   // MA/EXPMA/BOLL/SAR/BBI / null
+chartRef.value?.controller?.setSubIndicator('kdj')     // 附图指标名 / null = 关指标层
+
+// 生命周期（组件卸载自动调用，手动调用防重复挂载）
+chartRef.value?.controller?.destroy()
+```
+
+### 5.5 周期白名单用法
+
+```html
+<!-- 字符串（逗号分隔） -->
+<KLineChart period-whitelist="day,week,month" />
+<!-- 数组 -->
+<KLineChart :period-whitelist="['day', 'week', 'month']" />
+```
+
+白名单外的周期不渲染；App.vue 周期栏与组件内白名单栏共用同一白名单配置源。
+
+### 5.6 数据接入
+
+组件内置演示数据 `genMockBars(dataCount)`（`src/chart/core/mock.ts`，随机游走日K）。
+接入后端数据：按统一数据点类型 `ChartDataPoint`（`src/types/chart.ts`）提供
+
+```ts
+{
+  time: number          // 秒级时间戳，严格递增（库断言要求）
+  tradeDate: string     // 'YYYY-MM-DD'（pane0 信息行时间显示）
+  preClose: number      // 昨收
+  pointType: 'kline'    // K 线类型守卫
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number        // 成交量（成交量 Pane 锚点 / 均量线）
+}[]
+```
+
+### 5.7 主题与配色
+
+- 深系 / 浅系颜色全部集中在 `src/chart/core/theme.ts`（`chartThemes.dark` / `.light`）；
+- 主图指标色 `mainIndicatorColors`、附图指标色 `subIndicatorColors`：深浅系共用，
+  v1.4.92 起去白化（灰线 `#666666` / BOLL 中轨 `#33373E` / BBI `#607D8B`），浅系下清晰可见；
+- 页面 html 背景由 App.vue 随主题同步（`pageBackground`），图表内颜色全部走主题对象。
+
+## 六、运行
 
 ```bash
 npm install        # 固定版本：lightweight-charts 5.2.1 / vue 3.5.43
 npm run dev        # 开发（http://127.0.0.1:5210）
-npm run test       # vitest 单测（43 项）
+npm run test       # vitest 单测（90 项）
 npm run build      # vue-tsc 类型检查 + 构建
 ```
 
@@ -166,7 +268,7 @@ npm run build      # vue-tsc 类型检查 + 构建
 挤占（指标开 6 Pane 时共 5px），导致最底部 pane5 高度偏小、**十字星竖线视觉上
 "不能到 pane5 底部"**（竖线画满 pane5 canvas，但底部被残留分隔线截断）。
 
-## 六、内存与性能
+## 七、内存与性能
 
 - **primitive 视图单例复用**：所有 primitive 的 `paneViews()` / `priceAxisPaneViews()` 返回构造时创建的单例视图，避免每帧 `new` 对象产生 GC 压力；
 - **渲染裁剪**：成交量 / MACD 柱、SAR 圆点自绘按可见逻辑范围（`getVisibleLogicalRange`）裁剪；指标折线（`IndicatorLinePrimitive`）按 `getVisibleRange()` 裁剪可视点区间 —— 均只遍历可视元素，不遍历全量数据；
@@ -175,7 +277,7 @@ npm run build      # vue-tsc 类型检查 + 构建
 - **生命周期**：controller `destroy()` 移除十字星监听、断开 ResizeObserver、`detachPrimitive`（SAR 圆点 / 主图指标线 / 成交量均量线）、`chart.remove()`、清除容器标记；指标关闭时 series 先 `removePane` 再置 null；primitive `detached()` 清空引用；
 - **实例保护**：容器 `dataset.lwcMounted` 标记防止重复创建 chart 实例。
 
-## 七、固定依赖版本
+## 八、固定依赖版本
 
 ```json
 "dependencies": {
@@ -191,7 +293,7 @@ npm run build      # vue-tsc 类型检查 + 构建
 }
 ```
 
-## 八、后续规划（用户逐步提出）
+## 九、后续规划（用户逐步提出）
 
 - （已实现 v1.4.68）附图指标十项：RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR 互斥切换
 - K 线主图指标（MA / EXPMA / BOLL / SAR / BBI）
