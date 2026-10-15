@@ -46,6 +46,10 @@ export interface ChartThemeColors {
   crosshairLabelBackground: string
   /** 十字星指示值标签文字颜色（深浅系区分） */
   crosshairLabelText: string
+  /** 加载遮罩（kline__mask）与更早数据提示（kline__older-tip）背景颜色（半透明随深浅系） */
+  maskBackground: string
+  /** 加载遮罩 / 更早数据提示文字颜色 */
+  maskText: string
   /**
    * 十字星横 / 竖线颜色（半透明，深浅系区分）：
    * 库默认 '#9598A1' 不透明 —— 竖线穿过 MACD 红绿柱 / K 线 / 成交量柱时，
@@ -102,6 +106,9 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#1E222D',
     crosshairLabelBackground: '#2A2E39',
     crosshairLabelText: '#D1D4DC',
+    // 深系：基于图表背景 #131722 的半透明遮罩，文字沿用指示值标签色
+    maskBackground: 'rgba(19, 23, 34, 0.72)',
+    maskText: '#D1D4DC',
     // 浅灰蓝半透明（#9598A1 @ 25%）：深背景上清晰、穿过柱体时透出、细虚线更淡
     crosshairLineColor: 'rgba(149, 152, 161, 0.25)',
     highMarkerColor: '#F4AA0A',
@@ -132,6 +139,9 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#E6E8EC',
     crosshairLabelBackground: '#F0F2F5',
     crosshairLabelText: '#33373E',
+    // 浅系：白底半透明遮罩，文字深色保证可读
+    maskBackground: 'rgba(255, 255, 255, 0.72)',
+    maskText: '#33373E',
     // 中灰半透明（白底更清晰；细虚线更淡）
     crosshairLineColor: 'rgba(90, 96, 112, 0.25)',
     highMarkerColor: '#B8860B',

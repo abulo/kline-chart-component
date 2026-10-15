@@ -23,12 +23,13 @@
  *  - onBeforeUnmount：controller.destroy()（内部退订实时 + 使在途请求失效）并置空引用；
  *  - 数据加载竞态由 controller 内部 loadSeq 守卫（快速切换周期 / 标的丢弃过期响应）。
  */
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch, computed } from "vue";
 import {
   KLineChartController,
   type MainIndicatorName,
 } from "../chart/core/kLineChartController";
 import type { ChartThemeName } from "../chart/core/theme";
+import  { themeColors } from "../chart/core/theme";
 import type { SubIndicatorType } from "../chart/indicator";
 import type { PeriodValue } from "../chart/periods";
 import type { ChartDataService } from "../services/chartDataService";
@@ -93,6 +94,8 @@ const controller = ref<KLineChartController | null>(null);
 
 /** 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步） */
 const activePeriod = ref<PeriodValue>(props.period);
+
+const theme = computed(() => themeColors(props.theme));
 
 onMounted(() => {
   // 实例保护：仅当控制器未创建（且容器未被标记）时才创建；
@@ -201,11 +204,23 @@ defineExpose({ controller, loadStatus });
 <template>
   <div class="kline-chart">
     <!-- 首次加载遮罩 -->
-    <!-- <div v-if="loadStatus === 'loading'" class="kline__mask">加载中…</div> -->
-    <div class="kline__mask">加载中…</div>
+    <div v-if="loadStatus === 'loading'"
+      class="kline__mask"
+      :style="{
+        background: theme.maskBackground,
+        color: theme.maskText,
+      }">
+      加载中…
+    </div>
     <!-- 向左加载更早历史提示 -->
-    <!-- <div v-if="loadStatus === 'loading-older'" class="kline__older-tip"> -->
-    <div class="kline__older-tip">正在加载更早数据…</div>
+    <div v-if="loadStatus === 'loading-older'"
+      class="kline__older-tip"
+      :style="{
+        background: theme.maskBackground,
+        color: theme.maskText,
+      }">
+      正在加载更早数据…
+    </div>
     <div ref="containerRef" class="kline-chart-container" />
   </div>
 </template>

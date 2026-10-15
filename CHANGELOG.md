@@ -8,6 +8,22 @@
 
 ---
 
+## v1.6.23（2026-10-15）
+
+加载遮罩 / 更早数据提示颜色收进风格文件。
+
+### 变更
+- `src/chart/core/theme.ts`：`ChartThemeColors` 新增 `maskBackground` / `maskText`；
+  深系 `rgba(19,23,34,0.72)` + `#D1D4DC`，浅系 `rgba(255,255,255,0.72)` + `#33373E`。
+- `src/components/kLineChart.vue`：
+  - 根容器注入 CSS 变量 `--kmask-bg` / `--kmask-text`（computed 随 `props.theme`
+    从 `themeColors()` 取值）；
+  - `.kline__mask` / `.kline__older-tip` 恢复 `var()` 引用（older-tip 同时恢复
+    padding / border-radius，背景块随主题）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.22（2026-10-15）
 
 代码质量收尾 + 修复 v1.6.17 重构引入的 symbol / service 切换失效 bug。
