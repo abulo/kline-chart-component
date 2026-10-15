@@ -184,7 +184,9 @@ tests/
 | `theme` | `string` | `'dark'` | 风格：`'dark'` 深系 / `'light'` 浅系 |
 | `mainIndicator` | `string` | `''` | 主图指标：`MA / EXPMA / BOLL / SAR / BBI`（`''` = 关，互斥） |
 | `subIndicator` | `string` | `''` | 附图指标：`RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR`（`''` = 关指标层，互斥） |
-| `dataCount` | `number` | `120` | 内置演示数据条数（极限压测可传 10000） |
+| `period` | `PeriodValue` | `'day'` | 当前周期（外部可控；变化时经 service 重新拉取该周期数据） |
+| `service` | `ChartDataService` | `MockChartDataService` 单例 | 数据服务实现（接入真实行情传 `HttpChartDataService` 实例，组件零改动） |
+| `dataCount` | `number` | `120` | 每页拉取条数（service 历史分页 limit；压测可传 10000） |
 | `periodWhitelist` | `PeriodValue[] \| string` | `''` | 周期白名单：数组或逗号分隔字符串；有值时组件内渲染白名单周期按钮并 emit `period-change` |
 
 ### 5.3 事件
@@ -227,17 +229,42 @@ chartRef.value?.controller?.destroy()
 
 白名单外的周期不渲染；App.vue 周期栏与组件内白名单栏共用同一白名单配置源。
 
-### 5.6 数据接入
+### 5.6 数据接入（src/services 集成）
 
-组件内置演示数据 `genMockBars(dataCount)`（`src/chart/core/mock.ts`，随机游走日K）。
-接入后端数据：按统一数据点类型 `ChartDataPoint`（`src/types/chart.ts`）提供
+组件数据层统一走 `ChartDataService` 接口（`src/services/chartDataService.ts`）：
+历史分页 `fetchHistory` + 实时订阅 `subscribeRealtime`，组件 / 控制器零依赖具体实现。
+
+- **默认**：`MockChartDataService` 单例（内置约 3 年日 K 池 + 分时 / 分钟 K / 周 / 月聚合 +
+  模拟实时推送；同 symbol 同周期缓存复用，内存友好）；
+- **接入真实行情**：父组件传 `HttpChartDataService` 实例（`src/services/httpChartDataService.ts`，
+  HTTP 历史 + WS / SSE / Poll 三种实时模式 + LRU 历史缓存）：
+
+```html
+<KLineChart
+  symbol="300750"
+  name="宁德时代"
+  :period="activePeriod"
+  :service="new HttpChartDataService({ baseUrl: '/api', wsUrl: 'wss://...' })"
+  @period-change="onPeriodChange"
+/>
+```
+
+后端接口约定：`GET {baseUrl}/kline/history?symbol=&period=&before=&limit=` 返回
+`{ code: 200, data: ChartDataPoint[] }`（time 升序、返回条数 < limit 表示无更早数据）；
+实时推送与历史同结构，`time` 与最后一根相同 = 刷新该根、更大 = 追加新 K 线。
+
+**平移左滑自动加载更早历史**（v1.5.2）：可视范围到达最左边缘时，组件自动以当前
+最早一根 time 为 `before` 锚点拉取更早一页，经 `controller.prependHistory` 前置插入
+（去重 / 升序 + 视口保持原数据位置）；返回不足 limit 或合并新增 0 时停止触发。
+
+数据点类型 `ChartDataPoint`（`src/types/chart.ts`，K 线）：
 
 ```ts
 {
   time: number          // 秒级时间戳，严格递增（库断言要求）
   tradeDate: string     // 'YYYY-MM-DD'（pane0 信息行时间显示）
   preClose: number      // 昨收
-  pointType: 'kline'    // K 线类型守卫
+  pointType: 'kline'    // K 线类型守卫（分时点 'timeshare' 暂不渲染）
   open: number
   high: number
   low: number

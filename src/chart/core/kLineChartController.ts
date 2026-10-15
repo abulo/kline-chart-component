@@ -59,9 +59,11 @@ import {
   CrosshairMode,
   type ISeriesApi,
   type UTCTimestamp,
+  type LogicalRange,
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, chartFont, type ChartThemeName } from './theme'
 import { genMockBars } from './mock'
+import { mergeBars } from './mergeBars'
 import type { ChartDataPoint } from '../../types/chart'
 import {
   fixedPaneCount,
@@ -100,14 +102,21 @@ export class KLineChartController {
   /** 挂载容器（布局高度 / 实例标记 / ResizeObserver） */
   private readonly container: HTMLElement
   /** K 线数据（ChartDataPoint：统一数据点类型，pointType='kline'，mock 120 根。
-   *  直接作为指标库 / primitive / series 数据源，无内部中间类型） */
-  private readonly bars: ChartDataPoint[]
+   *  直接作为指标库 / primitive / series 数据源，无内部中间类型。
+   *  可变引用：service 拉取（setKlineData）整体替换、实时订阅（updateLastBar）原地更新） */
+  private bars: ChartDataPoint[]
   /** 股票名称（pane0 顶部信息行显示：名称 [代码]） */
   private readonly name: string
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
   private readonly symbol: string
   /** 内置演示数据条数（KLineChartOptions.dataCount，默认 120；极限压测可传 10000） */
   private readonly dataCount: number
+  /** 平移左滑到最左边缘回调（组件注入：拉更早历史 → prependHistory 前置插入） */
+  private readonly onNeedEarlierData: () => void
+  /** 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载 */
+  private readonly handleVisibleLogicalRangeChange = (range: LogicalRange | null): void => {
+    if (range && range.from <= 0) this.onNeedEarlierData()
+  }
 
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心） */
   private klineSeries: ISeriesApi<'Candlestick'>
@@ -148,6 +157,8 @@ export class KLineChartController {
     this.symbol = options.symbol ?? ''
     // 内置演示数据条数（默认 120；极限压测 10000：指标 / 十字星 / 指示值全量走 O(n) 路径）
     this.dataCount = options.dataCount ?? 120
+    // 平移左滑到最左边缘回调（组件注入：拉取更早历史页后 prependHistory 前置插入）
+    this.onNeedEarlierData = options.onNeedEarlierData ?? (() => {})
 
     /* ---------- 0. 实例保护：容器打标记防重复创建 chart 实例 ----------
      * 组件重复挂载 / HMR / 路由切换时可能再次进入构造；标记在 destroy 时清除，
@@ -469,6 +480,12 @@ export class KLineChartController {
     /* ---------- 10. 容器尺寸监听：重算固定 Pane 高度（topPaneHeight） ---------- */
     this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors())
     this.resizeObserver.observe(this.container)
+
+    /* ---------- 11. 平移左滑到边缘 → 触发更早历史加载（回调组件拉取） ----------
+     * 可视逻辑范围左边界 ≤ 0（到达最左边缘）时触发一次；
+     * 组件侧防抖 + added=0 停止（见 loadEarlier），此处仅负责"到达边缘"信号。
+     */
+    this.chart.timeScale().subscribeVisibleLogicalRangeChange(this.handleVisibleLogicalRangeChange)
   }
 
   /** 十字星指示值注册表适配器（IndicatorManager 需要注册 / 移除 pane5 的指示值 primitive） */
@@ -544,6 +561,77 @@ export class KLineChartController {
     // 主图指标：数据变化时按当前激活指标重建（指标未开时为空操作）
     this.indicatorManager.refreshMainIndicatorData()
   }
+
+  /* ===================== 数据（service 集成） ===================== */
+
+  /**
+   * 外部数据整体写入（ChartDataService 拉取历史后调用）：
+   * 过滤 pointType='kline' 的点（分时/集合竞价点暂不渲染）→
+   * 重建 series / 指标缓存并 fitContent（周期切换、首次加载统一入口）。
+   */
+  setKlineData = (points: ChartDataPoint[]): void => {
+    this.bars = points.filter((point) => point.pointType === 'kline')
+    this.applyData()
+    this.chart.timeScale().fitContent()
+  }
+
+  /**
+   * 实时增量更新（ChartDataService 订阅回调）：
+   *  - 同 time = 刷新最后一根（series.update 覆盖语义）；
+   *  - time 更大 = 追加新 K 线（实时推送新根）。
+   * 仅接受 pointType='kline'；指标缓存增量重建（成交量均量 / 主图指标 / 附图指标）。
+   */
+  updateLastBar = (point: ChartDataPoint): void => {
+    if (point.pointType !== 'kline') return
+    this.klineSeries.update({
+      time: point.time as UTCTimestamp,
+      open: point.open!,
+      high: point.high!,
+      low: point.low!,
+      close: point.close!,
+    })
+    this.volumeSeries.update({
+      time: point.time as UTCTimestamp,
+      value: point.volume ?? 0,
+    })
+    const last = this.bars[this.bars.length - 1]
+    if (point.time > last.time) {
+      this.bars.push(point)
+    } else {
+      const index = this.bars.findIndex((bar) => bar.time === point.time)
+      if (index >= 0) this.bars[index] = point
+    }
+    this.indicatorManager.rebuildVolumeData()
+    this.indicatorManager.refreshMainIndicatorData()
+    this.indicatorManager.rebuildIndicatorData()
+  }
+
+  /**
+   * 更早历史前置插入（平移左滑到边缘 → 组件拉取更早页后调用）：
+   * 过滤 kline 点 → 前置合并（去重 / 升序，见 mergeBars）→ 重建 series / 指标缓存 →
+   * 视口逻辑范围右移 added（保持用户当前看到的数据位置不变）。
+   * @returns 实际新增条数（0 = 无更早数据，调用方停止后续触发）
+   */
+  prependHistory = (points: ChartDataPoint[]): number => {
+    const incoming = points.filter((point) => point.pointType === 'kline')
+    if (!incoming.length) return 0
+    const { bars, added } = mergeBars(this.bars, incoming)
+    if (added === 0) return 0
+    // 保存当前可见逻辑范围，setData 后偏移恢复（新数据前置 → 原有数据右移 added 根）
+    const range = this.chart.timeScale().getVisibleLogicalRange()
+    this.bars = bars
+    this.applyData()
+    if (range) {
+      this.chart.timeScale().setVisibleLogicalRange({
+        from: range.from + added,
+        to: range.to + added,
+      })
+    }
+    return added
+  }
+
+  /** 当前最早一根 K 线 time（无数据时 undefined；组件用作 before 分页锚点） */
+  getEarliestTime = (): number | undefined => this.bars[0]?.time
 
   /* ===================== 对外 API ===================== */
 
@@ -690,6 +778,7 @@ export class KLineChartController {
     }
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
+    this.chart.timeScale().unsubscribeVisibleLogicalRangeChange(this.handleVisibleLogicalRangeChange)
     this.chart.remove()
     this.container.dataset.lwcMounted = 'false'
   }

@@ -8,6 +8,72 @@
 
 ---
 
+## v1.5.2（2026-10-15）
+
+平移左滑到最左边缘自动加载更早历史（分页前置插入）。
+
+### 变更
+- `KLineChartController.ts`：
+  - `KLineChartOptions` 新增 `onNeedEarlierData` 回调；构造订阅
+    `subscribeVisibleLogicalRangeChange`——可视逻辑范围左边界 ≤ 0（到达最左边缘）触发；
+  - 新增 `prependHistory(points)`：过滤 kline 点 → 前置合并（去重 / 升序）→ 重建
+    series / 指标缓存 → 视口逻辑范围右移 added（保持当前看到的数据位置不变）；
+    返回实际新增条数（0 = 无更早数据）；`getEarliestTime()`：before 分页锚点；
+  - destroy 退订 visible range 监听；
+- 新增 `src/chart/core/mergeBars.ts`（纯函数：前置合并去重排序 + added 条数）；
+- `KLineChart.vue`：`loadEarlier()`——防抖（单在途请求）+ 停止条件（返回不足 limit
+  或合并新增 0 时 hasMoreHistory=false 防死循环）；周期 / symbol 切换重置边缘加载状态；
+- README 5.6 补充"平移左滑自动加载更早历史"说明；
+- 新增 `tests/mergeBars.test.ts`（4 项）：前置插入、去重（incoming 优先）、
+  重复页 added=0、空输入。
+
+### 验证
+vue-tsc 通过；vitest 103/103 全绿（14 文件）；未运行 / 未截图。
+
+## v1.5.1（2026-10-15）
+
+service prop 简化：直接定义 `service?: ChartDataService`（无默认值）。
+
+### 变更
+- `KLineChart.vue`：
+  - 删除 withDefaults 中 `service: () => defaultService`（对象默认值需工厂函数，冗余）；
+  - 组件内 loadData / setupRealtime 改用 `props.service ?? defaultService` 兜底
+    （未传 service 时使用模块级 Mock 单例）；
+  - 修复被环境/格式化器改动产生的重复 import（ChartDataService 值导入 interface）与
+    defaultService 定义丢失，恢复 `import { MockChartDataService }` + 单例声明。
+
+### 验证
+vue-tsc 通过；vitest 99/99 全绿（13 文件，chartDataService 单文件多次复跑稳定）；
+未运行 / 未截图。
+
+## v1.5.0（2026-10-15）
+
+数据服务（src/services）集成到组件：历史拉取 + 实时订阅统一走 ChartDataService 接口。
+
+### 变更
+- `KLineChart.vue`：
+  - 新增 props：`period`（PeriodValue，默认 'day'，外部可控）、`service`
+    （ChartDataService，默认 MockChartDataService 单例，接入真实行情传
+    HttpChartDataService 实例零改动）、`dataCount` 语义改为每页拉取条数（limit）；
+  - 首次挂载 / symbol / period / dataCount / service 变化 → fetchHistory 拉历史 →
+    controller.setKlineData（过滤 kline 点、整体重建 + fitContent）；
+  - 实时订阅 service.subscribeRealtime → controller.updateLastBar（同 time 覆盖
+    最后一根 / 更大 time 追加新 K，指标增量重建）；卸载 / 周期切换先退订（防泄漏）；
+  - loadData 请求序号守卫：快速切换周期丢弃过期响应（防乱序覆盖）；
+  - 恢复组件内白名单周期按钮栏（periodWhitelist 有值时渲染，点击切换 + emit
+    period-change）；
+- `KLineChartController.ts`：新增 `setKlineData(points)` / `updateLastBar(point)`
+  （bars 改可变引用）；
+- `App.vue`：`:period="activePeriod"` + `@period-change` 联动（App 周期栏点击 →
+  组件重拉该周期数据）；
+- README 使用手册更新：5.2 Props 新增 period / service、5.6 数据接入改为
+  service 集成说明（Mock 默认 / Http 接入 / 后端接口约定）；
+- 新增 `tests/chartDataService.test.ts`（9 项）：日 K / 周 / 月 / 分时 1d 数据形态、
+  before 分页、seed 稳定、实时订阅 fake timers 回调与退订。
+
+### 验证
+vue-tsc 通过；vitest 99/99 全绿（13 文件）；未运行 / 未截图。
+
 ## v1.4.101（2026-10-15）
 
 十字星虚线周期改 [1, 1]（最密）。

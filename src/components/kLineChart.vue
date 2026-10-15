@@ -1,37 +1,42 @@
 <script setup lang="ts">
 /**
- * KLineChart.vue —— 图表组件（v1.4.74 状态 Props 化）
+ * KLineChart.vue —— 图表组件（v1.5.0：数据服务集成）
  *
  * 职责：提供一个占满容器的 div，挂载 KLineChartController；
- * 将工具栏状态下沉为 Props（单向数据流），组件内部 watch Props 驱动控制器：
+ * 将工具栏状态下沉为 Props（单向数据流），组件内部 watch Props 驱动控制器；
+ * **数据层接入 src/services（ChartDataService 接口）**：
+ *  - 首次挂载 / symbol / period / dataCount / service 变化 → fetchHistory 拉历史
+ *    → controller.setKlineData（过滤 kline 点，整体重建 + fitContent）；
+ *  - 实时订阅 service.subscribeRealtime → controller.updateLastBar
+ *    （同 time 覆盖最后一根 / 更大 time 追加新 K，指标增量重建）；
+ *  - 组件内白名单周期按钮（periodWhitelist 有值时渲染）→ 切换周期 + emit period-change。
  *
  * Props：
- *  - symbol：股票代码（可选，pane0 顶部信息行显示）；
- *  - name：股票名称（可选，pane0 顶部信息行显示，格式：名称 [代码]）；
- *  - timeAxis：时间轴开关（默认开）；
- *  - leftScale：左刻度区开关（默认关）；
- *  - rightScale：右刻度区开关（默认关）；
- *  - theme：风格（'dark' | 'light'，默认深系）；
- *  - mainIndicator：主图指标（MA/EXPMA/BOLL/SAR/BBI，'' = 关闭）；
- *  - subIndicator：附图指标（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR，'' = 关闭指标层）。
+ *  - symbol / name：股票代码 / 名称（pane0 信息行：名称 [代码]）；
+ *  - timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator：状态开关；
+ *  - dataCount：每页拉取条数（默认 120；压测可传 10000）；
+ *  - period：当前周期（外部可控，默认 'day'；变化时重新拉取）；
+ *  - service：数据服务实现（默认 MockChartDataService 单例；接入真实行情传
+ *    HttpChartDataService 实例即可，组件 / 控制器零改动）；
+ *  - periodWhitelist：周期白名单（数组或逗号分隔字符串），有值时组件内渲染按钮。
  *
- * 父组件（App.vue）只负责维护状态并传 Props；放大 / 缩小 / 左移 / 右移等
- * 瞬时动作仍通过 ref 直接调用控制器。
- *
- * 生命周期（实例保护）：
- *  - onMounted：controller 为空才创建（防组件重复挂载重复创建 chart），
- *    创建后立即应用全部 Props 初始值；控制器内部再对容器打 dataset 标记；
- *  - watch Props：任一开关变化即调用对应控制器方法（theme 变化同时由父组件
- *    同步 html 背景，组件内只负责图表主题）；
- *  - onBeforeUnmount：销毁控制器并置空引用（防内存泄漏）。
+ * 生命周期（实例保护 + 内存管理）：
+ *  - onMounted：controller 为空才创建（防重复挂载重复创建 chart）；
+ *  - onBeforeUnmount：退订实时 + 销毁控制器并置空引用（防内存泄漏）；
+ *  - loadData 带请求序号守卫：快速切换周期时丢弃过期响应（防乱序覆盖）。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { KLineChartController, type MainIndicatorName } from '../chart/core/KLineChartController'
 import type { ChartThemeName } from '../chart/core/theme'
 import type { SubIndicatorType } from '../chart/indicator'
 import { Periods, type PeriodItem, type PeriodValue } from '../chart/periods'
+import type { ChartDataService } from '../services/chartDataService'
+import { MockChartDataService } from '../services/chartDataService'
 
-/** 图表组件 Props（工具栏状态单向数据流） */
+/** 默认数据服务（Mock 单例：池缓存复用，内存友好；接入后端时父组件传 HttpChartDataService） */
+const defaultService = new MockChartDataService()
+
+/** 图表组件 Props（工具栏状态 + 数据服务 单向数据流） */
 const props = withDefaults(
   defineProps<{
     /** 股票代码（pane0 顶部信息行显示） */
@@ -50,12 +55,16 @@ const props = withDefaults(
     mainIndicator?: string
     /** 附图指标（'' = 关闭指标层；互斥单选，由父组件保证） */
     subIndicator?: string
-    /** 内置演示数据条数（默认 120；极限压测可传 10000） */
+    /** 每页拉取条数（service 历史分页 limit，默认 120；极限压测可传 10000） */
     dataCount?: number
+    /** 当前周期（外部可控；变化时经 service 重新拉取该周期数据） */
+    period?: PeriodValue
+    /** 数据服务（默认 MockChartDataService 单例；传 HttpChartDataService 接入真实行情） */
+    service?: ChartDataService
     /**
      * 周期白名单（可选）：数组（如 ['day', 'week', 'month']）或逗号分隔字符串
      * （如 'day,week,month'）。有值（非空）时组件内渲染白名单内的周期按钮，
-     * 点击 emit 'period-change'；无值 / 空时不渲染（周期由外部 App 工具栏控制）。
+     * 点击切换周期 + emit 'period-change'；无值 / 空时不渲染。
      */
     periodWhitelist?: PeriodValue[] | string
   }>(),
@@ -69,6 +78,7 @@ const props = withDefaults(
     mainIndicator: '',
     subIndicator: '',
     dataCount: 120,
+    period: 'day',
     periodWhitelist: '',
   },
 )
@@ -81,7 +91,7 @@ const whitelistedPeriods = computed<PeriodItem[]>(() => {
   return Periods.filter((period) => values.includes(period.value))
 })
 
-/** 周期切换事件（点击白名单周期按钮时触发，value 为周期标识） */
+/** 周期切换事件（白名单按钮 / 内部周期变化时触发，value 为周期标识） */
 const emit = defineEmits<{ (event: 'period-change', value: PeriodValue): void }>()
 
 /** 容器 ref（需有确定宽高，由父组件 CSS 保证） */
@@ -89,6 +99,85 @@ const containerRef = ref<HTMLDivElement | null>(null)
 
 /** 控制器实例（父组件 ref 访问：放大 / 缩小 / 左移 / 右移） */
 const controller = ref<KLineChartController | null>(null)
+
+/** 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步） */
+const activePeriod = ref<PeriodValue>(props.period)
+
+/** 实时订阅清理函数（周期 / symbol 变化或卸载时调用） */
+let unsubscribeRealtime: (() => void) | null = null
+
+/** 数据加载请求序号（快速切换周期时丢弃过期响应，防乱序覆盖） */
+let loadSeq = 0
+
+/**
+ * 拉取当前 symbol / period 的历史数据并写入控制器。
+ * 竞态保护：仅最新一次请求（seq === loadSeq）允许写盘，旧响应直接丢弃。
+ */
+const loadData = async (): Promise<void> => {
+  const seq = ++loadSeq
+  try {
+    const points = await (props.service ?? defaultService).fetchHistory({
+      symbol: props.symbol,
+      period: activePeriod.value,
+      limit: props.dataCount,
+    })
+    if (seq !== loadSeq) return // 过期响应丢弃
+    controller.value?.setKlineData(points)
+  } catch (error) {
+    if (seq !== loadSeq) return
+    console.error('[KLineChart] 历史数据拉取失败：', error)
+  }
+}
+
+/** 订阅实时行情（先退订旧订阅保证唯一；回调 = 控制器增量更新最后一根） */
+const setupRealtime = (): void => {
+  unsubscribeRealtime?.()
+  unsubscribeRealtime = (props.service ?? defaultService).subscribeRealtime(
+    props.symbol,
+    activePeriod.value,
+    (point) => controller.value?.updateLastBar(point),
+  )
+}
+
+/** 更早历史加载中标志（防抖：一次只允许一个在途请求） */
+let loadingEarlier = false
+/** 是否还有更早历史（added=0 或返回不足 limit → false，停止边缘触发防死循环） */
+let hasMoreHistory = true
+
+/**
+ * 平移左滑到最左边缘触发（controller.onNeedEarlierData）：
+ * 以当前最早一根 time 为 before 锚点拉取更早一页 → prependHistory 前置插入。
+ * 停止条件：返回条数 < limit（服务语义：无更早数据）或合并新增 0（重复页）。
+ */
+const loadEarlier = async (): Promise<void> => {
+  if (loadingEarlier || !hasMoreHistory) return
+  const earliest = controller.value?.getEarliestTime()
+  if (earliest === undefined) return
+  loadingEarlier = true
+  try {
+    const points = await (props.service ?? defaultService).fetchHistory({
+      symbol: props.symbol,
+      period: activePeriod.value,
+      before: earliest,
+      limit: props.dataCount,
+    })
+    const added = controller.value?.prependHistory(points) ?? 0
+    if (added === 0 || points.length < props.dataCount) hasMoreHistory = false
+  } catch (error) {
+    console.error('[KLineChart] 更早历史拉取失败：', error)
+  } finally {
+    loadingEarlier = false
+  }
+}
+
+/** 周期切换（白名单按钮点击 / 外部 period 变化共用）：重拉数据 + 重订阅实时 */
+const switchPeriod = (value: PeriodValue): void => {
+  if (activePeriod.value === value) return
+  activePeriod.value = value
+  emit('period-change', value)
+  void loadData()
+  setupRealtime()
+}
 
 onMounted(() => {
   // 实例保护：仅当控制器未创建（且容器未被标记）时才创建；
@@ -99,6 +188,8 @@ onMounted(() => {
     symbol: props.symbol,
     name: props.name,
     dataCount: props.dataCount,
+    // 平移左滑到最左边缘 → 自动加载更早历史（防抖 + 停止条件见 loadEarlier）
+    onNeedEarlierData: () => void loadEarlier(),
   })
   // 创建后立即应用全部 Props 初始值（与控制器构造默认值一致时幂等无副作用）
   controller.value.applyTheme(props.theme as ChartThemeName)
@@ -109,14 +200,19 @@ onMounted(() => {
     props.mainIndicator ? (props.mainIndicator as MainIndicatorName) : null,
   )
   controller.value.setSubIndicator(props.subIndicator ? (props.subIndicator as SubIndicatorType) : null)
+  // 数据层：拉历史 + 订阅实时
+  void loadData()
+  setupRealtime()
 })
 
 onBeforeUnmount(() => {
+  unsubscribeRealtime?.()
+  unsubscribeRealtime = null
   controller.value?.destroy()
   controller.value = null
 })
 
-/* ===== Props watch：工具栏状态变化 → 驱动控制器（单向数据流） ===== */
+/* ===== Props watch：状态变化 → 驱动控制器 / 数据层（单向数据流） ===== */
 /** 时间轴开关 */
 watch(
   () => props.timeAxis,
@@ -149,21 +245,104 @@ watch(
   (value) =>
     controller.value?.setSubIndicator(value ? (value as SubIndicatorType) : null),
 )
+/** 外部周期变化 → 同步内部周期 + 重拉数据 + 重订阅实时（重置边缘加载状态） */
+watch(
+  () => props.period,
+  (value) => {
+    if (value === activePeriod.value) return
+    activePeriod.value = value
+    hasMoreHistory = true // 新周期可重新加载更早历史
+    void loadData()
+    setupRealtime()
+  },
+)
+/** symbol 变化 → 重拉数据 + 重订阅实时（新标的；重置边缘加载状态） */
+watch(
+  () => props.symbol,
+  () => {
+    hasMoreHistory = true
+    void loadData()
+    setupRealtime()
+  },
+)
+/** dataCount（每页条数）变化 → 重拉数据 */
+watch(
+  () => props.dataCount,
+  () => void loadData(),
+)
+/** service 实例变化 → 重拉数据 + 重订阅实时 */
+watch(
+  () => props.service,
+  () => {
+    void loadData()
+    setupRealtime()
+  },
+)
 
 /** 向父组件暴露控制器（放大 / 缩小 / 左移 / 右移等瞬时动作） */
 defineExpose({ controller })
 </script>
 
 <template>
-  <div ref="containerRef" class="kline-chart-container" />
+  <div class="kline-chart">
+    <!-- 白名单周期按钮栏（periodWhitelist 有值时渲染；悬浮于图表顶部，不参与布局） -->
+    <div v-if="whitelistedPeriods.length" class="kline-period-bar">
+      <button
+        v-for="option in whitelistedPeriods"
+        :key="option.value"
+        class="kline-period-btn"
+        :class="{ active: activePeriod === option.value }"
+        @click="switchPeriod(option.value)"
+      >
+        {{ option.label }}
+      </button>
+    </div>
+    <div ref="containerRef" class="kline-chart-container" />
+  </div>
 </template>
 
 <style scoped>
 
-.kline-chart-container {
+.kline-chart {
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+.kline-chart-container {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
+}
+
+/* 白名单周期栏：absolute 相对 .kline-chart（relative）悬浮顶部，不占布局高度 */
+.kline-period-bar {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 10;
+  display: flex;
+  gap: 6px;
+}
+
+.kline-period-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #d1d4dc;
+  background: #2a2e39;
+  border: 1px solid #4c525e;
+}
+
+.kline-period-btn:hover {
+  background: #363c4a;
+}
+
+.kline-period-btn.active {
+  background: #ff6b6b;
+  color: #fff;
+  border-color: #ff6b6b;
 }
 </style>

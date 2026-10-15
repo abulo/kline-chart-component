@@ -21,6 +21,12 @@ export interface KLineChartOptions {
   symbol?: string
   /** 内置演示数据条数（默认 120；极限压测可传 10000） */
   dataCount?: number
+  /**
+   * 平移左滑到最左边缘回调（v1.5.2）：
+   * 可视逻辑范围左边界 ≤ 0 时触发，由调用方（组件）经 service 拉取更早历史页，
+   * 再调用 controller.prependHistory 前置插入；未注入则不做边缘加载。
+   */
+  onNeedEarlierData?: () => void
 }
 
 /**

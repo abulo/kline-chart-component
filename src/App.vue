@@ -41,6 +41,11 @@ const togglePeriod = (value: PeriodValue): void => {
   activePeriod.value = value
 }
 
+/** 组件内白名单周期按钮切换 → 同步 App 高亮（period 经 prop 联动组件重拉） */
+const onPeriodChange = (value: PeriodValue): void => {
+  activePeriod.value = value
+}
+
 /** 当前主题 */
 const theme = ref<ChartThemeName>('dark')
 /** 时间轴开关 */
@@ -177,6 +182,8 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         :theme="theme"
         :main-indicator="activeMainIndicator ?? ''"
         :sub-indicator="activeSubIndicator ?? ''"
+        :period="activePeriod"
+        @period-change="onPeriodChange"
       />
     </div>
 
