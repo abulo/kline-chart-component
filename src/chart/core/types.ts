@@ -15,6 +15,10 @@ import type { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabe
 export interface KLineChartOptions {
   /** 图表挂载容器（需有确定宽高） */
   container: HTMLElement
+  /** 时间格式模板（v1.6.9 透传 KLineChart.vue format）：如 'YYYY-MM-DD' / 'YYYY-MM-DD HH:mm'；
+   *  提供时 pane0 信息行时间按模板显示；缺省按周期自动（日/周/月 → YYYY-MM-DD；
+   *  分时 → HH:mm；分钟 K → YYYY-MM-DD HH:mm） */
+  format?: string
   /** 股票名称（pane0 顶部信息行显示：名称 [代码]） */
   name?: string
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */

@@ -97,3 +97,55 @@ export const formatAxisTime = (seconds?: number | null, period?: string): string
   }
   return formatDate(seconds)
 }
+
+/**
+ * 秒级时间戳 → 按格式模板输出（v1.6.9 透传 KLineChart.vue format 参数）。
+ * 支持标记：YYYY / MM / DD / HH / mm / ss。
+ * 例：formatTimeByFmt(1728000000, 'YYYY-MM-DD') -> '2024-10-04'
+ *     formatTimeByFmt(1728000000, 'YYYY-MM-DD HH:mm') -> '2024-10-04 00:00'
+ */
+export const formatTimeByFmt = (ts: number, fmt = 'YYYY-MM-DD HH:mm'): string => {
+  const date = new Date(ts * 1000)
+  const pad = (v: number): string => String(v).padStart(2, '0')
+  const map: Record<string, string> = {
+    YYYY: String(date.getFullYear()),
+    MM: pad(date.getMonth() + 1),
+    DD: pad(date.getDate()),
+    HH: pad(date.getHours()),
+    mm: pad(date.getMinutes()),
+    ss: pad(date.getSeconds()),
+  }
+  return fmt.replace(/YYYY|MM|DD|HH|mm|ss/g, (key) => map[key] ?? key)
+}
+
+/**
+ * 时间归一化（v1.6.10）：任意来源 time → 秒级数字时间戳（UTCTimestamp）。
+ * 周期切换 / 实时推送时混入非数字 time（BusinessDay 对象 / Date / ISO 字符串）
+ * 或越界 time 会导致 series.update 报
+ * "Cannot update oldest data, last time=[object Object]"。
+ *  - number 且有限 → 原值；BusinessDay {year, month, day} → Date.UTC 秒；
+ *  - Date / ISO 字符串 → getTime / Date.parse 秒；其余 → null（调用方跳过该条）。
+ */
+export const normalizeChartTime = (time: unknown): number | null => {
+  if (typeof time === 'number') {
+    return Number.isFinite(time) ? Math.floor(time) : null
+  }
+  if (time instanceof Date) {
+    return Number.isFinite(time.getTime()) ? Math.floor(time.getTime() / 1000) : null
+  }
+  if (typeof time === 'string') {
+    const parsed = Date.parse(time)
+    return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null
+  }
+  if (time !== null && typeof time === 'object') {
+    const obj = time as { year?: unknown; month?: unknown; day?: unknown }
+    const year = typeof obj.year === 'number' ? obj.year : Number(obj.year)
+    const month = typeof obj.month === 'number' ? obj.month : Number(obj.month)
+    const day = typeof obj.day === 'number' ? obj.day : Number(obj.day)
+    if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+      const utc = Date.UTC(year, month - 1, day)
+      return Number.isFinite(utc) ? Math.floor(utc / 1000) : null
+    }
+  }
+  return null
+}

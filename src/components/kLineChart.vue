@@ -24,7 +24,7 @@
  *  - loadData 带请求序号守卫：快速切换周期时丢弃过期响应（防乱序覆盖）。
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { KLineChartController, type MainIndicatorName } from '../chart/core/KLineChartController'
+import { KLineChartController, type MainIndicatorName } from '../chart/core/kLineChartController'
 import type { ChartThemeName } from '../chart/core/theme'
 import type { SubIndicatorType } from '../chart/indicator'
 import type { PeriodValue } from '../chart/periods'
@@ -59,6 +59,8 @@ const props = withDefaults(
     period?: PeriodValue
     /** 数据服务（默认 MockChartDataService 单例；传 HttpChartDataService 接入真实行情） */
     service?: ChartDataService
+    /** 时间格式模板（v1.6.9）：如 'YYYY-MM-DD' / 'YYYY-MM-DD HH:mm'；缺省按周期自动 */
+    format?: string
   }>(),
   {
     symbol: '',
@@ -159,6 +161,8 @@ onMounted(() => {
     symbol: props.symbol,
     name: props.name,
     dataCount: props.dataCount,
+    // v1.6.9：时间格式模板透传（pane0 信息行时间；缺省按周期自动）
+    format: props.format,
     // 平移左滑到最左边缘 → 自动加载更早历史（防抖 + 停止条件见 loadEarlier）
     onNeedEarlierData: () => void loadEarlier(),
   })
@@ -223,6 +227,8 @@ watch(
     if (value === activePeriod.value) return
     activePeriod.value = value
     hasMoreHistory = true // 新周期可重新加载更早历史
+    // v1.6.9：周期切换 → pane0 信息行时间格式随周期变更（setPeriod 触发重绘）
+    controller.value?.setPeriod(value)
     void loadData()
     setupRealtime()
   },

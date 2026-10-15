@@ -60,11 +60,17 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
   type LogicalRange,
-} from 'lightweight-charts'
-import { themeColors, chartFontFamily, chartFont, type ChartThemeName } from './theme'
-import { genMockBars } from './mock'
-import { mergeBars } from './mergeBars'
-import type { ChartDataPoint } from '../../types/chart'
+  type Time,
+} from "lightweight-charts";
+import {
+  themeColors,
+  chartFontFamily,
+  chartFont,
+  type ChartThemeName,
+} from "./theme";
+import { genMockBars } from "./mock";
+import { mergeBars } from "./mergeBars";
+import type { ChartDataPoint } from "../../types/chart";
 import {
   fixedPaneCount,
   fixedPaneCountWithoutIndicator,
@@ -72,109 +78,124 @@ import {
   groupRatios,
   groupRatiosWithoutIndicator,
   calcPaneHeights,
-} from './layout'
-import { TopPaneOverlayPrimitive } from '../overlay/topPaneOverlayPrimitive'
-import { InfoLabelPrimitive } from '../overlay/infoLabelPrimitive'
-import { IndicatorLinePrimitive, type IndicatorLineSet } from '../overlay/indicatorLinePrimitive'
-import { HighLowMarkerPrimitive } from '../highLow/highLowMarkerPrimitive'
-import { VolumeBarPrimitive } from '../volume/volumeBarPrimitive'
-import { SarMarkerPrimitive } from '../indicator/sarMarkerPrimitive'
-import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
-import { GridPrimitive } from '../grid/gridPrimitive'
-import { formatVolume, formatPrice } from '../util/format'
-import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
-import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
-import { CrosshairLineCapPrimitive } from '../crosshair/crosshairLineCapPrimitive'
-import { IndicatorManager } from './indicatorManager'
-import { CrosshairManager } from './crosshairManager'
-import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH } from './constants'
-import type { KLineChartOptions, MainIndicatorName } from './types'
+} from "./layout";
+import { TopPaneOverlayPrimitive } from "../overlay/topPaneOverlayPrimitive";
+import { InfoLabelPrimitive } from "../overlay/infoLabelPrimitive";
+import {
+  IndicatorLinePrimitive,
+  type IndicatorLineSet,
+} from "../overlay/indicatorLinePrimitive";
+import { HighLowMarkerPrimitive } from "../highLow/highLowMarkerPrimitive";
+import { VolumeBarPrimitive } from "../volume/volumeBarPrimitive";
+import { SarMarkerPrimitive } from "../indicator/sarMarkerPrimitive";
+import { PaneBorderPrimitive } from "../border/paneBorderPrimitive";
+import { GridPrimitive } from "../grid/gridPrimitive";
+import { formatVolume, formatPrice, normalizeChartTime, formatTimeByFmt, formatAxisTime } from "../util/format";
+import type { PeriodValue } from "../periods";
+import { AxisLabelPrimitive } from "../axis/axisLabelPrimitive";
+import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrimitive";
+import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
+import { IndicatorManager } from "./indicatorManager";
+import { CrosshairManager } from "./crosshairManager";
+import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH } from "./constants";
+import type { KLineChartOptions, MainIndicatorName } from "./types";
 
 /** 公共类型 re-export（App.vue 等外部使用者继续从本文件导入，保持接口稳定） */
-export type { MainIndicatorName, KLineChartOptions } from './types'
+export type { MainIndicatorName, KLineChartOptions } from "./types";
 
 /** 控制器构造选项（re-export，见 types.ts） */
 // （上方 export type 已统一转发）
 
 export class KLineChartController {
   /** chart 实例（多 Pane 容器） */
-  private readonly chart: ReturnType<typeof createChart>
+  private readonly chart: ReturnType<typeof createChart>;
   /** 挂载容器（布局高度 / 实例标记 / ResizeObserver） */
-  private readonly container: HTMLElement
+  private readonly container: HTMLElement;
   /** K 线数据（ChartDataPoint：统一数据点类型，pointType='kline'，mock 120 根。
    *  直接作为指标库 / primitive / series 数据源，无内部中间类型。
    *  可变引用：service 拉取（setKlineData）整体替换、实时订阅（updateLastBar）原地更新） */
-  private bars: ChartDataPoint[]
+  private bars: ChartDataPoint[];
   /** 股票名称（pane0 顶部信息行显示：名称 [代码]） */
-  private readonly name: string
+  private readonly name: string;
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
-  private readonly symbol: string
+  private readonly symbol: string;
+  /** 时间格式模板（v1.6.9 透传 KLineChart.vue format；undefined → 按周期自动） */
+  private readonly timeFormat: string | undefined;
+  /** 当前周期（v1.6.9 setPeriod 更新；pane0 信息行时间格式按周期切换） */
+  private period: PeriodValue;
   /** 内置演示数据条数（KLineChartOptions.dataCount，默认 120；极限压测可传 10000） */
-  private readonly dataCount: number
+  private readonly dataCount: number;
   /** 平移左滑到最左边缘回调（组件注入：拉更早历史 → prependHistory 前置插入） */
-  private readonly onNeedEarlierData: () => void
+  private readonly onNeedEarlierData: () => void;
   /** 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载 */
-  private readonly handleVisibleLogicalRangeChange = (range: LogicalRange | null): void => {
-    if (range && range.from <= 0) this.onNeedEarlierData()
-  }
+  private readonly handleVisibleLogicalRangeChange = (
+    range: LogicalRange | null,
+  ): void => {
+    if (range && range.from <= 0) this.onNeedEarlierData();
+  };
 
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心） */
-  private klineSeries: ISeriesApi<'Candlestick'>
+  private klineSeries: ISeriesApi<"Candlestick">;
   /** pane2 成交量信息行 series（InfoLabelPrimitive 挂载；竖线补齐 primitive 也挂这里） */
-  private pane2InfoSeries: ISeriesApi<'Line'>
+  private pane2InfoSeries: ISeriesApi<"Line">;
   /** 成交量 series（pane3；Histogram 仅作 scale 锚点，可见柱体由 primitive 自绘） */
-  private volumeSeries: ISeriesApi<'Histogram'>
+  private volumeSeries: ISeriesApi<"Histogram">;
 
   /** 当前主题（深系 / 浅系） */
-  private theme: ChartThemeName
+  private theme: ChartThemeName;
   /** 左刻度区开关状态（显隐全部 Pane 的 left price scale） */
-  private showLeftScale: boolean
+  private showLeftScale: boolean;
   /** 右刻度区开关状态（显隐全部 Pane 的 right price scale） */
-  private showRightScale: boolean
+  private showRightScale: boolean;
 
   /** 容器尺寸监听（跟随容器高度重算固定 Pane 高度） */
-  private resizeObserver: ResizeObserver | null = null
+  private resizeObserver: ResizeObserver | null = null;
 
   /** 指标管理器（主图 / 附图指标 + 信息行 + 成交量均量线） */
-  private readonly indicatorManager: IndicatorManager
+  private readonly indicatorManager: IndicatorManager;
   /** 十字星管理器（十字星移动联动 + 左刻度指示值） */
-  private readonly crosshairManager: CrosshairManager
+  private readonly crosshairManager: CrosshairManager;
 
   /** pane1 SAR 圆点 primitive（构造创建并 attach，destroy 显式 detach） */
-  private sarMarkerPrimitive: SarMarkerPrimitive | null = null
+  private sarMarkerPrimitive: SarMarkerPrimitive | null = null;
   /** pane1 主图指标线 primitive（IndicatorLinePrimitive，top 层自绘） */
-  private indicatorLinePrimitive: IndicatorLinePrimitive | null = null
+  private indicatorLinePrimitive: IndicatorLinePrimitive | null = null;
   /** pane3 成交量均量线 primitive（IndicatorLinePrimitive，top 层自绘） */
-  private volumeMaPrimitive: IndicatorLinePrimitive | null = null
+  private volumeMaPrimitive: IndicatorLinePrimitive | null = null;
 
   constructor(options: KLineChartOptions) {
-    this.container = options.container
-    this.showLeftScale = false
-    this.showRightScale = false
-    this.theme = 'dark'
+    this.container = options.container;
+    this.showLeftScale = false;
+    this.showRightScale = false;
+    this.theme = "dark";
     // 股票信息（pane0 顶部信息行显示，格式：名称 [代码]）
-    this.name = options.name ?? ''
-    this.symbol = options.symbol ?? ''
+    this.name = options.name ?? "";
+    this.symbol = options.symbol ?? "";
     // 内置演示数据条数（默认 120；极限压测 10000：指标 / 十字星 / 指示值全量走 O(n) 路径）
-    this.dataCount = options.dataCount ?? 120
+    this.dataCount = options.dataCount ?? 120;
     // 平移左滑到最左边缘回调（组件注入：拉取更早历史页后 prependHistory 前置插入）
-    this.onNeedEarlierData = options.onNeedEarlierData ?? (() => {})
+    this.onNeedEarlierData = options.onNeedEarlierData ?? (() => {});
 
     /* ---------- 0. 实例保护：容器打标记防重复创建 chart 实例 ----------
      * 组件重复挂载 / HMR / 路由切换时可能再次进入构造；标记在 destroy 时清除，
      * 保证同一容器同一时刻只有一个 chart 实例（防止内存泄漏与布局错乱）。
      */
-    if (this.container.dataset.lwcMounted === 'true') {
-      throw new Error('KLineChartController: 容器已挂载 chart 实例，禁止重复创建')
+    if (this.container.dataset.lwcMounted === "true") {
+      throw new Error(
+        "KLineChartController: 容器已挂载 chart 实例，禁止重复创建",
+      );
     }
-    this.container.dataset.lwcMounted = 'true'
+    this.container.dataset.lwcMounted = "true";
 
     /* ---------- 1. 创建 chart ---------- */
-    const initialThemeColors = themeColors(this.theme)
+    const initialThemeColors = themeColors(this.theme);
     this.chart = createChart(this.container, {
       autoSize: true, // 自动跟随容器尺寸
       layout: {
-        background: { type: ColorType.Solid, color: initialThemeColors.background },
+        background: {
+          type: ColorType.Solid,
+          color: initialThemeColors.background,
+        },
         textColor: initialThemeColors.textColor,
         fontSize: 12,
         fontFamily: chartFontFamily,
@@ -228,7 +249,17 @@ export class KLineChartController {
         borderVisible: false,
         allowBoldLabels: false,
       },
-    })
+      localization: {
+        // 十字光标时间格式化：format 模板优先；缺省按周期自动
+        // （日/周/月 → YYYY-MM-DD；分时 → HH:mm；分钟 K → YYYY-MM-DD HH:mm）
+        timeFormatter: (t: Time) => {
+          const ts = t as number
+          return this.timeFormat
+            ? formatTimeByFmt(ts, this.timeFormat)
+            : formatAxisTime(ts, this.period)
+        },
+      },
+    });
 
     /* ---------- 2. 管理器：指标 + 十字星 ----------
      * 指标管理器依赖惰性 getter（klineSeries / volumeSeries 尚未创建，
@@ -243,31 +274,36 @@ export class KLineChartController {
       getSymbol: () => this.symbol,
       crosshairRegistry: this.crosshairManagerRegistry,
       onIndicatorStateChange: () => this.applyStretchFactors(),
-    })
+      // v1.6.9：pane0 信息行时间格式（format 模板优先，缺省按周期自动）
+      getTimeFormat: () => this.timeFormat,
+      getPeriod: () => this.period,
+    });
     // 十字星管理器：构造即订阅十字星移动（pane0 不触发 / 内容 Pane 注入左刻度指示值）
-    this.crosshairManager = new CrosshairManager({ chart: this.chart })
+    this.crosshairManager = new CrosshairManager({ chart: this.chart });
 
     /* ---------- 3. pane0：顶部空 Pane（无数据，自绘"名称 [代码] 时间 + 指标值"） ---------- */
-    this.chart.addSeries(
-      LineSeries,
-      {
-        priceScaleId: 'left',
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      },
-      0,
-    ).attachPrimitive(
-      // pane0 顶层遮罩（topPaneViews）：背景填充 + 信息行分段文字，绘制在十字星之上，
-      // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）。
-      // 分段结构：首段"股票名称 [代码] 时间"（主题文字色）+ 各指标值段
-      // （MA/EXPMA/BOLL/BBI 用对应线色、SAR 随 trend 红/绿，见 IndicatorManager.buildInfoSegments）；
-      // 时间与指标值均随十字星 —— 命中时 = 命中 bar、未命中时 = 最新 bar
-      new TopPaneOverlayPrimitive(
-        () => this.indicatorManager.buildInfoSegments(),
-        () => themeColors(this.theme).background,
-      ),
-    )
+    this.chart
+      .addSeries(
+        LineSeries,
+        {
+          priceScaleId: "left",
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        },
+        0,
+      )
+      .attachPrimitive(
+        // pane0 顶层遮罩（topPaneViews）：背景填充 + 信息行分段文字，绘制在十字星之上，
+        // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）。
+        // 分段结构：首段"股票名称 [代码] 时间"（主题文字色）+ 各指标值段
+        // （MA/EXPMA/BOLL/BBI 用对应线色、SAR 随 trend 红/绿，见 IndicatorManager.buildInfoSegments）；
+        // 时间与指标值均随十字星 —— 命中时 = 命中 bar、未命中时 = 最新 bar
+        new TopPaneOverlayPrimitive(
+          () => this.indicatorManager.buildInfoSegments(),
+          () => themeColors(this.theme).background,
+        ),
+      );
 
     /* ---------- 4. pane1：K 线主图（红涨绿跌；上涨柱体空心） ----------
      * 空心实现：上涨（up）柱体填充色 = 图表背景色（视觉空心），
@@ -276,7 +312,7 @@ export class KLineChartController {
     this.klineSeries = this.chart.addSeries(
       CandlestickSeries,
       {
-        priceScaleId: 'left',
+        priceScaleId: "left",
         upColor: initialThemeColors.background, // 上涨柱体填充 = 背景色（空心）
         downColor: initialThemeColors.downColor,
         borderUpColor: initialThemeColors.upColor, // 上涨边框红色
@@ -287,35 +323,37 @@ export class KLineChartController {
         lastValueVisible: false,
         // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
         priceFormat: {
-          type: 'custom',
-          formatter: () => '',
+          type: "custom",
+          formatter: () => "",
         },
       },
       1,
-    )
+    );
     // 内容 Pane 边框（pane1）：自绘 1px 矩形，颜色随主题（深浅系区分）
     this.klineSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
-    )
+    );
     // pane1 栅格：竖 4 等分；横向等分数随指标开关变化（关 8 / 开 6）
     this.klineSeries.attachPrimitive(
       new GridPrimitive({
         getColor: () => themeColors(this.theme).grid,
-        getHorizontalCount: () => (this.indicatorManager.getShowIndicator() ? 6 : 8),
+        getHorizontalCount: () =>
+          this.indicatorManager.getShowIndicator() ? 6 : 8,
       }),
-    )
+    );
     // pane1 左刻度标签：与栅格横线对齐（值 = 横线处价格，K 线价格 2 位小数）
     this.klineSeries.attachPrimitive(
       new AxisLabelPrimitive({
         series: this.klineSeries,
         getPaneIndex: () => 1,
-        getHorizontalCount: () => (this.indicatorManager.getShowIndicator() ? 6 : 8),
+        getHorizontalCount: () =>
+          this.indicatorManager.getShowIndicator() ? 6 : 8,
         getColor: () => themeColors(this.theme).textColor,
         getBackColor: () => themeColors(this.theme).background,
         getFont: () => chartFont,
         format: (price) => formatPrice(price),
       }),
-    )
+    );
     // pane1 十字星左刻度指示值：十字星横线所在价格（K 线价格 2 位小数）
     const pane1CrosshairLabel = new CrosshairAxisLabelPrimitive({
       series: this.klineSeries,
@@ -324,9 +362,9 @@ export class KLineChartController {
       getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
       getFont: () => chartFont,
       format: (price) => formatPrice(price),
-    })
-    this.klineSeries.attachPrimitive(pane1CrosshairLabel)
-    this.crosshairManager.registerPrimitive(pane1CrosshairLabel)
+    });
+    this.klineSeries.attachPrimitive(pane1CrosshairLabel);
+    this.crosshairManager.registerPrimitive(pane1CrosshairLabel);
     // pane1 最高价 / 最低价标注：可视区域内 high 最大 / low 最小的 bar，
     // 最高价黄色标注在柱顶上方、最低价蓝色标注在柱底下方（各带同色实线
     // 连接到柱体上 / 下边缘中间，随平移 / 缩放实时重算）
@@ -338,7 +376,7 @@ export class KLineChartController {
         getLowColor: () => themeColors(this.theme).lowMarkerColor,
         getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
       }),
-    )
+    );
     // pane1 SAR 圆点：SarMarkerPrimitive 自绘（多头红 / 空头绿，zOrder normal 不遮十字星）；
     // 初始隐藏，由主图指标按钮开启（setMainIndicator('sar') 时 setVisible(true) + 重算数据）；
     // 数据源 = 指标管理器 SAR 缓存，显隐 / 换色由管理器统一控制（registerSarMarker）
@@ -347,10 +385,10 @@ export class KLineChartController {
       this.klineSeries,
       () => this.indicatorManager.getSarPoints(),
       themeColors(this.theme),
-    )
-    this.sarMarkerPrimitive.setVisible(false)
-    this.klineSeries.attachPrimitive(this.sarMarkerPrimitive)
-    this.indicatorManager.registerSarMarker(this.sarMarkerPrimitive)
+    );
+    this.sarMarkerPrimitive.setVisible(false);
+    this.klineSeries.attachPrimitive(this.sarMarkerPrimitive);
+    this.indicatorManager.registerSarMarker(this.sarMarkerPrimitive);
     // pane1 主图指标线：IndicatorLinePrimitive 自绘（top canvas，十字星之上，
     // 不被十字星横线遮挡）；数据由 IndicatorManager.setMainIndicator 写入缓存现取
     this.indicatorLinePrimitive = new IndicatorLinePrimitive(
@@ -359,10 +397,10 @@ export class KLineChartController {
         getTimeScale: () => this.chart.timeScale(),
         anchorSeries: () => this.klineSeries,
       }),
-    )
-    this.klineSeries.attachPrimitive(this.indicatorLinePrimitive)
+    );
+    this.klineSeries.attachPrimitive(this.indicatorLinePrimitive);
     // pane1 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-    this.klineSeries.attachPrimitive(this.createCrosshairLineCap())
+    this.klineSeries.attachPrimitive(this.createCrosshairLineCap());
 
     /* ---------- 5. pane2：成交量信息行（自绘分段文字，设置与 pane0 一致） ----------
      * 显示 "成交量: x  MA5: x  MA10: x"（数值随十字星命中 bar / 最新 bar）；
@@ -372,18 +410,20 @@ export class KLineChartController {
     this.pane2InfoSeries = this.chart.addSeries(
       LineSeries,
       {
-        priceScaleId: 'left',
+        priceScaleId: "left",
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
       },
       2,
-    )
+    );
     this.pane2InfoSeries.attachPrimitive(
-      new InfoLabelPrimitive(() => this.indicatorManager.buildVolumeInfoSegments()),
-    )
+      new InfoLabelPrimitive(() =>
+        this.indicatorManager.buildVolumeInfoSegments(),
+      ),
+    );
     // pane2 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-    this.pane2InfoSeries.attachPrimitive(this.createCrosshairLineCap())
+    this.pane2InfoSeries.attachPrimitive(this.createCrosshairLineCap());
 
     /* ---------- 6. pane3：成交量（自绘柱体，视觉与 pane1 完全一致） ----------
      * HistogramSeries 仅作数据锚点：color = 背景色（不可见），
@@ -397,33 +437,36 @@ export class KLineChartController {
     this.volumeSeries = this.chart.addSeries(
       HistogramSeries,
       {
-        priceScaleId: 'left',
+        priceScaleId: "left",
         base: 0,
         color: initialThemeColors.background, // 不可见（仅建 scale）
         priceLineVisible: false,
         lastValueVisible: false,
         // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
         priceFormat: {
-          type: 'custom',
-          formatter: () => '',
+          type: "custom",
+          formatter: () => "",
         },
       },
       3,
-    )
+    );
     this.volumeSeries.attachPrimitive(
-      new VolumeBarPrimitive(() => this.bars, () => themeColors(this.theme)),
-    )
+      new VolumeBarPrimitive(
+        () => this.bars,
+        () => themeColors(this.theme),
+      ),
+    );
     // 内容 Pane 边框（pane3）：自绘 1px 矩形，颜色随主题（深浅系区分）
     this.volumeSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
-    )
+    );
     // pane3 栅格：竖 4 等分；横向 2 等分（中间 1 条）
     this.volumeSeries.attachPrimitive(
       new GridPrimitive({
         getColor: () => themeColors(this.theme).grid,
         getHorizontalCount: () => 2,
       }),
-    )
+    );
     // pane3 左刻度标签：与栅格横线对齐（值 = 横线处成交量，万 / 亿格式化）
     this.volumeSeries.attachPrimitive(
       new AxisLabelPrimitive({
@@ -435,7 +478,7 @@ export class KLineChartController {
         getFont: () => chartFont,
         format: (volume) => formatVolume(Math.max(0, volume)),
       }),
-    )
+    );
     // pane3 十字星左刻度指示值：十字星横线所在成交量（万 / 亿格式化，不小于 0）
     const pane3CrosshairLabel = new CrosshairAxisLabelPrimitive({
       series: this.volumeSeries,
@@ -444,9 +487,9 @@ export class KLineChartController {
       getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
       getFont: () => chartFont,
       format: (volume) => formatVolume(Math.max(0, volume)),
-    })
-    this.volumeSeries.attachPrimitive(pane3CrosshairLabel)
-    this.crosshairManager.registerPrimitive(pane3CrosshairLabel)
+    });
+    this.volumeSeries.attachPrimitive(pane3CrosshairLabel);
+    this.crosshairManager.registerPrimitive(pane3CrosshairLabel);
 
     /* 成交量均量线 VOL MA5 / MA10（东财成交量副图默认）：
      * 与成交量柱同 priceScaleId 'left'（同一量刻度）；
@@ -458,10 +501,10 @@ export class KLineChartController {
         getTimeScale: () => this.chart.timeScale(),
         anchorSeries: () => this.volumeSeries,
       }),
-    )
-    this.volumeSeries.attachPrimitive(this.volumeMaPrimitive)
+    );
+    this.volumeSeries.attachPrimitive(this.volumeMaPrimitive);
     // pane3 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-    this.volumeSeries.attachPrimitive(this.createCrosshairLineCap())
+    this.volumeSeries.attachPrimitive(this.createCrosshairLineCap());
 
     /* ---------- 7. pane4 / pane5：指标组（初始关闭） ----------
      * 指标层初始关闭（4 Pane：pane0..pane3，main : volume = 80 : 20）；
@@ -470,33 +513,38 @@ export class KLineChartController {
      */
 
     /* ---------- 8. 高度分配：pane0 / pane2 / pane4 固定 topPaneHeight（同一 factor，绝对相等），pane1 K 线，pane3 成交量 / pane5 指标 ---------- */
-    this.applyStretchFactors()
+    this.timeFormat = options.format;
+    this.period = "day";
+
+    this.applyStretchFactors();
 
     /* ---------- 9. 数据 + 首绘 ---------- */
-    this.bars = genMockBars(this.dataCount)
-    this.applyData()
-    this.chart.timeScale().fitContent()
+    this.bars = genMockBars(this.dataCount);
+    this.applyData();
+    this.chart.timeScale().fitContent();
 
     /* ---------- 10. 容器尺寸监听：重算固定 Pane 高度（topPaneHeight） ---------- */
-    this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors())
-    this.resizeObserver.observe(this.container)
+    this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors());
+    this.resizeObserver.observe(this.container);
 
     /* ---------- 11. 平移左滑到边缘 → 触发更早历史加载（回调组件拉取） ----------
      * 可视逻辑范围左边界 ≤ 0（到达最左边缘）时触发一次；
      * 组件侧防抖 + added=0 停止（见 loadEarlier），此处仅负责"到达边缘"信号。
      */
-    this.chart.timeScale().subscribeVisibleLogicalRangeChange(this.handleVisibleLogicalRangeChange)
+    this.chart
+      .timeScale()
+      .subscribeVisibleLogicalRangeChange(this.handleVisibleLogicalRangeChange);
   }
 
   /** 十字星指示值注册表适配器（IndicatorManager 需要注册 / 移除 pane5 的指示值 primitive） */
   private crosshairManagerRegistry = {
     registerPrimitive: (primitive: CrosshairAxisLabelPrimitive): void => {
-      this.crosshairManager.registerPrimitive(primitive)
+      this.crosshairManager.registerPrimitive(primitive);
     },
     removeByPaneIndex: (paneIndex: number): void => {
-      this.crosshairManager.removeByPaneIndex(paneIndex)
+      this.crosshairManager.removeByPaneIndex(paneIndex);
     },
-  }
+  };
 
   /**
    * 十字星竖线底部补齐 primitive（pane1/2/3/4/5 各挂一个）：
@@ -509,7 +557,7 @@ export class KLineChartController {
       getOverlayTime: () => this.crosshairManager.getOverlayTime(),
       getTimeScale: () => this.chart.timeScale(),
       getLineColor: () => themeColors(this.theme).crosshairLineColor,
-    })
+    });
 
   /* ===================== 布局 ===================== */
 
@@ -518,49 +566,64 @@ export class KLineChartController {
    * （绝对相等），内容 Pane 按组比例分配剩余高度（指标开 60:20:20 / 关 80:20）。
    */
   private applyStretchFactors = (): void => {
-    const panes = this.chart.panes()
-    if (panes.length < 2) return
+    const panes = this.chart.panes();
+    if (panes.length < 2) return;
     // 库实际可用高度 = 容器高度 - 时间轴高度（显隐按库当前状态）。
     // Pane 之间无间隔：库分隔线高度已通过 patch（node_modules dist
     // SeparatorConstants.SeparatorHeight: 1 → 0）置零，pane 紧贴、无 1px 预留。
-    const timeAxisHeight = this.chart.timeScale().options().visible ? LIBRARY_TIME_AXIS_HEIGHT : 0
-    const usableHeight = this.container.clientHeight - timeAxisHeight
+    const timeAxisHeight = this.chart.timeScale().options().visible
+      ? LIBRARY_TIME_AXIS_HEIGHT
+      : 0;
+    const usableHeight = this.container.clientHeight - timeAxisHeight;
     // 指标开启：3 个固定空 Pane、60:20:20；指标关闭：2 个固定空 Pane、80:20
-    const fixedCount = this.indicatorManager.getShowIndicator() ? fixedPaneCount : fixedPaneCountWithoutIndicator
-    const ratios = this.indicatorManager.getShowIndicator() ? groupRatios : groupRatiosWithoutIndicator
-    const paneHeights = calcPaneHeights(usableHeight, topPaneHeight, fixedCount, ratios)
-    panes.forEach((pane, index) => pane.setStretchFactor(paneHeights[index]))
-  }
+    const fixedCount = this.indicatorManager.getShowIndicator()
+      ? fixedPaneCount
+      : fixedPaneCountWithoutIndicator;
+    const ratios = this.indicatorManager.getShowIndicator()
+      ? groupRatios
+      : groupRatiosWithoutIndicator;
+    const paneHeights = calcPaneHeights(
+      usableHeight,
+      topPaneHeight,
+      fixedCount,
+      ratios,
+    );
+    panes.forEach((pane, index) => pane.setStretchFactor(paneHeights[index]));
+  };
 
   /* ===================== 数据 ===================== */
 
   /** K 线 / 成交量 / 指标数据写入（series 锚点 + 各 primitive 数据缓存重建） */
   private applyData = (): void => {
+    // v1.6.10：setData 前统一归一化 time（非法条过滤），K 线与成交量 series 同步
+    const normalized = this.bars
+      .map((bar) => ({ bar, time: normalizeChartTime(bar.time) }))
+      .filter((entry) => entry.time !== null);
     this.klineSeries.setData(
-      this.bars.map((bar) => ({
-        time: bar.time as UTCTimestamp,
+      normalized.map(({ bar, time }) => ({
+        time: time as UTCTimestamp,
         open: bar.open!, // pointType='kline' 必含 OHLC（mock 已填全，非空断言）
         high: bar.high!,
         low: bar.low!,
         close: bar.close!,
       })),
-    )
+    );
     // 成交量：Histogram 仅作 scale 锚点，颜色统一走 options.color（背景色，不可见），
     // 主题切换时由 applyTheme 同步更新；可见柱体由 VolumeBarPrimitive 按 bars 自绘
     this.volumeSeries.setData(
-      this.bars.map((bar) => ({
-        time: bar.time as UTCTimestamp,
+      normalized.map(({ bar, time }) => ({
+        time: time as UTCTimestamp,
         value: bar.volume!, // pointType='kline' 必含 volume
       })),
-    )
+    );
     // 成交量均量线 VOL MA5 / MA10 + pane2 信息行缓存（IndicatorManager 构建）
-    this.indicatorManager.rebuildVolumeData()
+    this.indicatorManager.rebuildVolumeData();
     // 附图指标：指标层开启时按当前选中指标全量重建
     // （pane5 线 / 柱 / Y 轴锚点 + pane4 信息行值；数据变化时重算，series 关闭时跳过）
-    this.indicatorManager.rebuildIndicatorData()
+    this.indicatorManager.rebuildIndicatorData();
     // 主图指标：数据变化时按当前激活指标重建（指标未开时为空操作）
-    this.indicatorManager.refreshMainIndicatorData()
-  }
+    this.indicatorManager.refreshMainIndicatorData();
+  };
 
   /* ===================== 数据（service 集成） ===================== */
 
@@ -570,10 +633,10 @@ export class KLineChartController {
    * 重建 series / 指标缓存并 fitContent（周期切换、首次加载统一入口）。
    */
   setKlineData = (points: ChartDataPoint[]): void => {
-    this.bars = points.filter((point) => point.pointType === 'kline')
-    this.applyData()
-    this.chart.timeScale().fitContent()
-  }
+    this.bars = points.filter((point) => point.pointType === "kline");
+    this.applyData();
+    this.chart.timeScale().fitContent();
+  };
 
   /**
    * 实时增量更新（ChartDataService 订阅回调）：
@@ -582,29 +645,37 @@ export class KLineChartController {
    * 仅接受 pointType='kline'；指标缓存增量重建（成交量均量 / 主图指标 / 附图指标）。
    */
   updateLastBar = (point: ChartDataPoint): void => {
-    if (point.pointType !== 'kline') return
+    if (point.pointType !== "kline") return;
+    // v1.6.10：time 统一归一化为数字秒（防 BusinessDay 对象 → series.update 报错）
+    const time = normalizeChartTime(point.time);
+    if (time === null) return;
+    // 越界防御：新 time 早于最后一根（周期切换残留 / 旧周期实时推送）→ 忽略，
+    // 避免 lightweight-charts "Cannot update oldest data, last time=[object Object]"
+    const last = this.bars[this.bars.length - 1];
+    if (last && time < normalizeChartTime(last.time)!) return;
     this.klineSeries.update({
-      time: point.time as UTCTimestamp,
+      time: time as UTCTimestamp,
       open: point.open!,
       high: point.high!,
       low: point.low!,
       close: point.close!,
-    })
+    });
     this.volumeSeries.update({
-      time: point.time as UTCTimestamp,
+      time: time as UTCTimestamp,
       value: point.volume ?? 0,
-    })
-    const last = this.bars[this.bars.length - 1]
-    if (point.time > last.time) {
-      this.bars.push(point)
+    });
+    if (last && time > normalizeChartTime(last.time)!) {
+      this.bars.push({ ...point, time });
     } else {
-      const index = this.bars.findIndex((bar) => bar.time === point.time)
-      if (index >= 0) this.bars[index] = point
+      const index = this.bars.findIndex(
+        (bar) => normalizeChartTime(bar.time) === time,
+      );
+      if (index >= 0) this.bars[index] = { ...point, time };
     }
-    this.indicatorManager.rebuildVolumeData()
-    this.indicatorManager.refreshMainIndicatorData()
-    this.indicatorManager.rebuildIndicatorData()
-  }
+    this.indicatorManager.rebuildVolumeData();
+    this.indicatorManager.refreshMainIndicatorData();
+    this.indicatorManager.rebuildIndicatorData();
+  };
 
   /**
    * 更早历史前置插入（平移左滑到边缘 → 组件拉取更早页后调用）：
@@ -613,32 +684,44 @@ export class KLineChartController {
    * @returns 实际新增条数（0 = 无更早数据，调用方停止后续触发）
    */
   prependHistory = (points: ChartDataPoint[]): number => {
-    const incoming = points.filter((point) => point.pointType === 'kline')
-    if (!incoming.length) return 0
-    const { bars, added } = mergeBars(this.bars, incoming)
-    if (added === 0) return 0
+    const incoming = points.filter((point) => point.pointType === "kline");
+    if (!incoming.length) return 0;
+    const { bars, added } = mergeBars(this.bars, incoming);
+    if (added === 0) return 0;
     // 保存当前可见逻辑范围，setData 后偏移恢复（新数据前置 → 原有数据右移 added 根）
-    const range = this.chart.timeScale().getVisibleLogicalRange()
-    this.bars = bars
-    this.applyData()
+    const range = this.chart.timeScale().getVisibleLogicalRange();
+    this.bars = bars;
+    this.applyData();
     if (range) {
       this.chart.timeScale().setVisibleLogicalRange({
         from: range.from + added,
         to: range.to + added,
-      })
+      });
     }
-    return added
-  }
+    return added;
+  };
 
   /** 当前最早一根 K 线 time（无数据时 undefined；组件用作 before 分页锚点） */
-  getEarliestTime = (): number | undefined => this.bars[0]?.time
+  getEarliestTime = (): number | undefined => this.bars[0]?.time;
 
   /* ===================== 对外 API ===================== */
 
   /** 主题切换（深系 / 浅系）：不改变 X 轴视口 / 布局尺寸 */
+  /**
+   * 周期切换（v1.6.9）：pane0 信息行时间格式随周期变化
+   * （日/周/月 → YYYY-MM-DD；分时 → HH:mm；分钟 K → YYYY-MM-DD HH:mm）。
+   * 信息行分段在 draw 时现取 getPeriod，此处仅存值 + requestUpdate 触发重绘。
+   */
+  setPeriod = (period: PeriodValue): void => {
+    if (this.period === period) return;
+    this.period = period;
+    // 触发重绘（IChartApi 无公开 requestUpdate；applyOptions({}) 会触发全图 invalidate）
+    this.chart.applyOptions({});
+  };
+
   applyTheme = (name: ChartThemeName): void => {
-    this.theme = name
-    const themeColorSet = themeColors(name)
+    this.theme = name;
+    const themeColorSet = themeColors(name);
     this.chart.applyOptions({
       layout: {
         background: { type: ColorType.Solid, color: themeColorSet.background },
@@ -666,7 +749,7 @@ export class KLineChartController {
           labelBackgroundColor: themeColorSet.crosshairLabelBackground,
         },
       },
-    })
+    });
     // K 线换色（上涨柱体填充跟随背景色保持空心）
     this.klineSeries.applyOptions({
       upColor: themeColorSet.background, // 空心填充 = 新主题背景色
@@ -675,28 +758,28 @@ export class KLineChartController {
       borderDownColor: themeColorSet.downColor,
       wickUpColor: themeColorSet.upColor,
       wickDownColor: themeColorSet.downColor,
-    })
+    });
     // 成交量锚点色跟随背景（保持不可见）；可见柱体由 primitive 动态取新主题色
-    this.volumeSeries.applyOptions({ color: themeColorSet.background })
+    this.volumeSeries.applyOptions({ color: themeColorSet.background });
     // 指标相关颜色（MACD 锚点 / SAR 圆点 / 成交量均量线）由指标管理器统一同步
-    this.indicatorManager.updateThemeColors(themeColorSet)
+    this.indicatorManager.updateThemeColors(themeColorSet);
     // 空 Pane 文字颜色在 draw 时动态取色，applyOptions 触发重绘即自动更新
-  }
+  };
 
   /** 放大（X 轴 barSpacing ×1.25，限幅） */
   zoomIn = (): void => {
-    const timeScaleApi = this.chart.timeScale()
-    const barSpacing = timeScaleApi.options().barSpacing
-    timeScaleApi.applyOptions({ barSpacing: Math.min(barSpacing * 1.25, 80) })
-  }
+    const timeScaleApi = this.chart.timeScale();
+    const barSpacing = timeScaleApi.options().barSpacing;
+    timeScaleApi.applyOptions({ barSpacing: Math.min(barSpacing * 1.25, 80) });
+  };
 
   /** 缩小（X 轴 barSpacing ÷1.25，限幅） */
   zoomOut = (): void => {
-    const timeScaleApi = this.chart.timeScale()
-    const barSpacing = timeScaleApi.options().barSpacing
+    const timeScaleApi = this.chart.timeScale();
+    const barSpacing = timeScaleApi.options().barSpacing;
     // 下限 0.5 = 库 timeScale 最小 barSpacing：可一路缩到全部数据可见（极致缩小）
-    timeScaleApi.applyOptions({ barSpacing: Math.max(barSpacing / 1.25, 0.5) })
-  }
+    timeScaleApi.applyOptions({ barSpacing: Math.max(barSpacing / 1.25, 0.5) });
+  };
 
   /**
    * 左移（视口向左平移一屏宽度，看更早数据）。
@@ -704,101 +787,110 @@ export class KLineChartController {
    * 直接跳到最新数据末尾）；逻辑范围平移到达最左自然停止，无跳变。
    */
   shiftLeft = (): void => {
-    const timeScaleApi = this.chart.timeScale()
-    const range = timeScaleApi.getVisibleLogicalRange()
-    if (!range) return
-    const width = range.to - range.from
+    const timeScaleApi = this.chart.timeScale();
+    const range = timeScaleApi.getVisibleLogicalRange();
+    if (!range) return;
+    const width = range.to - range.from;
     timeScaleApi.setVisibleLogicalRange({
       from: range.from - width,
       to: range.to - width,
-    })
-  }
+    });
+  };
 
   /** 右移（视口向右平移一屏宽度，看更晚数据；到达最右自然停止，不跳变） */
   shiftRight = (): void => {
-    const timeScaleApi = this.chart.timeScale()
-    const range = timeScaleApi.getVisibleLogicalRange()
-    if (!range) return
-    const width = range.to - range.from
+    const timeScaleApi = this.chart.timeScale();
+    const range = timeScaleApi.getVisibleLogicalRange();
+    if (!range) return;
+    const width = range.to - range.from;
     timeScaleApi.setVisibleLogicalRange({
       from: range.from + width,
       to: range.to + width,
-    })
-  }
+    });
+  };
 
   /** 设置主图指标（互斥单选；转发至指标管理器，null = 关闭） */
   setMainIndicator = (name: MainIndicatorName | null): void => {
-    this.indicatorManager.setMainIndicator(name)
-  }
+    this.indicatorManager.setMainIndicator(name);
+  };
 
   /** 设置附图指标（互斥单选；转发至指标管理器，null = 关闭指标层） */
-  setSubIndicator = (name: import('../indicator').SubIndicatorType | null): void => {
-    this.indicatorManager.setSubIndicator(name)
-  }
+  setSubIndicator = (
+    name: import("../indicator").SubIndicatorType | null,
+  ): void => {
+    this.indicatorManager.setSubIndicator(name);
+  };
 
   /** 时间轴开关：切换显隐后重算 pane 高度（时间轴高度占用随之变化，保证固定空 Pane 仍绝对相等） */
   toggleTimeAxis = (visible: boolean): void => {
-    this.chart.timeScale().applyOptions({ visible })
-    this.applyStretchFactors()
-  }
+    this.chart.timeScale().applyOptions({ visible });
+    this.applyStretchFactors();
+  };
 
   /** 左刻度区开关：显隐所有 Pane 的 left price scale（视图内数据不变） */
   setLeftScaleVisible = (visible: boolean): void => {
-    if (this.showLeftScale === visible) return
-    this.showLeftScale = visible
-    this.applyPriceScaleVisible('left', visible)
-  }
+    if (this.showLeftScale === visible) return;
+    this.showLeftScale = visible;
+    this.applyPriceScaleVisible("left", visible);
+  };
 
   /** 右刻度区开关：显隐所有 Pane 的 right price scale（视图内数据不变） */
   setRightScaleVisible = (visible: boolean): void => {
-    if (this.showRightScale === visible) return
-    this.showRightScale = visible
-    this.applyPriceScaleVisible('right', visible)
-  }
+    if (this.showRightScale === visible) return;
+    this.showRightScale = visible;
+    this.applyPriceScaleVisible("right", visible);
+  };
 
   /** 刻度区统一应用（左右宽度一致）：逐个 Pane 设置 price scale 显隐与最小宽度。
    *  切换前后**保持当前可见时间范围不变**——刻度区开关只改变数据区宽度，
    *  不改变视图内的数据（不再 fitContent 重置视口）。 */
-  private applyPriceScaleVisible = (side: 'left' | 'right', visible: boolean): void => {
+  private applyPriceScaleVisible = (
+    side: "left" | "right",
+    visible: boolean,
+  ): void => {
     // 保存当前可见时间范围（秒级 {from, to}），宽度变化后恢复（视图内数据不变）
-    const visibleRange = this.chart.timeScale().getVisibleRange()
-    const panes = this.chart.panes()
+    const visibleRange = this.chart.timeScale().getVisibleRange();
+    const panes = this.chart.panes();
     panes.forEach((_, paneIndex) => {
       this.chart.priceScale(side, paneIndex).applyOptions({
         visible,
         borderVisible: false, // 刻度区无边框
         minimumWidth: visible ? PRICE_SCALE_MIN_WIDTH : 0, // 关闭时不占位；打开时左右宽度一致
-      })
-    })
+      });
+    });
     // 恢复原可见时间范围（刻度区开关仅改变数据区宽度，不改变视图内的数据）
-    if (visibleRange) this.chart.timeScale().setVisibleRange(visibleRange)
-  }
+    if (visibleRange) this.chart.timeScale().setVisibleRange(visibleRange);
+  };
 
   /** 销毁：移除监听 / primitive / chart / 清除实例标记（防内存泄漏） */
   destroy = (): void => {
     // 十字星管理器退订监听 + 清空指示值 primitive 引用
-    this.crosshairManager.destroy()
+    this.crosshairManager.destroy();
     // 指标管理器清空全部内部引用 / 缓存
-    this.indicatorManager.destroy()
+    this.indicatorManager.destroy();
     // 卸载 SAR 圆点 primitive（挂在 klineSeries 上，随 chart.remove 一起释放，显式 detach 更保险）
     if (this.sarMarkerPrimitive) {
-      this.klineSeries.detachPrimitive(this.sarMarkerPrimitive)
-      this.sarMarkerPrimitive = null
+      this.klineSeries.detachPrimitive(this.sarMarkerPrimitive);
+      this.sarMarkerPrimitive = null;
     }
     // 卸载主图指标线 primitive（同挂在 klineSeries 上）
     if (this.indicatorLinePrimitive) {
-      this.klineSeries.detachPrimitive(this.indicatorLinePrimitive)
-      this.indicatorLinePrimitive = null
+      this.klineSeries.detachPrimitive(this.indicatorLinePrimitive);
+      this.indicatorLinePrimitive = null;
     }
     // 卸载成交量均量线 primitive（挂在 volumeSeries 上）
     if (this.volumeMaPrimitive) {
-      this.volumeSeries.detachPrimitive(this.volumeMaPrimitive)
-      this.volumeMaPrimitive = null
+      this.volumeSeries.detachPrimitive(this.volumeMaPrimitive);
+      this.volumeMaPrimitive = null;
     }
-    this.resizeObserver?.disconnect()
-    this.resizeObserver = null
-    this.chart.timeScale().unsubscribeVisibleLogicalRangeChange(this.handleVisibleLogicalRangeChange)
-    this.chart.remove()
-    this.container.dataset.lwcMounted = 'false'
-  }
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.chart
+      .timeScale()
+      .unsubscribeVisibleLogicalRangeChange(
+        this.handleVisibleLogicalRangeChange,
+      );
+    this.chart.remove();
+    this.container.dataset.lwcMounted = "false";
+  };
 }

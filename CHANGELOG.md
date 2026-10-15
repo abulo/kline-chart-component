@@ -8,6 +8,84 @@
 
 ---
 
+## v1.6.11（2026-10-15）
+
+本地设置记录：十字光标（时间轴 / crosshair）时间格式化。
+
+### 设置（kLineChartController.ts chart options localization）
+```ts
+localization: {
+  // 十字光标时间格式化
+  timeFormatter: (t: Time) => formatTimeByFmt(t as number, this.timeFormat),
+},
+```
+- 十字光标命中时，时间轴 / 标签按 `format` 参数模板显示（透传 KLineChart.vue format；
+  缺省按周期自动：日/周/月 → YYYY-MM-DD，分时 → HH:mm，分钟 K → YYYY-MM-DD HH:mm）。
+
+### 修复：日/周/月 K 十字光标仍显示 HH:mm
+- 根因：`formatTimeByFmt` 默认模板是 `YYYY-MM-DD HH:mm`，`this.timeFormat` 为 undefined
+  时（未传 format 参数）落入默认，无视周期。
+- 修复：timeFormatter 改为 `format 模板优先，否则按周期自动`
+  （`this.timeFormat ? formatTimeByFmt(ts, this.timeFormat) : formatAxisTime(ts, this.period)`），
+  与 pane0 信息行时间逻辑一致。
+
+### 修复（配套编译）
+- `Time` 类型补 import（lightweight-charts）；
+- `updateLastBar` series.update 恢复 `time as UTCTimestamp` 断言（number → Time 类型兼容）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
+## v1.6.10（2026-10-15）
+
+修复点击分钟 K（60/30/15/5/1 分 K）时实时更新报错：
+`Cannot update oldest data, last time=[object Object], new time=[object Object]`。
+
+### 根因
+lightweight-charts 5 内部把 series 的 time 统一转为 BusinessDay 对象存储，
+报错信息因此显示 [object Object]，实际判定是 `key(newTime) < key(lastTime)`：
+分钟 K 之间（或周期切换瞬间）切换时，旧周期的实时推送/残留数据的 time
+早于当前 series 最后一根，`SeriesApi.update` 直接抛错。
+
+### 变更
+- `src/chart/util/format.ts`：新增 `normalizeChartTime(time)` —— 任意来源 time →
+  秒级数字时间戳（number / BusinessDay / Date / ISO；非法 → null）。
+- `src/chart/core/kLineChartController.ts`：
+  - `applyData`：setData 前统一归一化 time（非法条过滤），K 线 + 成交量 series 同步；
+  - `updateLastBar`：time 归一化 + 非法跳过 + **新 time 早于最后一根时防御性忽略**
+    （周期切换残留不再抛给库），bars 缓存同步写回归一化 time。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件，新增 normalizeChartTime 3 项）；未运行 / 未截图。
+
+## v1.6.9（2026-10-15）
+
+KLineChart.vue 新增 `format` 参数（时间格式模板字符串），透传给 KLineChartController；
+周期切换时 pane0 信息行时间格式自动切换。
+
+### 新增
+- `src/components/kLineChart.vue`：`format?: string`（如 'YYYY-MM-DD' / 'YYYY-MM-DD HH:mm'），
+  构造时透传 `format: props.format`；外部 period 变化时调用 `controller.setPeriod(value)`。
+- `src/chart/core/types.ts`：`KLineChartOptions.format?: string`。
+- `src/chart/util/format.ts`：新增 `formatTimeByFmt(ts, fmt)`（支持 YYYY/MM/DD/HH/mm/ss 标记）。
+- `src/chart/core/kLineChartController.ts`：`timeFormat` 字段 + `period` 字段 + 公开
+  `setPeriod(period)`（信息行 draw 时现取 getPeriod → applyOptions({}) 触发全图重绘）。
+- `src/chart/core/indicatorManager.ts`：deps 新增 `getTimeFormat` / `getPeriod`；
+  pane0 信息行时间 = `format ? formatTimeByFmt : formatAxisTime(time, period)`。
+
+### 周期 → 时间格式规则（format 缺省时）
+- 日 K / 周 K / 月 K → `YYYY-MM-DD`
+- 分时（1d~5d）→ `HH:mm`
+- 60 / 30 / 15 / 5 / 1 分 K → `YYYY-MM-DD HH:mm`
+
+### 修复
+- 删除外部注入失效的 `localization.timeFormatter`（隐式 any）；
+- `setPeriod` 重绘改用公开 API `chart.applyOptions({})`（IChartApi 无 requestUpdate）；
+- 统一 App / 组件 import 小写（macOS 大小写敏感）。
+
+### 验证
+vue-tsc 通过；vitest 111/111 全绿（14 文件，新增 formatTimeByFmt 3 项）；未运行 / 未截图。
+
 ## v1.6.0（2026-10-15）
 
 版本号按用户要求提升至 v1.6.0（主版本号升级，作为新基线）。

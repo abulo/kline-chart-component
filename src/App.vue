@@ -12,9 +12,9 @@
  * 所有开关操作不得破坏整体布局尺寸，仅控制可见性 / 样式。
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import KLineChart from './components/KLineChart.vue'
+import KLineChart from './components/kLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
-import type { MainIndicatorName } from './chart/core/KLineChartController'
+import type { MainIndicatorName } from './chart/core/kLineChartController'
 import type { SubIndicatorType } from './chart/indicator'
 import { Periods, type PeriodValue } from './chart/periods'
 
@@ -136,7 +136,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.0</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.10</span>
     </div>
 
     <div class="toolbar">

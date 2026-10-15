@@ -7,7 +7,7 @@
  *  - formatDate（pane0 顶部信息行最新 bar 时间，YYYY-MM-DD）。
  */
 import { describe, it, expect } from 'vitest'
-import { formatVolume, formatPrice, formatAxisSmart, formatDate, formatClock, formatDateTime, formatAxisTime } from '../src/chart/util/format'
+import { normalizeChartTime, formatTimeByFmt, formatVolume, formatPrice, formatAxisSmart, formatDate, formatClock, formatDateTime, formatAxisTime } from '../src/chart/util/format'
 
 describe('formatVolume 成交量格式化（util/format.ts）', () => {
   it('亿级：两位小数 + 亿', () => {
@@ -140,5 +140,47 @@ describe('formatAxisTime 按周期格式化时间（pane0 信息行 / 十字星�
     expect(formatAxisTime(undefined, 'day')).toBe('--')
     expect(formatAxisTime(null, '1min')).toBe('--')
     expect(formatAxisTime(NaN, '60min')).toBe('--')
+  })
+
+
+  it('formatTimeByFmt：YYYY-MM-DD', () => {
+    // 2026-10-14 09:35（Asia/Shanghai）秒级时间戳
+    const ts = Math.floor(new Date(2026, 9, 14, 9, 35).getTime() / 1000)
+    expect(formatTimeByFmt(ts, 'YYYY-MM-DD')).toBe('2026-10-14')
+  })
+
+  it('formatTimeByFmt：YYYY-MM-DD HH:mm', () => {
+    const ts = Math.floor(new Date(2026, 9, 14, 9, 35).getTime() / 1000)
+    expect(formatTimeByFmt(ts, 'YYYY-MM-DD HH:mm')).toBe('2026-10-14 09:35')
+  })
+
+  it('formatTimeByFmt：MM-DD HH:mm 与默认模板', () => {
+    const ts = Math.floor(new Date(2026, 9, 14, 9, 35).getTime() / 1000)
+    expect(formatTimeByFmt(ts, 'MM-DD HH:mm')).toBe('10-14 09:35')
+    expect(formatTimeByFmt(ts)).toBe('2026-10-14 09:35')
+  })
+
+
+  it('normalizeChartTime：number 原样返回', () => {
+    expect(normalizeChartTime(1728000000)).toBe(1728000000)
+    expect(normalizeChartTime(0)).toBe(0)
+  })
+
+  it('normalizeChartTime：BusinessDay 对象 → UTC 秒', () => {
+    expect(normalizeChartTime({ year: 2024, month: 10, day: 4 })).toBe(
+      Math.floor(Date.UTC(2024, 9, 4) / 1000),
+    )
+  })
+
+  it('normalizeChartTime：Date / ISO 字符串 / 非法值', () => {
+    expect(normalizeChartTime(new Date(Date.UTC(2024, 9, 4)))).toBe(
+      Math.floor(Date.UTC(2024, 9, 4) / 1000),
+    )
+    expect(normalizeChartTime('2024-10-04T00:00:00Z')).toBe(
+      Math.floor(Date.UTC(2024, 9, 4) / 1000),
+    )
+    expect(normalizeChartTime(null)).toBeNull()
+    expect(normalizeChartTime(undefined)).toBeNull()
+    expect(normalizeChartTime(NaN)).toBeNull()
   })
 })

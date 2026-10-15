@@ -32,8 +32,9 @@ import {
   type SarPoint,
   type SubIndicatorType,
 } from '../indicator'
-import { formatVolume, formatPrice, formatDate } from '../util/format'
+import { formatVolume, formatPrice, formatTimeByFmt, formatAxisTime } from '../util/format'
 import type { ChartThemeColors } from './theme'
+import type { PeriodValue } from '../periods'
 import { type MainIndicatorName, type IndicatorLineSpec, type CrosshairPrimitiveRegistry, type IndicatorValueMap } from './types'
 import { SubIndicatorPaneManager } from './subIndicatorPaneManager'
 import type { TextSegment } from '../overlay/topPaneOverlayPrimitive'
@@ -61,6 +62,10 @@ export interface IndicatorManagerDeps {
   crosshairRegistry: CrosshairPrimitiveRegistry
   /** 指标开 / 关状态变化回调（controller 据此重算 pane 高度） */
   onIndicatorStateChange: () => void
+  /** 时间格式模板（v1.6.9 透传 format；undefined → 按周期自动） */
+  getTimeFormat: () => string | undefined
+  /** 当前周期（v1.6.9；日/周/月 → YYYY-MM-DD，分时 → HH:mm，分钟 K → YYYY-MM-DD HH:mm） */
+  getPeriod: () => PeriodValue
 }
 
 /** 指标值缓存项（信息行分段：label + 线色 + time→value Map，现取 O(1)）——见 types.ts */
@@ -74,6 +79,10 @@ export class IndicatorManager {
   private readonly getName: IndicatorManagerDeps['getName']
   private readonly getSymbol: IndicatorManagerDeps['getSymbol']
   private readonly onIndicatorStateChange: IndicatorManagerDeps['onIndicatorStateChange']
+  /** 时间格式模板（v1.6.9） */
+  private readonly getTimeFormat: IndicatorManagerDeps['getTimeFormat']
+  /** 当前周期（v1.6.9） */
+  private readonly getPeriod: IndicatorManagerDeps['getPeriod']
 
   /* ===== 主图指标状态 ===== */
   /** 当前激活的主图指标（null = 关闭；互斥） */
@@ -107,6 +116,8 @@ export class IndicatorManager {
     this.getName = deps.getName
     this.getSymbol = deps.getSymbol
     this.onIndicatorStateChange = deps.onIndicatorStateChange
+    this.getTimeFormat = deps.getTimeFormat
+    this.getPeriod = deps.getPeriod
     // 附图指标管理器：pane4 / pane5 独立成类（见 subIndicatorPaneManager.ts；
     // crosshairRegistry 直接转发，本类不持有）
     this.subIndicatorPane = new SubIndicatorPaneManager({
@@ -311,7 +322,10 @@ export class IndicatorManager {
     const base = symbol ? `${name} [${symbol}]` : name || '测试'
     const bars = this.getBars()
     const time = this.getOverlayTime() ?? bars[bars.length - 1]?.time ?? null
-    const segments: TextSegment[] = [{ text: `${base} ${formatDate(time)}`, color: theme.textColor }]
+    // v1.6.9：format 模板优先；缺省按周期自动（日/周/月 → YYYY-MM-DD；分时 → HH:mm；分钟 K → YYYY-MM-DD HH:mm）
+    const timeFormat = this.getTimeFormat()
+    const timeText = timeFormat ? formatTimeByFmt(time ?? 0, timeFormat) : formatAxisTime(time, this.getPeriod())
+    const segments: TextSegment[] = [{ text: `${base} ${timeText}`, color: theme.textColor }]
     if (time === null) return segments
     // 指标值段：线型指标（MA/EXPMA/BOLL/BBI）按线色，SAR 按 trend 色
     for (const line of this.mainIndicatorValueMaps) {
