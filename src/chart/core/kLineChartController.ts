@@ -694,21 +694,36 @@ export class KLineChartController {
   zoomOut = (): void => {
     const timeScaleApi = this.chart.timeScale()
     const barSpacing = timeScaleApi.options().barSpacing
-    timeScaleApi.applyOptions({ barSpacing: Math.max(barSpacing / 1.25, 4) })
+    // 下限 0.5 = 库 timeScale 最小 barSpacing：可一路缩到全部数据可见（极致缩小）
+    timeScaleApi.applyOptions({ barSpacing: Math.max(barSpacing / 1.25, 0.5) })
   }
 
-  /** 左移（视口向左滚动一屏宽度；库 5.2.1 无 shiftScrollPosition，用 scrollPosition + scrollToPosition） */
+  /**
+   * 左移（视口向左平移一屏宽度，看更早数据）。
+   * 用逻辑范围平移替代 scrollToPosition（后者距右边缘不足一屏时减幅变负被 clamp，
+   * 直接跳到最新数据末尾）；逻辑范围平移到达最左自然停止，无跳变。
+   */
   shiftLeft = (): void => {
     const timeScaleApi = this.chart.timeScale()
-    const position = timeScaleApi.scrollPosition()
-    timeScaleApi.scrollToPosition(position + timeScaleApi.width(), false)
+    const range = timeScaleApi.getVisibleLogicalRange()
+    if (!range) return
+    const width = range.to - range.from
+    timeScaleApi.setVisibleLogicalRange({
+      from: range.from - width,
+      to: range.to - width,
+    })
   }
 
-  /** 右移（视口向右滚动一屏宽度） */
+  /** 右移（视口向右平移一屏宽度，看更晚数据；到达最右自然停止，不跳变） */
   shiftRight = (): void => {
     const timeScaleApi = this.chart.timeScale()
-    const position = timeScaleApi.scrollPosition()
-    timeScaleApi.scrollToPosition(position - timeScaleApi.width(), false)
+    const range = timeScaleApi.getVisibleLogicalRange()
+    if (!range) return
+    const width = range.to - range.from
+    timeScaleApi.setVisibleLogicalRange({
+      from: range.from + width,
+      to: range.to + width,
+    })
   }
 
   /** 设置主图指标（互斥单选；转发至指标管理器，null = 关闭） */
@@ -727,22 +742,26 @@ export class KLineChartController {
     this.applyStretchFactors()
   }
 
-  /** 左刻度区开关：显隐所有 Pane 的 left price scale，切换后 fitContent 重排数据区 */
+  /** 左刻度区开关：显隐所有 Pane 的 left price scale（视图内数据不变） */
   setLeftScaleVisible = (visible: boolean): void => {
     if (this.showLeftScale === visible) return
     this.showLeftScale = visible
     this.applyPriceScaleVisible('left', visible)
   }
 
-  /** 右刻度区开关：显隐所有 Pane 的 right price scale，切换后 fitContent 重排数据区 */
+  /** 右刻度区开关：显隐所有 Pane 的 right price scale（视图内数据不变） */
   setRightScaleVisible = (visible: boolean): void => {
     if (this.showRightScale === visible) return
     this.showRightScale = visible
     this.applyPriceScaleVisible('right', visible)
   }
 
-  /** 刻度区统一应用（左右宽度一致）：逐个 Pane 设置 price scale 显隐与最小宽度，最后 fitContent */
+  /** 刻度区统一应用（左右宽度一致）：逐个 Pane 设置 price scale 显隐与最小宽度。
+   *  切换前后**保持当前可见时间范围不变**——刻度区开关只改变数据区宽度，
+   *  不改变视图内的数据（不再 fitContent 重置视口）。 */
   private applyPriceScaleVisible = (side: 'left' | 'right', visible: boolean): void => {
+    // 保存当前可见时间范围（秒级 {from, to}），宽度变化后恢复（视图内数据不变）
+    const visibleRange = this.chart.timeScale().getVisibleRange()
     const panes = this.chart.panes()
     panes.forEach((_, paneIndex) => {
       this.chart.priceScale(side, paneIndex).applyOptions({
@@ -751,8 +770,8 @@ export class KLineChartController {
         minimumWidth: visible ? PRICE_SCALE_MIN_WIDTH : 0, // 关闭时不占位；打开时左右宽度一致
       })
     })
-    // 刻度区开关改变数据区宽度，fitContent 让 K 线重新铺满（不残留空白）
-    this.chart.timeScale().fitContent()
+    // 恢复原可见时间范围（刻度区开关仅改变数据区宽度，不改变视图内的数据）
+    if (visibleRange) this.chart.timeScale().setVisibleRange(visibleRange)
   }
 
   /** 销毁：移除监听 / primitive / chart / 清除实例标记（防内存泄漏） */

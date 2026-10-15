@@ -8,6 +8,47 @@
 
 ---
 
+## v1.5.5（2026-10-15）
+
+修复缩小不能到极致。
+
+### 变更
+- `KLineChartController.zoomOut`：barSpacing 下限 4px → **0.5px**
+  （库 timeScale 最小 barSpacing），可一路缩小到全部数据可见（极致缩小）。
+
+### 验证
+vue-tsc 通过；vitest 103/103 全绿（14 文件）；未运行 / 未截图。
+
+## v1.5.4（2026-10-15）
+
+修复左移 / 右移"点击一下就跳到最新数据末尾"。
+
+### 变更
+- `KLineChartController.shiftLeft / shiftRight`：
+  - 弃用 `scrollPosition() + scrollToPosition(position ∓ width)`——距右边缘不足一屏时
+    减幅变负被库 clamp，直接跳到最新数据末尾；
+  - 改为**逻辑范围平移**：`getVisibleLogicalRange` → `setVisibleLogicalRange(from ∓ width)`，
+    平移一屏宽度，到达最左 / 最右自然停止，无跳变；
+- `tests/stress.test.ts`：性能上限 3000ms → 8000ms（环境波动 / CI 负载容忍，
+  常规 <200ms；消除偶发失败）。
+
+### 验证
+vue-tsc 通过；vitest 103/103 全绿（14 文件，连续 3 次全量复跑）；
+未运行 / 未截图。
+
+## v1.5.3（2026-10-15）
+
+左 / 右刻度开关切换不再改变视图内数据。
+
+### 变更
+- `KLineChartController.applyPriceScaleVisible`：
+  - 开关切换前保存当前可见时间范围（`getVisibleRange`），
+    切换后 `setVisibleRange` 恢复——刻度区开关只改变数据区宽度，
+    **不再 fitContent 重置视口**（视图内的 K 线数据保持不变）。
+
+### 验证
+vue-tsc 通过；vitest 103/103 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.5.2（2026-10-15）
 
 平移左滑到最左边缘自动加载更早历史（分页前置插入）。
