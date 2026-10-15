@@ -5,7 +5,7 @@
  * 职责：提供一个占满容器的 div，挂载 KLineChartController；
  * 将工具栏状态下沉为 Props（单向数据流），组件内部 watch Props 驱动控制器；
  * **数据层接入 src/services（ChartDataService 接口）**：
- *  - 首次挂载 / symbol / period / dataCount / service 变化 → fetchHistory 拉历史
+ *  - 首次挂载 / symbol / period / pageSize / service 变化 → fetchHistory 拉历史
  *    → controller.setKlineData（过滤 kline 点，整体重建 + fitContent）；
  *  - 实时订阅 service.subscribeRealtime → controller.updateLastBar
  *    （同 time 覆盖最后一根 / 更大 time 追加新 K，指标增量重建）。
@@ -13,7 +13,7 @@
  * Props：
  *  - symbol / name：股票代码 / 名称（pane0 信息行：名称 [代码]）；
  *  - timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator：状态开关；
- *  - dataCount：每页拉取条数（默认 120；压测可传 10000）；
+ *  - pageSize：每页拉取条数（默认 120；压测可传 10000）；
  *  - period：当前周期（外部可控，默认 'day'；变化时重新拉取）；
  *  - service：数据服务实现（默认 MockChartDataService 单例；接入真实行情传
  *    HttpChartDataService 实例即可，组件 / 控制器零改动）。
@@ -54,7 +54,7 @@ const props = withDefaults(
     /** 附图指标（'' = 关闭指标层；互斥单选，由父组件保证） */
     subIndicator?: string
     /** 每页拉取条数（service 历史分页 limit，默认 120；极限压测可传 10000） */
-    dataCount?: number
+    pageSize?: number
     /** 当前周期（外部可控；变化时经 service 重新拉取该周期数据） */
     period?: PeriodValue
     /** 数据服务（默认 MockChartDataService 单例；传 HttpChartDataService 接入真实行情） */
@@ -71,7 +71,7 @@ const props = withDefaults(
     theme: 'dark',
     mainIndicator: '',
     subIndicator: '',
-    dataCount: 120,
+    pageSize: 120,
     period: 'day',
   },
 )
@@ -101,7 +101,7 @@ const loadData = async (): Promise<void> => {
     const points = await (props.service ?? defaultService).fetchHistory({
       symbol: props.symbol,
       period: activePeriod.value,
-      limit: props.dataCount,
+      limit: props.pageSize,
     })
     if (seq !== loadSeq) return // 过期响应丢弃
     controller.value?.setKlineData(points)
@@ -141,10 +141,10 @@ const loadEarlier = async (): Promise<void> => {
       symbol: props.symbol,
       period: activePeriod.value,
       before: earliest,
-      limit: props.dataCount,
+      limit: props.pageSize,
     })
     const added = controller.value?.prependHistory(points) ?? 0
-    if (added === 0 || points.length < props.dataCount) hasMoreHistory = false
+    if (added === 0 || points.length < props.pageSize) hasMoreHistory = false
   } catch (error) {
     console.error('[KLineChart] 更早历史拉取失败：', error)
   } finally {
@@ -160,7 +160,7 @@ onMounted(() => {
     container: containerRef.value,
     symbol: props.symbol,
     name: props.name,
-    dataCount: props.dataCount,
+    pageSize: props.pageSize,
     // v1.6.9：时间格式模板透传（pane0 信息行时间；缺省按周期自动）
     format: props.format,
     // 平移左滑到最左边缘 → 自动加载更早历史（防抖 + 停止条件见 loadEarlier）
@@ -242,9 +242,9 @@ watch(
     setupRealtime()
   },
 )
-/** dataCount（每页条数）变化 → 重拉数据 */
+/** pageSize（每页条数）变化 → 重拉数据 */
 watch(
-  () => props.dataCount,
+  () => props.pageSize,
   () => void loadData(),
 )
 /** service 实例变化 → 重拉数据 + 重订阅实时 */

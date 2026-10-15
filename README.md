@@ -85,7 +85,7 @@ src/
 ├── App.vue                    # 工具栏 + 容器（80% 宽高居中）
 ├── main.ts                    # 入口
 ├── components/
-│   └── KLineChart.vue         # 图表组件（props: symbol / name / timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator / dataCount / period / service；周期由父组件全量控制并 emit period-change，v1.5.7）
+│   └── KLineChart.vue         # 图表组件（props: symbol / name / timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator / pageSize / period / service；周期由父组件全量控制并 emit period-change，v1.5.7）
 ├── chart/                     # 按功能分组的图表源码
 │   ├── periods.ts            # 周期配置（PERIODS 13 项：分时 1~5 日 + 日/周/月 K + 60~1 分 K；periodMap O(1) 查询 + getPeriodLabel，v1.4.94）
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
@@ -191,7 +191,7 @@ tests/
 | `subIndicator` | `string` | `''` | 附图指标：`RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR`（`''` = 关指标层，互斥） |
 | `period` | `PeriodValue` | `'day'` | 当前周期（外部可控；变化时经 service 重新拉取该周期数据） |
 | `service` | `ChartDataService` | `MockChartDataService` 单例 | 数据服务实现（接入真实行情传 `HttpChartDataService` 实例，组件零改动） |
-| `dataCount` | `number` | `120` | 每页拉取条数（service 历史分页 limit；压测可传 10000） |
+| `pageSize` | `number` | `120` | 每页拉取条数（service 历史分页 limit；压测可传 10000） |
 
 ### 5.3 事件
 

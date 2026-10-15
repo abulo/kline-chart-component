@@ -24,7 +24,8 @@ export interface KLineChartOptions {
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
   symbol?: string
   /** 内置演示数据条数（默认 120；极限压测可传 10000） */
-  dataCount?: number
+  /** 每页获取条数（v1.6.12 由 dataCount 更名；默认 120；压测可传 10000） */
+  pageSize?: number
   /**
    * 平移左滑到最左边缘回调（v1.5.2）：
    * 可视逻辑范围左边界 ≤ 0 时触发，由调用方（组件）经 service 拉取更早历史页，

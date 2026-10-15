@@ -123,8 +123,8 @@ export class KLineChartController {
   private readonly timeFormat: string | undefined;
   /** 当前周期（v1.6.9 setPeriod 更新；pane0 信息行时间格式按周期切换） */
   private period: PeriodValue;
-  /** 内置演示数据条数（KLineChartOptions.dataCount，默认 120；极限压测可传 10000） */
-  private readonly dataCount: number;
+  /** 每页获取条数（KLineChartOptions.pageSize，默认 120；极限压测可传 10000） */
+  private readonly pageSize: number;
   /** 平移左滑到最左边缘回调（组件注入：拉更早历史 → prependHistory 前置插入） */
   private readonly onNeedEarlierData: () => void;
   /** 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载 */
@@ -172,7 +172,7 @@ export class KLineChartController {
     this.name = options.name ?? "";
     this.symbol = options.symbol ?? "";
     // 内置演示数据条数（默认 120；极限压测 10000：指标 / 十字星 / 指示值全量走 O(n) 路径）
-    this.dataCount = options.dataCount ?? 120;
+    this.pageSize = options.pageSize ?? 120;
     // 平移左滑到最左边缘回调（组件注入：拉取更早历史页后 prependHistory 前置插入）
     this.onNeedEarlierData = options.onNeedEarlierData ?? (() => {});
 
@@ -519,7 +519,7 @@ export class KLineChartController {
     this.applyStretchFactors();
 
     /* ---------- 9. 数据 + 首绘 ---------- */
-    this.bars = genMockBars(this.dataCount);
+    this.bars = genMockBars(this.pageSize);
     this.applyData();
     this.chart.timeScale().fitContent();
 

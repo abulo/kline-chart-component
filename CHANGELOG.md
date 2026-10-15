@@ -8,6 +8,20 @@
 
 ---
 
+## v1.6.12（2026-10-15）
+
+`dataCount` 参数更名 → `pageSize`（意义：每页获取多少条数据）。
+
+### 变更
+- `src/chart/core/types.ts`：`KLineChartOptions.dataCount` → `pageSize?: number`。
+- `src/chart/core/kLineChartController.ts`：字段 / 构造 / genMockBars 改用 `pageSize`。
+- `src/components/kLineChart.vue`：props `pageSize?: number`（默认 120）、构造透传、
+  fetchHistory limit 与 hasMoreHistory 判定同步更名。
+- `README.md`：props 表格与注释同步。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.11（2026-10-15）
 
 本地设置记录：十字光标（时间轴 / crosshair）时间格式化。
