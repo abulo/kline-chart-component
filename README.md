@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.14（2026-10-15）**
+> **当前版本：v1.6.15（2026-10-15）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -85,7 +85,7 @@ src/
 ├── App.vue                    # 工具栏 + 容器（80% 宽高居中）
 ├── main.ts                    # 入口
 ├── components/
-│   └── KLineChart.vue         # 图表组件（props: symbol / name / timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator / pageSize / period / service；周期由父组件全量控制并 emit period-change，v1.5.7）
+│   └── KLineChart.vue         # 图表组件（props: symbol / name / timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator / period / service；周期由父组件全量控制并 emit period-change，v1.5.7）
 ├── chart/                     # 按功能分组的图表源码
 │   ├── periods.ts            # 周期配置（PERIODS 13 项：分时 1~5 日 + 日/周/月 K + 60~1 分 K；periodMap O(1) 查询 + getPeriodLabel，v1.4.94）
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
@@ -191,7 +191,6 @@ tests/
 | `subIndicator` | `string` | `''` | 附图指标：`RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR`（`''` = 关指标层，互斥） |
 | `period` | `PeriodValue` | `'day'` | 当前周期（外部可控；变化时经 service 重新拉取该周期数据） |
 | `service` | `ChartDataService` | `MockChartDataService` 单例 | 数据服务实现（接入真实行情传 `HttpChartDataService` 实例，组件零改动） |
-| `pageSize` | `number` | `120` | 每页拉取条数（service 历史分页 limit；压测可传 10000） |
 
 ### 5.3 事件
 

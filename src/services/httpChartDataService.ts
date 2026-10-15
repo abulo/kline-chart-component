@@ -191,7 +191,7 @@ export class HttpChartDataService implements ChartDataService {
     if (entry && entry.points.length) {
       entry.lastUsed = now // LRU 触碰
       if (query.before === undefined) {
-        // —— 最新页请求：缓存命中且未过期 → 直接返回缓存中最新 pageSize 根 ——
+        // —— 最新页请求：缓存命中且未过期 → 直接返回缓存中最新 limit 根 ——
         if (now - entry.fetchedAt < this.opts.cacheTtlMs) {
           return clonePoints(entry.points.slice(-query.limit))
         }

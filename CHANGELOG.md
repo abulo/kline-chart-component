@@ -8,6 +8,25 @@
 
 ---
 
+## v1.6.15（2026-10-15）
+
+删除 `pageSize` 参数（每页拉取条数固定为内部常量）。
+
+### 变更
+- `src/chart/core/constants.ts`：新增公共常量 `DEFAULT_FETCH_LIMIT = 120`
+  （内置 Mock 数据量 / 历史分页 limit）。
+- `src/chart/core/types.ts`：`KLineChartOptions` 删除 `pageSize`（顺带清理双注释残留）。
+- `src/chart/core/kLineChartController.ts`：删除 `pageSize` 字段与构造赋值，
+  `genMockBars(DEFAULT_FETCH_LIMIT)`。
+- `src/components/kLineChart.vue`：删除 `pageSize` props / 默认值 / watch / 构造透传，
+  `fetchHistory` limit 与 `hasMoreHistory` 判定改用 `DEFAULT_FETCH_LIMIT`。
+- `README.md`：props 表格与文件树注释同步删除。
+- 压力测试不受影响：`tests/stress.test.ts` 用独立 `BAR_COUNT = 10000`
+  直接调 `genMockBars(10000)`（函数签名保留 count 参数）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.14（2026-10-15）
 
 按文件系统大小写敏感梳理全项目 import。

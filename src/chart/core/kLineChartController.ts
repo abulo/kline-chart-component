@@ -97,7 +97,7 @@ import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrim
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
-import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH } from "./constants";
+import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH, DEFAULT_FETCH_LIMIT } from "./constants";
 import type { KLineChartOptions, MainIndicatorName } from "./types";
 
 /** 公共类型 re-export（App.vue 等外部使用者继续从本文件导入，保持接口稳定） */
@@ -123,8 +123,6 @@ export class KLineChartController {
   private readonly timeFormat: string | undefined;
   /** 当前周期（v1.6.9 setPeriod 更新；pane0 信息行时间格式按周期切换） */
   private period: PeriodValue;
-  /** 每页获取条数（KLineChartOptions.pageSize，默认 120；极限压测可传 10000） */
-  private readonly pageSize: number;
   /** 平移左滑到最左边缘回调（组件注入：拉更早历史 → prependHistory 前置插入） */
   private readonly onNeedEarlierData: () => void;
   /** 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载 */
@@ -171,8 +169,6 @@ export class KLineChartController {
     // 股票信息（pane0 顶部信息行显示，格式：名称 [代码]）
     this.name = options.name ?? "";
     this.symbol = options.symbol ?? "";
-    // 内置演示数据条数（默认 120；极限压测 10000：指标 / 十字星 / 指示值全量走 O(n) 路径）
-    this.pageSize = options.pageSize ?? 120;
     // 平移左滑到最左边缘回调（组件注入：拉取更早历史页后 prependHistory 前置插入）
     this.onNeedEarlierData = options.onNeedEarlierData ?? (() => {});
 
@@ -519,7 +515,7 @@ export class KLineChartController {
     this.applyStretchFactors();
 
     /* ---------- 9. 数据 + 首绘 ---------- */
-    this.bars = genMockBars(this.pageSize);
+    this.bars = genMockBars(DEFAULT_FETCH_LIMIT);
     this.applyData();
     this.chart.timeScale().fitContent();
 
