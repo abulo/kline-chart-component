@@ -8,6 +8,47 @@
 
 ---
 
+## v1.5.7（2026-10-15）
+
+删除 periodWhitelist（周期白名单）全部设置，周期由父组件全量控制。
+
+### 变更
+- `KLineChart.vue`：删除 `periodWhitelist` prop 与默认值、`whitelistedPeriods`
+  解析、组件内白名单周期按钮栏（模板 + CSS）及 `periodBarStyle` CSS 变量；
+  删除无调用方的 `switchPeriod`、`defineEmits`（周期变化由 props.period watch 驱动，
+  父组件自身感知）与 `computed` import；
+- `theme.ts`：删除 `periodBarColors` / `PeriodBarColors`（白名单栏删除后无引用）；
+- `App.vue`：删除周期白名单注释残留，周期栏注释改为"全量互斥单选"；
+- `README.md`：Props / 事件表去掉 periodWhitelist，删除 5.5 白名单章节并重排
+  章节号（5.6/5.7 → 5.5/5.6），顺带修正 5.4 控制器方法注释
+  （shift 描述同步为"逻辑范围平移一屏宽"）。
+
+### 验证
+vue-tsc 通过（含 noUnused 检查）；vitest 103/103 全绿（14 文件）；
+未运行 / 未截图。
+
+## v1.5.6（2026-10-15）
+
+代码质量收尾：颜色统一提取、开启未用代码检查、修复偶发测试失败。
+
+### 变更
+- **颜色提取到公共文件**：白名单周期栏配色提取至 `theme.ts` 的
+  `periodBarColors`（深 / 浅系两组，active 红底白字两系一致）；
+  `KLineChart.vue` 周期栏 CSS 改用 var() 引用（`--period-btn-*`），
+  消除组件内硬编码颜色，并补齐浅系配色适配；
+- **tsconfig** 开启 `noUnusedLocals / noUnusedParameters`（全量零报错，
+  确认无未使用变量 / 参数 / 文件；全 src 文件引用复查无孤儿文件）；
+- **修复偶发测试失败根因**：`tests/stress.test.ts` 耗时用例（10000 条生成 /
+  主图 / 成交量 / 附图十种 / 性能）显式 `testTimeout=20000ms`——
+  附图十种全量约 3.3s，默认单测 5s 上限在全量并发负载下偶发超时（此前
+  多次"复跑即绿"的偶发失败即此因）；
+- 复查：订阅 / 缓存清理完整（destroy 退订 + Mock 池缓存 / Http LRU 边界 +
+  组件卸载置空引用）；函数名驼峰语义化（指标周期变量如 ma12 / e26 为业务值）。
+
+### 验证
+vue-tsc 通过（含 noUnused 检查）；vitest 103/103 全绿（14 文件，连续多次全量复跑）；
+未运行 / 未截图。
+
 ## v1.5.5（2026-10-15）
 
 修复缩小不能到极致。

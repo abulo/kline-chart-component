@@ -24,18 +24,6 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 /** 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入） */
 const activePeriod = ref<PeriodValue>('day')
 
-/**
- * 周期白名单（单一配置源）：限制 App 周期栏可选项，并同源传给 KLineChart
- * 的 period-whitelist prop（组件内白名单周期栏渲染一致）。
- * 数组或逗号分隔字符串皆可；白名单外的周期不渲染。
- */
-// const periodWhitelist = ''
-
-// /** 白名单过滤后的周期（App 周期栏渲染；未知周期自动剔除） */
-// const whitelistedPeriods = Periods.filter((period) =>
-//   periodWhitelist.split(',').includes(period.value),
-// )
-
 /** 周期切换（点击即选中，周期保持必选其一） */
 const togglePeriod = (value: PeriodValue): void => {
   activePeriod.value = value
@@ -216,7 +204,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       </button>
     </div>
 
-    <!-- 底部容器：周期（白名单过滤：periodWhitelist='day,week,month' → 仅日K/周K/月K，互斥单选） -->
+    <!-- 底部容器：周期（全量互斥单选） -->
     <div class="period-bar">
       <span class="hint">周期</span>
       <button

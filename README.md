@@ -80,7 +80,7 @@ src/
 ├── App.vue                    # 工具栏 + 容器（80% 宽高居中）
 ├── main.ts                    # 入口
 ├── components/
-│   └── KLineChart.vue         # 图表组件（props: symbol / name / timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator / dataCount / periodWhitelist；periodWhitelist=周期白名单（数组|逗号分隔字符串），有值时组件内渲染白名单周期按钮并 emit period-change，v1.4.95）
+│   └── KLineChart.vue         # 图表组件（props: symbol / name / timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator / dataCount / period / service；周期由父组件全量控制并 emit period-change，v1.5.7）
 ├── chart/                     # 按功能分组的图表源码
 │   ├── periods.ts            # 周期配置（PERIODS 13 项：分时 1~5 日 + 日/周/月 K + 60~1 分 K；periodMap O(1) 查询 + getPeriodLabel，v1.4.94）
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
@@ -187,13 +187,12 @@ tests/
 | `period` | `PeriodValue` | `'day'` | 当前周期（外部可控；变化时经 service 重新拉取该周期数据） |
 | `service` | `ChartDataService` | `MockChartDataService` 单例 | 数据服务实现（接入真实行情传 `HttpChartDataService` 实例，组件零改动） |
 | `dataCount` | `number` | `120` | 每页拉取条数（service 历史分页 limit；压测可传 10000） |
-| `periodWhitelist` | `PeriodValue[] \| string` | `''` | 周期白名单：数组或逗号分隔字符串；有值时组件内渲染白名单周期按钮并 emit `period-change` |
 
 ### 5.3 事件
 
 | 事件 | 参数 | 触发时机 |
 |---|---|---|
-| `period-change` | `value: PeriodValue` | 点击组件内白名单周期按钮（白名单外周期不渲染） |
+| `period-change` | `value: PeriodValue` | 周期变化时触发（App 周期栏点击 / 内部切换） |
 
 ### 5.4 控制器方法（ref 访问）
 
@@ -203,8 +202,8 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 // 瞬时动作
 chartRef.value?.controller?.zoomIn()       // 放大（barSpacing 限幅 2~80）
 chartRef.value?.controller?.zoomOut()      // 缩小
-chartRef.value?.controller?.shiftLeft()    // 左移（scrollToPosition -10 根）
-chartRef.value?.controller?.shiftRight()   // 右移（+10 根）
+chartRef.value?.controller?.shiftLeft()    // 左移（逻辑范围平移一屏宽，到最左自然停）
+chartRef.value?.controller?.shiftRight()   // 右移（逻辑范围平移一屏宽，到最右自然停）
 
 // 状态设置（Props watch 已自动调用；手动调用仅用于编程式控制）
 chartRef.value?.controller?.applyTheme('light')
@@ -218,18 +217,7 @@ chartRef.value?.controller?.setSubIndicator('kdj')     // 附图指标名 / null
 chartRef.value?.controller?.destroy()
 ```
 
-### 5.5 周期白名单用法
-
-```html
-<!-- 字符串（逗号分隔） -->
-<KLineChart period-whitelist="day,week,month" />
-<!-- 数组 -->
-<KLineChart :period-whitelist="['day', 'week', 'month']" />
-```
-
-白名单外的周期不渲染；App.vue 周期栏与组件内白名单栏共用同一白名单配置源。
-
-### 5.6 数据接入（src/services 集成）
+### 5.5 数据接入（src/services 集成）
 
 组件数据层统一走 `ChartDataService` 接口（`src/services/chartDataService.ts`）：
 历史分页 `fetchHistory` + 实时订阅 `subscribeRealtime`，组件 / 控制器零依赖具体实现。
@@ -273,7 +261,7 @@ chartRef.value?.controller?.destroy()
 }[]
 ```
 
-### 5.7 主题与配色
+### 5.6 主题与配色
 
 - 深系 / 浅系颜色全部集中在 `src/chart/core/theme.ts`（`chartThemes.dark` / `.light`）；
 - 主图指标色 `mainIndicatorColors`、附图指标色 `subIndicatorColors`：深浅系共用，

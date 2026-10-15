@@ -8,8 +8,7 @@
  *  - 首次挂载 / symbol / period / dataCount / service 变化 → fetchHistory 拉历史
  *    → controller.setKlineData（过滤 kline 点，整体重建 + fitContent）；
  *  - 实时订阅 service.subscribeRealtime → controller.updateLastBar
- *    （同 time 覆盖最后一根 / 更大 time 追加新 K，指标增量重建）；
- *  - 组件内白名单周期按钮（periodWhitelist 有值时渲染）→ 切换周期 + emit period-change。
+ *    （同 time 覆盖最后一根 / 更大 time 追加新 K，指标增量重建）。
  *
  * Props：
  *  - symbol / name：股票代码 / 名称（pane0 信息行：名称 [代码]）；
@@ -17,19 +16,18 @@
  *  - dataCount：每页拉取条数（默认 120；压测可传 10000）；
  *  - period：当前周期（外部可控，默认 'day'；变化时重新拉取）；
  *  - service：数据服务实现（默认 MockChartDataService 单例；接入真实行情传
- *    HttpChartDataService 实例即可，组件 / 控制器零改动）；
- *  - periodWhitelist：周期白名单（数组或逗号分隔字符串），有值时组件内渲染按钮。
+ *    HttpChartDataService 实例即可，组件 / 控制器零改动）。
  *
  * 生命周期（实例保护 + 内存管理）：
  *  - onMounted：controller 为空才创建（防重复挂载重复创建 chart）；
  *  - onBeforeUnmount：退订实时 + 销毁控制器并置空引用（防内存泄漏）；
  *  - loadData 带请求序号守卫：快速切换周期时丢弃过期响应（防乱序覆盖）。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { KLineChartController, type MainIndicatorName } from '../chart/core/KLineChartController'
 import type { ChartThemeName } from '../chart/core/theme'
 import type { SubIndicatorType } from '../chart/indicator'
-import { Periods, type PeriodItem, type PeriodValue } from '../chart/periods'
+import type { PeriodValue } from '../chart/periods'
 import type { ChartDataService } from '../services/chartDataService'
 import { MockChartDataService } from '../services/chartDataService'
 
@@ -61,12 +59,6 @@ const props = withDefaults(
     period?: PeriodValue
     /** 数据服务（默认 MockChartDataService 单例；传 HttpChartDataService 接入真实行情） */
     service?: ChartDataService
-    /**
-     * 周期白名单（可选）：数组（如 ['day', 'week', 'month']）或逗号分隔字符串
-     * （如 'day,week,month'）。有值（非空）时组件内渲染白名单内的周期按钮，
-     * 点击切换周期 + emit 'period-change'；无值 / 空时不渲染。
-     */
-    periodWhitelist?: PeriodValue[] | string
   }>(),
   {
     symbol: '',
@@ -79,20 +71,8 @@ const props = withDefaults(
     subIndicator: '',
     dataCount: 120,
     period: 'day',
-    periodWhitelist: '',
   },
 )
-
-/** 白名单周期解析：字符串按逗号分隔 / 数组直接使用 → 过滤 Periods 子集 */
-const whitelistedPeriods = computed<PeriodItem[]>(() => {
-  const raw = props.periodWhitelist
-  if (!raw || (typeof raw === 'string' && raw.trim() === '')) return []
-  const values = Array.isArray(raw) ? raw : raw.split(',').map((item) => item.trim())
-  return Periods.filter((period) => values.includes(period.value))
-})
-
-/** 周期切换事件（白名单按钮 / 内部周期变化时触发，value 为周期标识） */
-const emit = defineEmits<{ (event: 'period-change', value: PeriodValue): void }>()
 
 /** 容器 ref（需有确定宽高，由父组件 CSS 保证） */
 const containerRef = ref<HTMLDivElement | null>(null)
@@ -168,15 +148,6 @@ const loadEarlier = async (): Promise<void> => {
   } finally {
     loadingEarlier = false
   }
-}
-
-/** 周期切换（白名单按钮点击 / 外部 period 变化共用）：重拉数据 + 重订阅实时 */
-const switchPeriod = (value: PeriodValue): void => {
-  if (activePeriod.value === value) return
-  activePeriod.value = value
-  emit('period-change', value)
-  void loadData()
-  setupRealtime()
 }
 
 onMounted(() => {
@@ -285,18 +256,6 @@ defineExpose({ controller })
 
 <template>
   <div class="kline-chart">
-    <!-- 白名单周期按钮栏（periodWhitelist 有值时渲染；悬浮于图表顶部，不参与布局） -->
-    <div v-if="whitelistedPeriods.length" class="kline-period-bar">
-      <button
-        v-for="option in whitelistedPeriods"
-        :key="option.value"
-        class="kline-period-btn"
-        :class="{ active: activePeriod === option.value }"
-        @click="switchPeriod(option.value)"
-      >
-        {{ option.label }}
-      </button>
-    </div>
     <div ref="containerRef" class="kline-chart-container" />
   </div>
 </template>
@@ -313,36 +272,5 @@ defineExpose({ controller })
   width: 100%;
   height: 100%;
   overflow: hidden;
-}
-
-/* 白名单周期栏：absolute 相对 .kline-chart（relative）悬浮顶部，不占布局高度 */
-.kline-period-bar {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  z-index: 10;
-  display: flex;
-  gap: 6px;
-}
-
-.kline-period-btn {
-  padding: 2px 8px;
-  font-size: 12px;
-  line-height: 18px;
-  border-radius: 3px;
-  cursor: pointer;
-  color: #d1d4dc;
-  background: #2a2e39;
-  border: 1px solid #4c525e;
-}
-
-.kline-period-btn:hover {
-  background: #363c4a;
-}
-
-.kline-period-btn.active {
-  background: #ff6b6b;
-  color: #fff;
-  border-color: #ff6b6b;
 }
 </style>

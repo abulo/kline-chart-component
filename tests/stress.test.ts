@@ -55,7 +55,10 @@ describe(`数据极限压力测试（${BAR_COUNT} 条）`, () => {
   /** 指标库入参：K 线点结构兼容 K（time/open/high/low/close/volume），直接复用 */
   const k = bars as K[]
 
-  it('数据完整性：长度 / time 严格递增唯一 / tradeDate 格式 / OHLC 值域自洽', () => {
+  it(
+    '数据完整性：长度 / time 严格递增唯一 / tradeDate 格式 / OHLC 值域自洽',
+    () => {
+      // 10000 条生成 + 校验（stress 专属，放宽超时防并发偶发）
     expect(bars).toHaveLength(BAR_COUNT)
     let prevTime = -Infinity
     const timeSet = new Set<number>()
@@ -74,9 +77,13 @@ describe(`数据极限压力测试（${BAR_COUNT} 条）`, () => {
       // 成交量为正（成交量 Pane 锚点 / 均量线输入）
       expect(bar.volume!).toBeGreaterThan(0)
     }
-  })
+    },
+    20000,
+  )
 
-  it('主图指标：MA×5 / EXPMA×2 / BOLL×3 / SAR / BBI 全量计算无 NaN', () => {
+  it(
+    '主图指标：MA×5 / EXPMA×2 / BOLL×3 / SAR / BBI 全量计算无 NaN',
+    () => {
     // MA5/10/20/30/60 五条窗口线
     ;[5, 10, 20, 30, 60].forEach((period, index) => {
       expectLineFinite(calcMA(k, period), `MA${period}`)
@@ -101,14 +108,22 @@ describe(`数据极限压力测试（${BAR_COUNT} 条）`, () => {
     }
     // BBI 单线
     expectLineFinite(calcBBI(k), 'BBI')
-  })
+    },
+    20000,
+  )
 
-  it('成交量均量线：VOL MA5 / MA10 全量计算无 NaN', () => {
+  it(
+    '成交量均量线：VOL MA5 / MA10 全量计算无 NaN',
+    () => {
     expectLineFinite(calcVolMA(k, 5), 'VOL MA5')
     expectLineFinite(calcVolMA(k, 10), 'VOL MA10')
-  })
+    },
+    20000,
+  )
 
-  it('附图指标十种：RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 全量计算无 NaN', () => {
+  it(
+    '附图指标十种：RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 全量计算无 NaN',
+    () => {
     // 每个指标返回多线数组：逐条断言 value 有限 / time 递增 / 长度合法
     const multiLineSets: { lines: IndicatorLine[][]; label: string }[] = [
       { lines: calcRSI(k), label: 'RSI' },
@@ -126,7 +141,9 @@ describe(`数据极限压力测试（${BAR_COUNT} 条）`, () => {
       expect(lines.length, `${label} 线数`).toBeGreaterThan(0)
       lines.forEach((line, lineIndex) => expectLineFinite(line, `${label}#${lineIndex + 1}`))
     }
-  })
+    },
+    20000,
+  )
 
   it('缓存语义：每条线 time 唯一（O(1) 查询 Map 前提，无重复 / 无乱序）', () => {
     // 以 MACD 三条线（最常用的信息行缓存来源）验证：
@@ -138,7 +155,9 @@ describe(`数据极限压力测试（${BAR_COUNT} 条）`, () => {
     }
   })
 
-  it('性能：10000 条 × 全部指标一次性计算耗时 < 8000ms（O(n) 线性）', () => {
+  it(
+    '性能：10000 条 × 全部指标一次性计算耗时 < 8000ms（O(n) 线性）',
+    () => {
     const start = performance.now()
     // 主图（含 SAR / BBI / BOLL）
     ;[5, 10, 20, 30, 60].forEach((period) => calcMA(k, period))
@@ -164,5 +183,7 @@ describe(`数据极限压力测试（${BAR_COUNT} 条）`, () => {
     const elapsedMs = performance.now() - start
     // 宽松上限 8000ms（环境波动 / CI 负载容忍；实为 O(n) 线性，常规 <200ms）
     expect(elapsedMs, `全指标计算耗时 ${elapsedMs.toFixed(1)}ms`).toBeLessThan(8000)
-  })
+    },
+    20000,
+  )
 })
