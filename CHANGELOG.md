@@ -8,6 +8,31 @@
 
 ---
 
+## v1.6.28（2026-10-16）
+
+外部自定义数据直通（无 mock / http 环境时直接传入渲染）。
+
+### 变更
+- `src/chart/core/types.ts`：`KLineChartOptions` 新增 `initialBars?: ChartDataPoint[]`
+  （构造注入后直接渲染，跳过 service 拉取 / 分页 / 实时）。
+- `src/chart/core/kLineChartController.ts`：构造末尾（series 全部就绪后）若
+  `initialBars` 非空 → `setKlineData(initialBars)` + fitContent。
+- `src/components/kLineChart.vue`：
+  - 新增 prop `data?: ChartDataPoint[]`（data 非空 = data 直通模式，`useCustomData`）；
+  - 构造透传 `initialBars: props.data`，data 模式跳过 `init()`；
+  - watch `data` → `setKlineData` 注入重绘；
+  - period / symbol / service watch 在 data 模式短路（不拉取）；symbol / service
+    watch 恢复 setSymbol / setService 接线（与 controller setter 一致）。
+
+### 用法
+```vue
+<KLineChart :data="localBars" symbol="600519" name="贵州茅台" />
+```
+`data` 与 `service` 同时存在时 `data` 优先；`data` 变化自动重绘。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.27（2026-10-16）
 
 删除 `DEFAULT_FETCH_LIMIT` 全局常量，`fetchLimit` 改为构造必填。

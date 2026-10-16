@@ -33,6 +33,7 @@ import  { themeColors } from "../chart/core/theme";
 import type { SubIndicatorType } from "../chart/indicator";
 import type { PeriodValue } from "../chart/periods";
 import type { ChartDataService } from "../services/chartDataService";
+import type { ChartDataPoint } from "../types/chart";
 import type { ChartLoadStatus } from "../chart/core/types";
 import { MockChartDataService } from "../services/chartDataService";
 
@@ -47,6 +48,9 @@ const emit = defineEmits<{
 
 /** 当前加载状态（v1.6.21 组件内部可读：模板 / script 直接引用；变化时同步 emit） */
 const loadStatus = ref<ChartLoadStatus>("idle");
+
+/** 是否使用外部自定义数据（v1.6.28：data 非空 → 不走 service 拉取） */
+const useCustomData = computed(() => !!props.data && props.data.length > 0);
 
 const props = withDefaults(
   defineProps<{
@@ -70,6 +74,8 @@ const props = withDefaults(
     period?: PeriodValue;
     /** 数据服务（默认 MockChartDataService 单例；传 HttpChartDataService 接入真实行情） */
     service?: ChartDataService;
+    /** 外部自定义数据（v1.6.28）：提供时优先渲染 data，跳过 service 拉取 / 分页 / 实时 */
+    data?: ChartDataPoint[];
     /** 时间格式模板（v1.6.9）：如 'YYYY-MM-DD' / 'YYYY-MM-DD HH:mm'；缺省按周期自动 */
     format?: string;
   }>(),
@@ -110,6 +116,8 @@ onMounted(() => {
     format: props.format,
     // v1.6.17：数据服务由组件注入（默认 Mock 兜底），controller.init 统一管理拉取 / 实时
     service: props.service ?? defaultService,
+    // v1.6.28：外部自定义数据直通（data 提供时跳过 service 拉取）
+    initialBars: props.data,
     // v1.6.21：加载状态回调 → 组件内部 loadStatus 同步 + emit 'status-change'（父组件监听）
     onStatusChange: (status) => {
       loadStatus.value = status;
@@ -127,8 +135,9 @@ onMounted(() => {
   controller.value.setSubIndicator(
     props.subIndicator ? (props.subIndicator as SubIndicatorType) : null,
   );
-  // 数据层：controller.init 统一拉历史 + 订阅实时（v1.6.17）
-  void controller.value.init();
+  // 数据层：controller.init 统一拉历史 + 订阅实时（v1.6.17）；
+  // v1.6.28：外部 data 直通时不 init（构造已 setKlineData，跳过 service）
+  if (!useCustomData.value) void controller.value.init();
 });
 
 onBeforeUnmount(() => {
@@ -174,6 +183,13 @@ watch(
       value ? (value as SubIndicatorType) : null,
     ),
 );
+/** 外部自定义数据变化 → 直接注入渲染（v1.6.28；data 模式不走 service） */
+watch(
+  () => props.data,
+  (data) => {
+    if (data && data.length > 0) controller.value?.setKlineData(data);
+  },
+);
 /** 外部周期变化 → 同步内部周期 + 重新 init（拉历史 + 重订阅实时，重置边缘加载状态） */
 watch(
   () => props.period,
@@ -182,19 +198,37 @@ watch(
     activePeriod.value = value;
     // v1.6.9：周期切换 → pane0 信息行时间格式随周期变更（setPeriod 触发重绘）
     controller.value?.setPeriod(value);
+    // v1.6.28：data 直通模式不拉取（数据以外部 data 为准）
+    if (useCustomData.value) return;
     // v1.6.17：init 统一处理竞态（loadSeq 丢弃过期响应）+ hasMoreHistory 重置
     void controller.value?.init();
   },
 );
-/** symbol 变化 → 重新 init（新标的；拉历史 + 重订阅实时） */
+/** symbol 变化 → 更新控制器标的 + 重新 init（v1.6.22：init 使用新 symbol / name） */
 watch(
   () => props.symbol,
-  () => void controller.value?.init(),
+  () => {
+    controller.value?.setSymbol(props.symbol);
+    controller.value?.setName(props.name);
+    // v1.6.28：data 直通模式不拉取
+    if (useCustomData.value) return;
+    void controller.value?.init();
+  },
 );
-/** service 实例变化 → 重新 init */
+/** name 变化 → 更新 pane0 信息行显示（无需重拉数据） */
+watch(
+  () => props.name,
+  (value) => controller.value?.setName(value),
+);
+/** service 实例变化 → 更新控制器服务 + 重新 init（v1.6.22：init 使用新 service） */
 watch(
   () => props.service,
-  () => void controller.value?.init(),
+  () => {
+    controller.value?.setService(props.service ?? defaultService);
+    // v1.6.28：data 直通模式不拉取
+    if (useCustomData.value) return;
+    void controller.value?.init();
+  },
 );
 
 /** 向父组件暴露控制器（放大 / 缩小 / 左移 / 右移等瞬时动作） */

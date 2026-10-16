@@ -542,6 +542,12 @@ export class KLineChartController {
     this.chart
       .timeScale()
       .subscribeVisibleLogicalRangeChange(this.handleVisibleLogicalRangeChange);
+
+    // v1.6.28：外部自定义数据直通（无 mock / http 环境时构造传入，
+    // 跳过 service 拉取；series 已全部就绪，setKlineData 直接渲染 + fitContent）
+    if (options.initialBars && options.initialBars.length > 0) {
+      this.setKlineData(options.initialBars);
+    }
   }
 
   /** 十字星指示值注册表适配器（IndicatorManager 需要注册 / 移除 pane5 的指示值 primitive） */

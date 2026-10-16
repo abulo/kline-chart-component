@@ -10,6 +10,7 @@
  *  - IndicatorValueMap：信息行指标值缓存项（label + 线色 + time→value Map）。
  */
 import type { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+import type { ChartDataPoint } from '../../types/chart'
 import type { ChartDataService } from '../../services/chartDataService'
 
 /** 控制器选项 */
@@ -27,6 +28,9 @@ export interface KLineChartOptions {
   /** 数据服务（必填语义：init / loadEarlier 经其拉取历史与订阅实时；
    *  组件构造时透传 props.service ?? defaultService） */
   service?: ChartDataService
+  /** 外部自定义数据（v1.6.28）：构造传入后直接渲染，跳过 service 拉取 / 分页 / 实时；
+   *  适用于无 mock / http 环境的纯前端直通场景 */
+  initialBars?: ChartDataPoint[]
   /** 加载状态回调（v1.6.17 init 统一管理：'loading' | 'ready' | 'error'） */
   onStatusChange?: (status: ChartLoadStatus) => void
 }

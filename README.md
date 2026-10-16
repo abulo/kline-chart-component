@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.27（2026-10-16）**
+> **当前版本：v1.6.28（2026-10-16）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -247,6 +247,10 @@ chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 
   分钟 K（60/30/15/5/1 分）为**真实化模拟**：布朗桥锚定日 K 开/收（跨周期价格自洽、
   无跳空）、按真实交易时段聚合（60 分 4 段 / 30 分 8 段 / 15 分 16 段 / 5 分 48 段 /
   1 分 241 段，段首 09:30/10:30/13:00…），成交量 U 型分布（开收盘放量）；
+- **自定义数据直通（v1.6.28）**：无 mock / http 环境时，父组件直接传 `data`（
+  `ChartDataPoint[]`，K 线结构同 fetchHistory 返回）：组件构造时经 `initialBars`
+  注入渲染，**跳过 service 拉取 / 左滑分页 / 实时订阅**；`data` 变化时 watch 自动
+  `setKlineData` 重绘。`data` 与 `service` 同时存在时 `data` 优先。
 - **接入真实行情**：父组件传 `HttpChartDataService` 实例（`src/services/httpChartDataService.ts`，
   HTTP 历史 + WS / SSE / Poll 三种实时模式 + LRU 历史缓存）：
 
