@@ -63,8 +63,9 @@ export interface ChartDataService {
 const NETWORK_DELAY = 220
 
 /** 分钟 K 周期 → 每根 K 线聚合的分钟数（60分/30分/15分/5分/1分） */
-/** 分钟 K 基础池覆盖的交易日数（60 日 ≈ 3 个月量级，足够 60/30/15/5/1 分 K 展示） */
-const MINUTE_POOL_DAYS = 60
+/** 分钟 K 基础池覆盖的交易日数（250 日 ≈ 1 年，v1.6.34：60分 1000 根 / 30分 2000 /
+ * 15分 4000 / 5分 12000 / 1分 6 万根，贴近东财分钟 K 历史量级） */
+const MINUTE_POOL_DAYS = 250
 
 const MINUTE_GRANULARITY: Record<string, number> = {
   '60min': 60,
@@ -313,7 +314,11 @@ export class MockChartDataService implements ChartDataService {
     this.fetchLimit = options.fetchLimit
   }
 
-  /** 生成（或获取）某标的的完整数据池 */
+  /**
+   * 生成（或获取）某标的的完整日 K 池（v1.6.34 起东财口径真实化）：
+   * 趋势波段状态机 + GARCH 波动聚集 + 开盘跳空 + 价量联动，周 K / 月 K /
+   * 分钟 K（60/30/15/5/1 分）全部由本池派生，跨周期价格自洽。
+   */
   private ensurePool = (symbol: string): ChartDataPoint[]  => {
     const existed = this.pools.get(symbol)
     if (existed) return existed
@@ -324,17 +329,48 @@ export class MockChartDataService implements ChartDataService {
 
     const startPrice = 8 + rand() * 20 // 8 ~ 28 元
     let preClose = startPrice
+    // 趋势状态机（'up' | 'down' | 'flat'）：上涨 / 下跌波段 + 震荡整理，
+    // 仿东财日 K 形态（波段延续、避免单边到顶/到底后仍持续）
+    let trend: 'up' | 'down' | 'flat' = 'flat'
+    let trendLen = 0
+    let prevRet = 0 // 昨收涨跌幅（波动聚集：|prevRet| 大 → 今日波动放大，GARCH 式）
 
     for (let i = 0; i < dates.length; i++) {
-      // 波动率，偶尔放大（消息面冲击）
-      const vol = 0.018 * (rand() < 0.08 ? 2.5 : 1)
-      const open = preClose * (1 + (rand() - 0.5) * 0.012)
-      const close = Math.max(open * (1 + (rand() - 0.5) * 2 * vol), 0.01)
-      const high = Math.max(open, close) * (1 + rand() * vol)
-      const low = Math.min(open, close) * (1 - rand() * vol)
-      const volume = Math.round(
-        (5_000_000 + rand() * 40_000_000) * (1 + (Math.abs(close - open) / open) * 25),
+      // —— 趋势状态机：每根 12% 概率切换；同向连续 ≥6~10 根强制切换（波段回调）——
+      trendLen++
+      if (rand() < 0.12 || trendLen >= 6 + Math.floor(rand() * 4)) {
+        const r = rand()
+        trend = r < 0.4 ? 'up' : r < 0.8 ? 'down' : 'flat'
+        trendLen = 0
+      }
+      const drift = trend === 'up' ? 0.0016 : trend === 'down' ? -0.0016 : 0
+
+      // —— 波动率（GARCH 式聚集）：基础波动 × 昨日波动放大 × 消息面冲击 ——
+      const baseVol = 0.014 * (0.6 + 0.8 * rand())
+      const cluster = 1 + Math.min(Math.abs(prevRet) / 0.02, 1) * 0.9
+      const shock = rand() < 0.07 ? 2.4 : 1
+      const vol = Math.min(baseVol * cluster * shock, 0.09)
+
+      // —— 跳空：常态小（±0.3%）、消息大（±1.4%）；趋势中开盘同向微偏（东财口径）——
+      const gapBias = trend === 'up' ? 0.0008 : trend === 'down' ? -0.0008 : 0
+      const gap = (rand() < 0.07 ? (rand() - 0.4) * 0.028 : (rand() - 0.5) * 0.006) + gapBias
+      const open = Math.max(preClose * (1 + gap), 0.01)
+
+      // —— 收盘：漂移 + 噪声（趋势中噪声同向偏置，阳线更易延续）——
+      const noiseBias = trend === 'up' ? 0.3 : trend === 'down' ? -0.3 : 0
+      const close = Math.max(
+        open * (1 + drift + (rand() - 0.5 + noiseBias * 0.5) * 2 * vol),
+        0.01,
       )
+      const body = Math.abs(close - open) / open
+
+      // —— 影线：波动越大影线越长（真实 K 线常态带影线）——
+      const high = Math.max(open, close) * (1 + rand() * vol * 0.6)
+      const low = Math.max(Math.min(open, close) * (1 - rand() * vol * 0.6), 0.01)
+
+      // —— 价量联动：涨放量（阳线量 1.15 倍）、跌缩量、大波动恐慌放量 ——
+      const volK = 1 + body * 22 * (close >= open ? 1.15 : 0.85)
+      const volume = Math.round((5_000_000 + rand() * 40_000_000) * Math.min(volK, 3.2))
       const amount = Math.round(volume * ((open + close) / 2))
 
       pool.push({
@@ -349,6 +385,8 @@ export class MockChartDataService implements ChartDataService {
         volume,
         amount,
       })
+      const ret = (close - preClose) / preClose
+      prevRet = ret
       preClose = close
     }
 
@@ -447,11 +485,14 @@ export class MockChartDataService implements ChartDataService {
     const close = day.close!
     const minutes = sessionMinutes()
     const n = minutes.length // 241
-    // 随机游走累计项（walk[0]=0）：step ±0.006，偶尔 ×2.5 放大
+    // 随机游走累计项（walk[0]=0）：step 带日内方向偏置（涨日分钟偏涨 / 跌日偏跌，
+    // 趋势延续），偶尔 ×2.5 放大（消息面冲击）；尾盘（14:30 后）波动放大（真实尾盘活跃）。
+    const dayBias = (close - open) / open // 日涨跌幅 → 分钟同向偏置
     const walk: number[] = [0]
     for (let i = 1; i < n; i++) {
       const shock = rand() < 0.04 ? 2.5 : 1
-      walk.push(walk[i - 1] + (rand() - 0.5) * 0.006 * shock)
+      const tail = minutes[i] >= 14 * 60 + 30 ? 1.4 : 1
+      walk.push(walk[i - 1] + ((rand() - 0.5) + dayBias * 0.4) * 0.006 * shock * tail)
     }
     // 日内波动幅度 ≈ 日振幅的 1/3（分钟级波动远小于日线振幅，路径不"离谱"）
     const intradayRange = Math.max(day.high! - day.low!, close * 0.01)
