@@ -25,12 +25,12 @@ export class GridPaneView implements IPrimitivePaneView {
   }
 
   /** 渲染层级：bottom —— 栅格绘制在 series 数据（蜡烛 / 柱体）之下、背景之上 */
-  zOrder(): 'bottom' {
+  zOrder = (): 'bottom'  => {
     return 'bottom'
   }
 
   /** 渲染器：自绘等分栅格（media 坐标系 = CSS 像素） */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return {
       draw: (target) => {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {

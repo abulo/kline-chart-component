@@ -44,7 +44,7 @@ export class CrosshairLineCapPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** 挂载视图：仅挂到本 series 所在 pane 的 top canvas */
-  paneViews(): readonly CrosshairLineCapPaneView[] {
+  paneViews = (): readonly CrosshairLineCapPaneView[]  => {
     return [this.paneView]
   }
 }

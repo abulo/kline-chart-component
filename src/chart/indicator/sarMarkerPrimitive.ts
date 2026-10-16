@@ -51,13 +51,13 @@ export class SarMarkerPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** 主题切换：更新上涨/下跌圆点色并触发重绘 */
-  setTheme(theme: ChartThemeColors): void {
+  setTheme = (theme: ChartThemeColors): void  => {
     this._view.setTheme(theme)
     this._chart.applyOptions({}) // 空 applyOptions 触发库 fullUpdate（颜色下次 draw 生效）
   }
 
   /** 显隐开关（供指标切换按钮调用）：变化后立即触发重绘，保证点击立即可见 */
-  setVisible(v: boolean): void {
+  setVisible = (v: boolean): void  => {
     if (this._visible === v) return
     this._visible = v
     // ChartModel.applyOptions 末尾无条件 fullUpdate —— 空对象即可安全触发重绘，
@@ -69,7 +69,7 @@ export class SarMarkerPrimitive implements ISeriesPrimitive<Time> {
     return this._visible
   }
 
-  paneViews(): readonly IPrimitivePaneView[] {
+  paneViews = (): readonly IPrimitivePaneView[]  => {
     return [this._view]
   }
 }
@@ -87,16 +87,16 @@ class SarMarkerPaneView implements IPrimitivePaneView {
   }
 
   /** 主题切换：透传给 renderer */
-  setTheme(theme: ChartThemeColors): void {
+  setTheme = (theme: ChartThemeColors): void  => {
     this._renderer.setTheme(theme)
   }
 
   // zOrder 'normal'：绘制在 series 之上、库十字星之下（标记不再遮挡十字星虚线）
-  zOrder(): PrimitivePaneViewZOrder {
+  zOrder = (): PrimitivePaneViewZOrder  => {
     return 'normal'
   }
 
-  renderer() {
+  renderer = () => {
     return this._renderer
   }
 }
@@ -124,12 +124,12 @@ class SarMarkerRenderer {
   }
 
   /** 主题切换：更新颜色（下次 draw 生效） */
-  setTheme(theme: ChartThemeColors): void {
+  setTheme = (theme: ChartThemeColors): void  => {
     this._upColor = theme.sarUp
     this._downColor = theme.sarDown
   }
 
-  draw(target: CanvasRenderingTarget2D): void {
+  draw = (target: CanvasRenderingTarget2D): void  => {
     target.useBitmapCoordinateSpace((scope) => {
       const ctx = scope.context
       const hp = scope.horizontalPixelRatio

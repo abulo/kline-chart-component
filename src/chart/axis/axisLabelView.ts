@@ -37,7 +37,7 @@ export class AxisLabelView {
   }
 
   /** 标签文字：优先显示固定值；否则反算该 y 处的当前价格并格式化（实时，随数据移动变化） */
-  text(): string {
+  text = (): string  => {
     if (this.fixedValue !== undefined) {
       return this.primitive.config.format(this.fixedValue)
     }

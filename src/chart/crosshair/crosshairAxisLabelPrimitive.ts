@@ -66,12 +66,12 @@ export class CrosshairAxisLabelPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** primitive 挂载：保存 chart 引用 */
-  attached(param: SeriesAttachedParameter<Time>): void {
+  attached = (param: SeriesAttachedParameter<Time>): void  => {
     this.chartApi = param.chart
   }
 
   /** primitive 卸载：清空引用与状态（防内存泄漏） */
-  detached(): void {
+  detached = (): void  => {
     this.chartApi = null
     this.crosshairY = null
   }
@@ -81,18 +81,18 @@ export class CrosshairAxisLabelPrimitive implements ISeriesPrimitive<Time> {
    * **同值跳过**：拖拽平移 / 高频 mousemove 时 y 可能连续相同，
    * 避免无变化也触发 requestUpdate（库 fullUpdate 是平移卡顿主因之一）。
    */
-  setCrosshairY(y: number | null): void {
+  setCrosshairY = (y: number | null): void  => {
     if (this.crosshairY === y) return
     this.crosshairY = y
   }
 
   /** 读取当前注入的十字星 y（视图取值用） */
-  getCrosshairY(): number | null {
+  getCrosshairY = (): number | null  => {
     return this.crosshairY
   }
 
   /** 价格轴 Pane 视图：zOrder 'top'，随十字星移动逐帧重绘 */
-  priceAxisPaneViews(): readonly IPrimitivePaneView[] {
+  priceAxisPaneViews = (): readonly IPrimitivePaneView[]  => {
     return [this.paneView]
   }
 }

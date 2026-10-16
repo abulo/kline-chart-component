@@ -38,7 +38,7 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
   }
 
   /** 渲染器：自绘成交量柱（media 坐标系 = CSS 像素） */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return {
       draw: (target) => {
         const chartApi = this.source.chartApi

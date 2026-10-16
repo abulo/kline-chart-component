@@ -72,7 +72,7 @@ class AxisLabelRenderer implements IPrimitivePaneRenderer {
   }
 
   /** 库在价格轴绘制时调用：绘制全部刻度标签（target 为价格轴 canvas） */
-  draw(target: CanvasRenderingTarget2D): void {
+  draw = (target: CanvasRenderingTarget2D): void  => {
     const labels = this.source.getLabels()
     if (labels.length === 0) return
     target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
@@ -99,12 +99,12 @@ export class AxisLabelPaneView implements IPrimitivePaneView {
   }
 
   /** 顶层：价格轴 top canvas 绘制（与十字星指示值同一层） */
-  zOrder(): 'top' {
+  zOrder = (): 'top'  => {
     return 'top'
   }
 
   /** 返回渲染器实例 */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return this.rendererImpl
   }
 }

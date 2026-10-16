@@ -25,7 +25,7 @@ export class PaneBorderPaneView implements IPrimitivePaneView {
   }
 
   /** 渲染器：自绘 1px 矩形边框（bitmap 坐标系 = 物理像素） */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return {
       draw: (target) => {
         target.useBitmapCoordinateSpace(({ context, bitmapSize }) => {

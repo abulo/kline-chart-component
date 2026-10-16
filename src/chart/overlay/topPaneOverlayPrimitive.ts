@@ -49,7 +49,7 @@ export class TopPaneOverlayPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** pane 视图（zOrder 'top' → 绘制在 pane 顶层 canvas，位于十字星之上；单例复用） */
-  paneViews(): readonly IPrimitivePaneView[] {
+  paneViews = (): readonly IPrimitivePaneView[]  => {
     return [this.paneView]
   }
 }

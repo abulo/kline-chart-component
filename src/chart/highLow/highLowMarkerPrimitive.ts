@@ -52,17 +52,17 @@ export class HighLowMarkerPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** primitive 挂载：保存 chart 引用 */
-  attached(param: SeriesAttachedParameter<Time>): void {
+  attached = (param: SeriesAttachedParameter<Time>): void  => {
     this.chartApi = param.chart
   }
 
   /** primitive 卸载：清空引用（防内存泄漏） */
-  detached(): void {
+  detached = (): void  => {
     this.chartApi = null
   }
 
   /** 主图 Pane 视图：在 pane1 数据区 canvas 上绘制最高 / 最低价标注 */
-  paneViews(): readonly IPrimitivePaneView[] {
+  paneViews = (): readonly IPrimitivePaneView[]  => {
     return [this.paneView]
   }
 }

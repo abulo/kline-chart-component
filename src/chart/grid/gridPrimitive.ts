@@ -51,17 +51,17 @@ export class GridPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** primitive 挂载：保存 chart 引用供 draw 使用 */
-  attached(param: SeriesAttachedParameter<Time>): void {
+  attached = (param: SeriesAttachedParameter<Time>): void  => {
     this.chartApi = param.chart
   }
 
   /** primitive 卸载：清空引用（防内存泄漏） */
-  detached(): void {
+  detached = (): void  => {
     this.chartApi = null
   }
 
   /** 返回本 primitive 的 pane 视图（渲染器；单例复用，避免每帧 new 对象） */
-  paneViews(): readonly IPrimitivePaneView[] {
+  paneViews = (): readonly IPrimitivePaneView[]  => {
     return [this.paneView]
   }
 }

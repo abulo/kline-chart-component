@@ -34,7 +34,7 @@ export class InfoLabelPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** pane 视图（zOrder 'top' → 绘制在 pane 顶层 canvas；单例复用） */
-  paneViews(): readonly IPrimitivePaneView[] {
+  paneViews = (): readonly IPrimitivePaneView[]  => {
     return [this.paneView]
   }
 }

@@ -298,7 +298,7 @@ export class MockChartDataService implements ChartDataService {
   private timers = new Map<string, ReturnType<typeof setInterval>>()
 
   /** 生成（或获取）某标的的完整数据池 */
-  private ensurePool(symbol: string): ChartDataPoint[] {
+  private ensurePool = (symbol: string): ChartDataPoint[]  => {
     const existed = this.pools.get(symbol)
     if (existed) return existed
 
@@ -348,7 +348,7 @@ export class MockChartDataService implements ChartDataService {
    * 分钟 K 由 buildMinuteKPool 独立生成（布朗桥锚定日开/收，见下）。
    * @param days 覆盖的交易日数（分时 1d~5d 用 5）
    */
-  private buildTsPool(symbol: string, days: number): ChartDataPoint[] {
+  private buildTsPool = (symbol: string, days: number): ChartDataPoint[]  => {
     const kpool = this.ensurePool(symbol)
     const rand = createRandom(hashSeed(symbol + '|ts|' + days))
     // 最近 N 个交易日（kpool 升序）
@@ -407,7 +407,7 @@ export class MockChartDataService implements ChartDataService {
   }
 
   /** 分时周期数据池（最近 5 交易日，1d~5d 共用；缓存于 tsPools） */
-  private ensureTsPool(symbol: string): ChartDataPoint[] {
+  private ensureTsPool = (symbol: string): ChartDataPoint[]  => {
     const existed = this.tsPools.get(symbol)
     if (existed) return existed
     const out = this.buildTsPool(symbol, 5)
@@ -459,7 +459,7 @@ export class MockChartDataService implements ChartDataService {
    * 或逐分钟成 K（1 分）。聚合自洽：open ≈ 前根 close、high ≥ max(open,close)、
    * low ≤ min(open,close)、时间轴按段首分钟（09:30 / 10:30 / 13:00 …）。
    */
-  private buildMinuteKPool(symbol: string, granularity: number): ChartDataPoint[] {
+  private buildMinuteKPool = (symbol: string, granularity: number): ChartDataPoint[]  => {
     const kpool = this.ensurePool(symbol)
     const rand = createRandom(hashSeed(symbol + '|min|' + granularity))
     const lastDays = kpool.slice(-MINUTE_POOL_DAYS)
@@ -529,7 +529,7 @@ export class MockChartDataService implements ChartDataService {
    *    time 落在周初/月初 00:00、tradeDate 取组内末交易日、preClose 取组内首点昨收近似）；
    *  - 60/30/15/5/1min：分钟 K 池（buildMinuteKPool，布朗桥锚定日开/收 + 真实时段聚合）。
    */
-  private ensurePeriodPool(symbol: string, period: string): ChartDataPoint[] {
+  private ensurePeriodPool = (symbol: string, period: string): ChartDataPoint[]  => {
     if (period === 'day') return this.ensurePool(symbol)
     const key = `${symbol}|${period}`
     const existed = this.periodPools.get(key)
@@ -550,7 +550,7 @@ export class MockChartDataService implements ChartDataService {
   }
 
   /** 二分查找：第一个 time >= target 的下标 */
-  private static lowerBound(pool: ChartDataPoint[], target: number): number {
+  private static lowerBound = (pool: ChartDataPoint[], target: number): number  => {
     let lo = 0
     let hi = pool.length
     while (lo < hi) {

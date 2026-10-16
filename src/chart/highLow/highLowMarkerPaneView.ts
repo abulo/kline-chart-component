@@ -72,7 +72,7 @@ class HighLowMarkerRenderer implements IPrimitivePaneRenderer {
   }
 
   /** 库在主图绘制时调用：绘制最高价 / 最低价标注（文字 + 连接线，两者同时显示） */
-  draw(target: CanvasRenderingTarget2D): void {
+  draw = (target: CanvasRenderingTarget2D): void  => {
     const chartApi = this.source.chartApi
     if (chartApi === null) return
     const bars = this.source.config.getBars()
@@ -180,7 +180,7 @@ export class HighLowMarkerPaneView implements IPrimitivePaneView {
   }
 
   /** 返回渲染器实例 */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return this.rendererImpl
   }
 }

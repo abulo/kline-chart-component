@@ -43,12 +43,12 @@ export class MacdBarPaneView implements IPrimitivePaneView {
    *  用户既定叠加顺序：十字星（最上）→ 指标绘图 → K 线/成交量。
    *  库 top canvas 先画十字星再画 primitive top 视图 —— 若柱用 'top' 会盖住
    *  十字星；'normal' 使 MACD 柱在十字星之下、同时高于底层数据。 */
-  zOrder(): 'normal' {
+  zOrder = (): 'normal'  => {
     return 'normal'
   }
 
   /** 渲染器：自绘 MACD 柱（media 坐标系 = CSS 像素） */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return {
       draw: (target) => {
         const chartApi = this.source.chartApi

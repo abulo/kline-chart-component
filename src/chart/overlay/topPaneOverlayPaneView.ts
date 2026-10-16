@@ -25,13 +25,13 @@ export class TopPaneOverlayPaneView implements IPrimitivePaneView {
   }
 
   /** 绘制层级：'top' → pane 顶层 canvas（十字星线 / 标签之上），背景可遮住竖线 */
-  zOrder(): PrimitivePaneViewZOrder {
+  zOrder = (): PrimitivePaneViewZOrder  => {
     return 'top'
   }
 
   /** 渲染器：背景填充（遮住十字星竖线）+ 信息行分段文字（首段"股票名称 [代码] 时间" +
    *  各指标值段，逐段着色、横向连续绘制，总起点距左 6px） */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return {
       draw: (target) => {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {

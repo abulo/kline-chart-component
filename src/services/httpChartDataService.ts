@@ -242,7 +242,7 @@ export class HttpChartDataService implements ChartDataService {
    *  - 也可直接给 fetchHistory 传 `query.total` 覆盖自动值。
    * 用途示例：判断该标的在该周期下目前有多少条 K 线，用于"是否还有更早历史"提示。
    */
-  getTotal(symbol: string, period: string): number | undefined {
+  getTotal = (symbol: string, period: string): number | undefined  => {
     return this.knownTotals.get(`${symbol}|${period}`)
   }
 
@@ -252,7 +252,7 @@ export class HttpChartDataService implements ChartDataService {
    *  - 超过 maxKnownTotals 上限时淘汰最旧（Map 首个）记录。
    * 缓存条目被 LRU 淘汰时**不调用**本方法删除——total 语义"包括缓存淘汰的"。
    */
-  private recordTotal(key: string, total: number): void {
+  private recordTotal = (key: string, total: number): void  => {
     this.knownTotals.delete(key)
     this.knownTotals.set(key, total)
     while (this.knownTotals.size > this.opts.maxKnownTotals) {
@@ -406,7 +406,7 @@ export class HttpChartDataService implements ChartDataService {
   }
 
   /** 将轮询拉到的最新点合并进历史缓存（无缓存条目则创建） */
-  private mergeIntoCache(symbol: string, period: string, points: ChartDataPoint[]): void {
+  private mergeIntoCache = (symbol: string, period: string, points: ChartDataPoint[]): void  => {
     if (!this.opts.cache) return
     const key = `${symbol}|${period}`
     const now = Date.now()
@@ -430,7 +430,7 @@ export class HttpChartDataService implements ChartDataService {
    *  - **同名冲突时核心参数优先**：先写入外部 params、再写入核心参数，
    *    因此外部参数不会覆盖 symbol/period 等核心字段。
    */
-  private withParams(base: string, query: Record<string, string | number>): string {
+  private withParams = (base: string, query: Record<string, string | number>): string  => {
     const sp = new URLSearchParams()
     // 外部 params 为空对象时不参与拼接（不产生任何附加查询参数）
     if (this.opts.params && Object.keys(this.opts.params).length > 0) {
@@ -518,7 +518,7 @@ export class HttpChartDataService implements ChartDataService {
   /** LRU 淘汰：超出 maxCacheEntries 时移除最近未使用（lastUsed 最小）的条目。
    *  **注意**：不删除 knownTotals 记录——total 语义为"包括已被缓存淘汰的数据"，
    *  该记录由 recordTotal 独立 LRU（maxKnownTotals）管理。 */
-  private evict(): void {
+  private evict = (): void  => {
     if (this.cache.size <= this.opts.maxCacheEntries) return
     let oldestKey: string | null = null
     let oldest = Infinity

@@ -38,7 +38,7 @@ class CrosshairAxisLabelRenderer implements IPrimitivePaneRenderer {
   }
 
   /** 库在价格轴绘制时调用：绘制十字星指示值标签（target 为价格轴 canvas） */
-  draw(target: CanvasRenderingTarget2D): void {
+  draw = (target: CanvasRenderingTarget2D): void  => {
     const y = this.source.getCrosshairY()
     if (y === null) return
     const price = this.source.config.series.coordinateToPrice(y)
@@ -76,12 +76,12 @@ export class CrosshairAxisLabelPaneView implements IPrimitivePaneView {
   }
 
   /** 顶层：价格轴 top canvas 绘制（Cursor 级重绘，十字星移动时流畅刷新） */
-  zOrder(): 'top' {
+  zOrder = (): 'top'  => {
     return 'top'
   }
 
   /** 返回渲染器实例 */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return this.rendererImpl
   }
 }

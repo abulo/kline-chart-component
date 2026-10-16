@@ -83,28 +83,28 @@ export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** primitive 挂载：保存 chart 引用并立即构建标签 */
-  attached(param: SeriesAttachedParameter<Time>): void {
+  attached = (param: SeriesAttachedParameter<Time>): void  => {
     this.chartApi = param.chart
   }
 
   /** primitive 卸载：清空引用与标签（防内存泄漏） */
-  detached(): void {
+  detached = (): void  => {
     this.chartApi = null
     this.labelViews = []
   }
 
   /** 每次图表更新：按当前栅格等分数重建标签集合（位置与横线一致） */
-  updateAllViews(): void {
+  updateAllViews = (): void  => {
     this.labelViews = this.buildLabelViews()
   }
 
   /** 读取当前刻度标签数据（渲染视图绘制用） */
-  getLabels(): readonly AxisLabelView[] {
+  getLabels = (): readonly AxisLabelView[]  => {
     return this.labelViews
   }
 
   /** 价格轴 Pane 视图（zOrder 'top'，自绘，与十字星指示值同一层） */
-  priceAxisPaneViews(): readonly IPrimitivePaneView[] {
+  priceAxisPaneViews = (): readonly IPrimitivePaneView[]  => {
     return [this.paneView]
   }
 

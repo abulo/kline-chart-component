@@ -72,7 +72,7 @@ export class IndicatorLinePrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** pane 视图（层级由构造选项决定，见 IndicatorLinePrimitiveOptions） */
-  paneViews(): readonly IPrimitivePaneView[] {
+  paneViews = (): readonly IPrimitivePaneView[]  => {
     return [this.paneView]
   }
 }

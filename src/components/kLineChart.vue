@@ -95,7 +95,8 @@ const controller = ref<KLineChartController | null>(null);
 /** 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步） */
 const activePeriod = ref<PeriodValue>(props.period);
 
-const theme = computed(() => themeColors(props.theme));
+// v1.6.24：props.theme 为 string，需断言到 ChartThemeName（与 applyTheme 调用一致）
+const theme = computed(() => themeColors(props.theme as ChartThemeName));
 
 onMounted(() => {
   // 实例保护：仅当控制器未创建（且容器未被标记）时才创建；

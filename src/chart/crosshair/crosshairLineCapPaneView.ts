@@ -34,12 +34,12 @@ export class CrosshairLineCapPaneView implements IPrimitivePaneView {
   }
 
   /** 层级：top（库十字星竖线之后绘制，覆盖为细线并填缺口） */
-  zOrder(): 'top' {
+  zOrder = (): 'top'  => {
     return 'top'
   }
 
   /** 渲染器：整条细虚线竖线 + 底部最后一段实线补齐 */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return {
       draw: (target) => {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {

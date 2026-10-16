@@ -30,12 +30,12 @@ export class IndicatorLinePaneView implements IPrimitivePaneView {
   }
 
   /** 层级：'top'（十字星之上，主图 / 成交量线默认）或 'normal'（十字星之下，附图指标） */
-  zOrder(): 'top' | 'normal' {
+  zOrder = (): 'top' | 'normal'  => {
     return this.getZOrder()
   }
 
   /** 渲染器：逐条绘制指标折线 */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return {
       draw: (target) => {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {

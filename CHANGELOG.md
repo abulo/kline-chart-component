@@ -8,6 +8,23 @@
 
 ---
 
+## v1.6.24（2026-10-16）
+
+全量类方法简写 → 箭头函数字段。
+
+### 变更
+- `src/**/*.ts`：71 处类方法简写（`method() {}`）统一改为箭头函数字段
+  （`method = () => {}`），覆盖 lightweight-charts Primitive / PaneView /
+  PaneRenderer 接口实现（attached / detached / paneViews / renderer / draw /
+  zOrder / setTheme 等）与业务类方法；`constructor` / `get` / `set` 存取器
+  保持方法形式（不能转）。对象方法简写为 0；顶层 `function` 关键字为 0。
+  箭头字段绑定实例 this，被库回调调用时不丢 this。
+- `src/components/kLineChart.vue`：`themeColors(props.theme)` 补
+  `as ChartThemeName` 断言（props.theme 类型为 string，与 applyTheme 一致）。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.23（2026-10-15）
 
 加载遮罩 / 更早数据提示颜色收进风格文件。

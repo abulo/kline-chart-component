@@ -20,12 +20,12 @@ export class InfoLabelPaneView implements IPrimitivePaneView {
   }
 
   /** zOrder 'top' → 绘制在 pane 顶层 canvas（位于十字星之上） */
-  zOrder(): 'top' {
+  zOrder = (): 'top'  => {
     return 'top'
   }
 
   /** 渲染器：分段文字（各段不同色，横向拼接，距左 6px） */
-  renderer(): IPrimitivePaneRenderer {
+  renderer = (): IPrimitivePaneRenderer  => {
     return {
       draw: (target) => {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
