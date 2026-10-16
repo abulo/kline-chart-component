@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.24（2026-10-16）**
+> **当前版本：v1.6.25（2026-10-16）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -310,6 +310,11 @@ npm run build      # vue-tsc 类型检查 + 构建
 - **十字星事件 rAF 节流（v1.5.9）**：拖拽平移 / 快速 mousemove 时库 crosshairMove
   可能高频触发，控制器将同帧多次事件合并为一次处理（每帧至多一次重绘）；
   `setCrosshairY` 同值跳过，无变化的移动不再触发 fullUpdate。
+
+- **函数风格约定（v1.6.24）**：全库统一箭头函数 —— 顶层 / 对象方法已全为箭头；
+  类方法一律使用箭头函数字段（`method = (): T => {}`，this 绑实例、被库回调调用
+  不丢 this）；`constructor` / `get` / `set` 存取器按语法要求保留方法形式。
+  构造函数中不调用类方法，字段引用均在惰性箭头体内，无初始化顺序风险。
 - 所有自绘 primitive（柱体 / 指标线 / SAR 点 / 最高最低价标注 / 栅格 / 十字星竖线）
   均按**可视逻辑范围裁剪**，长数据（10000 条）下每帧仅绘制可视 ~120 根，
   平移 / 缩放不会因数据总量线性变慢。
