@@ -8,6 +8,53 @@
 
 ---
 
+## v1.6.30（2026-10-16）
+
+删除 `baseUrl`，历史 / 实时接口地址全部显式配置。
+
+### 变更
+- `src/services/httpChartDataService.ts`：删除 `baseUrl` 字段（Options / opts / 构造），
+  `historyUrl` 改为**必填完整地址**；`sseUrl` / `pollUrl` 缺省不推导 —— 对应模式
+  未配置时 warn 并跳过（不订阅 / 返回空）；`fetchNetwork` 直接使用 `historyUrl`。
+- 注释 / README 全部移除 baseUrl 字样（无基址派生）。
+
+### 用法（全部显式配置）
+```ts
+new HttpChartDataService({
+  historyUrl: 'http://10.0.0.8:8080/api/v2/kline_list', // 必填
+  wsUrl: 'wss://push.example.com/kline',
+  sseUrl: 'https://push.example.com/kline/stream',      // sse 模式必填
+  pollUrl: 'https://api.example.com/kline/latest',      // poll 模式必填
+})
+```
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；src / README 全局 0 处 baseUrl 残留；
+未运行 / 未截图。
+
+## v1.6.29（2026-10-16）
+
+历史 / 实时接口 URL 支持完整自定义地址（适配路由不一致的后端）。
+
+### 变更
+- `src/services/httpChartDataService.ts`：
+  - 新增 `historyUrl?: string`（历史接口完整地址，缺省 `${baseUrl}/kline/history`）；
+  - `withParams` 兼容 base 已带 query：`?` 与 `&` 自适应追加；
+  - 实时三种模式 `wsUrl` / `sseUrl` / `pollUrl` 本就可填完整地址（填了即用，缺省推导）。
+
+### 用法
+```ts
+new HttpChartDataService({
+  baseUrl: '/api',
+  historyUrl: 'http://10.0.0.8:8080/api/v2/kline_list', // 任意完整地址
+  wsUrl: 'wss://push.example.com/kline',                 // 完整地址
+})
+```
+自带 query 的完整地址以 `&` 追加参数。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.28（2026-10-16）
 
 外部自定义数据直通（无 mock / http 环境时直接传入渲染）。

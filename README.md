@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.28（2026-10-16）**
+> **当前版本：v1.6.30（2026-10-16）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -241,7 +241,8 @@ chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 
   模拟实时推送；同 symbol 同周期缓存复用，内存友好）。
   每页拉取条数（v1.6.27）为**服务实例级必填配置**：
   `new MockChartDataService({ fetchLimit: 200 })` 或
-  `new HttpChartDataService({ baseUrl: '/api', fetchLimit: 200 })`（无全局常量）；
+  `new HttpChartDataService({ historyUrl: '/api/kline/history', fetchLimit: 200 })`
+  （无全局常量）；
   controller 的 init / 左滑分页均使用 `service.fetchLimit`，`hasMoreHistory`
   满页判断随之生效。
   分钟 K（60/30/15/5/1 分）为**真实化模拟**：布朗桥锚定日 K 开/收（跨周期价格自洽、
@@ -259,12 +260,18 @@ chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 
   symbol="300750"
   name="宁德时代"
   :period="activePeriod"
-  :service="new HttpChartDataService({ baseUrl: '/api', wsUrl: 'wss://...' })"
+  :service="new HttpChartDataService({
+    historyUrl: 'http://10.0.0.8:8080/api/v2/kline_list', // 必填完整地址（v1.6.30）
+    wsUrl: 'wss://...',
+  })"
   @period-change="onPeriodChange"
 />
 ```
+历史 / 实时接口地址**全部显式配置**（v1.6.30，无基址派生）：`historyUrl`（历史，
+**必填**完整地址）、`wsUrl` / `sseUrl` / `pollUrl`（实时三种模式，使用时必填完整
+地址；缺省对应模式不启用并 warn）；自带 query 的完整地址以 `&` 追加参数。
 
-后端接口约定：`GET {baseUrl}/kline/history?symbol=&period=&before=&limit=` 返回
+后端接口约定：`GET {historyUrl}?symbol=&period=&before=&limit=` 返回（historyUrl 必填）
 `{ code: 200, data: ChartDataPoint[] }`（time 升序、返回条数 < limit 表示无更早数据）；
 实时推送与历史同结构，`time` 与最后一根相同 = 刷新该根、更大 = 追加新 K 线。
 

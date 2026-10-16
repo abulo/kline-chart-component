@@ -2,16 +2,17 @@
  * HttpChartDataService —— 接入真实后端的示例实现（HTTP 历史 + WebSocket 实时 + 历史数据缓存）
  *
  * 组件 / 控制器已通过 ChartDataService 接口解耦，接入后端只需：
- *   1. 本文件按你的后端地址配置 baseUrl / wsUrl（或直接改用你自己的字段名）；
+ *   1. 本文件按你的后端地址配置 historyUrl / wsUrl（或直接改用你自己的字段名）；
  *   2. 在 App.vue 中把 `new MockChartDataService({ fetchLimit: 200 })` 替换为
- *      `new HttpChartDataService({ baseUrl: '/api', fetchLimit: 200 })`；
+ *      `new HttpChartDataService({ historyUrl: '/api/kline/history', fetchLimit: 200 })`；
  *   3. 如需鉴权 / 租户 / 版本等上下文，通过外部参数注入：
  *        headers  → 附加请求头（所有 HTTP 请求）；
  *        cookies  → 附加 Cookie（**对象形式**，序列化后注入所有 HTTP 请求的 Cookie 头）；
  *        params   → 附加 URL 查询参数（history / latest / SSE / WS 全部请求）。
  *
  * 后端接口约定（推荐直接对齐，可省去字段映射）：
- *   GET {baseUrl}/kline/history?symbol=<代码>&period=<周期>&before=<秒时间戳>&limit=<条数>
+ *   GET {historyUrl}?symbol=<代码>&period=<周期>&before=<秒时间戳>&limit=<条数>
+ *     （historyUrl 为必填完整地址；自带 query 时以 & 追加）
  *     响应：{ code: 200, msg?: "ok", data: [ { time, tradeDate, preClose, open, high, low, close, volume, amount } ] }
  *     - time: 秒级时间戳；tradeDate: 'YYYY-MM-DD'；preClose: 昨收
  *     - 数组按 time 升序返回；返回条数 < limit 表示已无更早数据
@@ -32,21 +33,21 @@
 import type { ChartDataPoint } from '../types/chart'
 import type { ChartDataService, HistoryQuery, RealtimeHandler } from './chartDataService'
 
-/** HttpChartDataService 构造参数（baseUrl 必填，其余可选） */
+/** HttpChartDataService 构造参数（v1.6.30：各接口地址全部显式配置，无基址派生） */
 export interface HttpChartDataServiceOptions {
   /** 每页拉取条数（构造必填，如 200） */
   fetchLimit: number
-  /** 后端 HTTP 地址，如 '/api'（开发走 vite proxy）或 'http://10.0.0.8:8080/api' */
-  baseUrl: string
+  /** 历史 K 线完整接口地址（必填，v1.6.30）：任意完整 URL（含自有路由 / query） */
+  historyUrl: string
   /** 实时行情 WebSocket 地址（realtimeTransport='ws' 时使用）；不传则不做实时订阅 */
   wsUrl?: string
-  /** SSE 实时地址（realtimeTransport='sse' 时使用）；缺省为 {baseUrl}/kline/stream */
+  /** SSE 实时地址（realtimeTransport='sse' 时使用，必填完整地址；缺省不订阅） */
   sseUrl?: string
   /** SSE 事件名，默认 'message'（部分后端用自定义事件名，如 'quote'） */
   sseEventName?: string
   /** 实时传输方式：'ws' WebSocket 推送（默认）/ 'poll' HTTP 轮询 / 'sse' Server-Sent Events */
   realtimeTransport?: 'ws' | 'poll' | 'sse'
-  /** HTTP 轮询专用实时接口（realtimeTransport='poll' 时使用）；缺省为 {baseUrl}/kline/latest */
+  /** HTTP 轮询专用实时接口（realtimeTransport='poll' 时使用，必填完整地址；缺省不轮询） */
   pollUrl?: string
   /** HTTP 轮询频率 ms（realtimeTransport='poll' 时生效），默认 3000 */
   pollIntervalMs?: number
@@ -109,10 +110,10 @@ interface CacheEntry {
 /**
  * HttpChartDataService —— 真实后端数据服务实现
  *
- *  - fetchHistory：HTTP GET {baseUrl}/kline/history（fetch + AbortController 超时）；
+ *  - fetchHistory：HTTP GET {historyUrl}（必填完整地址；fetch + AbortController 超时）；
  *  - subscribeRealtime：三种实时模式（realtimeTransport 切换）：
  *      'ws'  ：WebSocket {wsUrl}?symbol=&period=（返回 () => ws.close() 清理函数）；
- *      'poll'：HTTP 轮询（默认 3000ms 一次，独立实时接口 {pollUrl ?? baseUrl}/kline/latest
+ *      'poll'：HTTP 轮询（默认 3000ms 一次，独立实时接口 {pollUrl}（必填完整地址）
  *              拉最新 pollLimit 根；增量过滤 + 同根刷新回调；防重入；
  *              返回 () => clearInterval 清理函数）；
  *      'sse' ：Server-Sent Events {sseUrl}?symbol=&period=（默认监听 message 事件，
@@ -125,7 +126,7 @@ export class HttpChartDataService implements ChartDataService {
   readonly fetchLimit: number
 
   private readonly opts: {
-    baseUrl: string
+    historyUrl: string
     wsUrl?: string
     sseUrl?: string
     sseEventName: string
@@ -161,7 +162,7 @@ export class HttpChartDataService implements ChartDataService {
   constructor(options: HttpChartDataServiceOptions) {
     this.fetchLimit = options.fetchLimit
     this.opts = {
-      baseUrl: options.baseUrl,
+      historyUrl: options.historyUrl,
       wsUrl: options.wsUrl,
       sseUrl: options.sseUrl,
       sseEventName: options.sseEventName ?? 'message',
@@ -318,7 +319,7 @@ export class HttpChartDataService implements ChartDataService {
    * 行为约定：
    *  - 频率：注册后立即拉取一次，之后每 pollIntervalMs 拉取一次（setInterval）；
    *  - 数据源：独立实时接口 fetchLatest（**不复用 history 历史接口**），
-   *    GET {pollUrl ?? baseUrl}/kline/latest?symbol=&period=&limit=pollLimit，
+   *    GET {pollUrl}?symbol=&period=&limit=pollLimit，
    *    直接 fetch 网络（不走历史缓存，保证每次拿到后端最新）；
    *  - 增量过滤：只回调 time >= 已回调最大 time 的点（升序；同根盘中刷新也回调，
    *    控制器 series.update() 对同 time 是覆盖语义，无重复副作用）；
@@ -372,14 +373,19 @@ export class HttpChartDataService implements ChartDataService {
    * SSE 实时模式（startSSE 内部实现）
    *
    * 行为约定：
-   *  - 端点：{sseUrl ?? baseUrl}/kline/stream?symbol=&period=（EventSource 自动携带 Cookie/凭证）；
+   *  - 端点：{sseUrl}?symbol=&period=（EventSource 自动携带 Cookie/凭证）；
    *  - 事件：默认监听 'message' 事件（sseEventName 可改，如后端自定义 'quote'）；
    *    数据格式与 WS 一致：单点对象或 { data: 对象 | 数组 }，经 normalizePoint 规范化；
    *  - 重连：EventSource 浏览器内建自动重连（无需手动处理）；
    *  - 清理：返回 () => es.close()。
    */
   private startSSE(symbol: string, period: string, handler: RealtimeHandler): () => void {
-    const url = this.withParams(this.opts.sseUrl ?? `${this.opts.baseUrl}/kline/stream`, {
+    // v1.6.30：sseUrl 必填完整地址；缺省不订阅（warn）
+    if (!this.opts.sseUrl) {
+      console.warn('[HttpChartDataService] realtimeTransport=sse 需配置 sseUrl，已跳过订阅');
+      return () => {};
+    }
+    const url = this.withParams(this.opts.sseUrl, {
       symbol,
       period,
     })
@@ -444,7 +450,9 @@ export class HttpChartDataService implements ChartDataService {
       Object.entries(this.opts.params).forEach(([k, v]) => sp.set(k, String(v)))
     }
     Object.entries(query).forEach(([k, v]) => sp.set(k, String(v)))
-    return `${base}?${sp.toString()}`
+    // v1.6.29：base 已带 query（完整自定义地址）时用 & 追加，避免 `?a=1?b=2`
+    const sep = base.includes("?") ? "&" : "?"
+    return `${base}${sep}${sp.toString()}`
   }
 
   /** fetch + 超时控制（统一注入外部 headers / Cookie） */
@@ -476,7 +484,7 @@ export class HttpChartDataService implements ChartDataService {
   }
 
   /**
-   * HTTP 轮询实时专用接口：GET {pollUrl ?? baseUrl}/kline/latest?symbol=&period=&limit=
+   * HTTP 轮询实时专用接口：GET {pollUrl}?symbol=&period=&limit=
    *
    * 与 fetchNetwork（history 历史接口）相互独立——实时轮询不经过历史接口，
    * 后端可对 /kline/latest 单独做轻量响应（只回最新 pollLimit 根）。
@@ -491,7 +499,12 @@ export class HttpChartDataService implements ChartDataService {
     }
     if (knownTotal !== undefined) core.total = String(knownTotal) // 自动计算/显式传入的 total
 
-    const url = this.withParams(this.opts.pollUrl ?? `${this.opts.baseUrl}/kline/latest`, core)
+    // v1.6.30：pollUrl 必填完整地址；缺省不轮询（warn + 返回空）
+    if (!this.opts.pollUrl) {
+      console.warn('[HttpChartDataService] poll 模式需配置 pollUrl，本次返回空');
+      return [];
+    }
+    const url = this.withParams(this.opts.pollUrl, core)
     const res = (await this.request(url)) as BackendResponse
 
     const body = Array.isArray(res) ? res : ((res as { data?: unknown }).data ?? [])
@@ -514,7 +527,8 @@ export class HttpChartDataService implements ChartDataService {
     if (query.before !== undefined) core.before = String(query.before)
     if (knownTotal !== undefined) core.total = String(knownTotal) // 自动计算/显式传入的 total
 
-    const url = this.withParams(`${this.opts.baseUrl}/kline/history`, core)
+    // v1.6.30：historyUrl 必填完整地址，直接使用
+    const url = this.withParams(this.opts.historyUrl, core)
     const res = (await this.request(url)) as BackendResponse
 
     const body = Array.isArray(res) ? res : ((res as { data?: unknown }).data ?? [])
