@@ -205,7 +205,7 @@ defineExpose({ controller, loadStatus });
   <div class="kline-chart">
     <!-- 首次加载遮罩 -->
     <div v-if="loadStatus === 'loading'"
-      class="kline__mask"
+      class="kline-mask"
       :style="{
         background: theme.maskBackground,
         color: theme.maskText,
@@ -214,7 +214,7 @@ defineExpose({ controller, loadStatus });
     </div>
     <!-- 向左加载更早历史提示 -->
     <div v-if="loadStatus === 'loading-older'"
-      class="kline__older-tip"
+      class="kline-older"
       :style="{
         background: theme.maskBackground,
         color: theme.maskText,
@@ -239,27 +239,21 @@ defineExpose({ controller, loadStatus });
 }
 
 /* —— 加载状态 —— */
-.kline__mask {
+.kline-mask {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* background: var(--kmask-bg); */
-  /* color: var(--kmask-text); */
   font-size: 12px;
   pointer-events: none;
   z-index: 4;
 }
-.kline__older-tip {
+.kline-older {
   position: absolute;
   top: 5%;
   left: 50%;
   transform: translateX(-50%);
-  /* padding: 2px 10px; */
-  /* border-radius: 10px; */
-  /* background: var(--kbtn-bg); */
-  /* color: var(--kbtn-text); */
   font-size: 12px;
   pointer-events: none;
   z-index: 4;
