@@ -14,7 +14,7 @@ import { MockChartDataService } from '../src/services/chartDataService'
 import type { ChartDataPoint } from '../src/types/chart'
 
 /** 新建独立服务实例（每测试独立池，互不污染） */
-const createService = (): MockChartDataService => new MockChartDataService()
+const createService = (): MockChartDataService => new MockChartDataService({ fetchLimit: 200 })
 
 /** 断言 K 线点字段齐全且数值合法 */
 const expectKlineBar = (point: ChartDataPoint): void => {

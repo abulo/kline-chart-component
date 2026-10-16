@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.25（2026-10-16）**
+> **当前版本：v1.6.27（2026-10-16）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -239,6 +239,11 @@ chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 
 
 - **默认**：`MockChartDataService` 单例（内置约 3 年日 K 池 + 分时 / 分钟 K / 周 / 月聚合 +
   模拟实时推送；同 symbol 同周期缓存复用，内存友好）。
+  每页拉取条数（v1.6.27）为**服务实例级必填配置**：
+  `new MockChartDataService({ fetchLimit: 200 })` 或
+  `new HttpChartDataService({ baseUrl: '/api', fetchLimit: 200 })`（无全局常量）；
+  controller 的 init / 左滑分页均使用 `service.fetchLimit`，`hasMoreHistory`
+  满页判断随之生效。
   分钟 K（60/30/15/5/1 分）为**真实化模拟**：布朗桥锚定日 K 开/收（跨周期价格自洽、
   无跳空）、按真实交易时段聚合（60 分 4 段 / 30 分 8 段 / 15 分 16 段 / 5 分 48 段 /
   1 分 241 段，段首 09:30/10:30/13:00…），成交量 U 型分布（开收盘放量）；

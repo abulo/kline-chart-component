@@ -8,6 +8,49 @@
 
 ---
 
+## v1.6.27（2026-10-16）
+
+删除 `DEFAULT_FETCH_LIMIT` 全局常量，`fetchLimit` 改为构造必填。
+
+### 变更
+- `src/chart/core/constants.ts`：删除 `DEFAULT_FETCH_LIMIT`。
+- `src/services/chartDataService.ts`：`MockChartDataServiceOptions.fetchLimit` 必填，
+  构造参数必填；移除常量 import 与缺省回退。
+- `src/services/httpChartDataService.ts`：`HttpChartDataServiceOptions.fetchLimit` 必填，
+  移除常量 import 与缺省回退。
+- 调用点补参：`App.vue` / `kLineChart.vue`（defaultService）/ `tests/chartDataService.test.ts`
+  均传 `{ fetchLimit: 200 }`。
+
+### 用法（构造必填）
+```ts
+new MockChartDataService({ fetchLimit: 200 })
+new HttpChartDataService({ baseUrl: '/api', fetchLimit: 200 })
+```
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
+## v1.6.26（2026-10-16）
+
+分页条数改为服务实例级配置（fetchLimit，构造传入）。
+
+### 变更
+- `src/services/chartDataService.ts`：`ChartDataService` 接口新增 `readonly fetchLimit`；
+  `MockChartDataService` 新增构造参数 `{ fetchLimit?: number }`（缺省 DEFAULT_FETCH_LIMIT）。
+- `src/services/httpChartDataService.ts`：`HttpChartDataServiceOptions` 新增
+  `fetchLimit?: number`，构造注入 `this.fetchLimit`。
+- `src/chart/core/kLineChartController.ts`：init / loadEarlier 的 `limit` 与
+  `hasMoreHistory` 满页判断改为 `this.service.fetchLimit`（移除 DEFAULT_FETCH_LIMIT 引用）。
+
+### 用法
+```ts
+new MockChartDataService({ fetchLimit: 200 })
+new HttpChartDataService({ baseUrl: '/api', fetchLimit: 200 })
+```
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.25（2026-10-16）
 
 箭头转换后质量收尾审计。

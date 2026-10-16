@@ -13,7 +13,7 @@
  * Props：
  *  - symbol / name：股票代码 / 名称（pane0 信息行：名称 [代码]）；
  *  - timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator：状态开关；
- *  - 拉取条数：controller 内部常量 DEFAULT_FETCH_LIMIT（默认 120，服务分页 limit）；
+ *  - 拉取条数：服务实例 fetchLimit（构造必填，如 200）；
  *  - period：当前周期（外部可控，默认 'day'；变化时重新拉取）；
  *  - service：数据服务实现（默认 MockChartDataService 单例；接入真实行情传
  *    HttpChartDataService 实例即可，组件 / 控制器零改动）。
@@ -37,7 +37,7 @@ import type { ChartLoadStatus } from "../chart/core/types";
 import { MockChartDataService } from "../services/chartDataService";
 
 /** 默认数据服务（Mock 单例：池缓存复用，内存友好；接入后端时父组件传 HttpChartDataService） */
-const defaultService = new MockChartDataService();
+const defaultService = new MockChartDataService({ fetchLimit: 200 });
 
 /** 图表组件 Props（工具栏状态 + 数据服务 单向数据流） */
 /** 加载状态事件（v1.6.18）：controller.init 全流程状态通知（'loading' | 'ready' | 'error'） */

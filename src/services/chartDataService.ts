@@ -41,6 +41,9 @@ export type RealtimeHandler = (point: ChartDataPoint) => void
  * 图表数据服务统一接口
  */
 export interface ChartDataService {
+  /** 每页拉取条数（服务实例级配置：构造时必填传入） */
+  readonly fetchLimit: number
+
   /**
    * 拉取历史数据（按 time 升序返回）
    * 返回条数 < limit 时表示已无更早数据
@@ -287,7 +290,16 @@ const toTradeDate = (d: Date): string => {
 /**
  * Mock 行情服务
  */
+/** MockChartDataService 构造参数 */
+export interface MockChartDataServiceOptions {
+  /** 每页拉取条数（构造必填，如 200） */
+  fetchLimit: number
+}
+
 export class MockChartDataService implements ChartDataService {
+  /** 每页拉取条数（v1.6.27：构造必填） */
+  readonly fetchLimit: number
+
   /** symbol → 该标的的完整数据池（懒生成） */
   private pools = new Map<string, ChartDataPoint[]>()
   /** symbol → 该标的的最近 5 日分时数据池（懒生成，1d~5d 周期共用） */
@@ -296,6 +308,10 @@ export class MockChartDataService implements ChartDataService {
   private periodPools = new Map<string, ChartDataPoint[]>()
   /** 实时定时器：key = `${symbol}|${period}` */
   private timers = new Map<string, ReturnType<typeof setInterval>>()
+
+  constructor(options: MockChartDataServiceOptions) {
+    this.fetchLimit = options.fetchLimit
+  }
 
   /** 生成（或获取）某标的的完整数据池 */
   private ensurePool = (symbol: string): ChartDataPoint[]  => {

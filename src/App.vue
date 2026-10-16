@@ -27,7 +27,7 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
  * 当前为 MockChartDataService（内置模拟行情）；接入真实行情时替换为
  * HttpChartDataService 即可（组件 / 控制器零改动）。
  */
-const chartDataService = new MockChartDataService()
+const chartDataService = new MockChartDataService({ fetchLimit: 200 })
 
 /** 图表加载状态（v1.6.18 示例：可从 controller.init 收到 loading / ready / error） */
 const onChartStatusChange = (status: string): void => {
@@ -149,7 +149,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.25</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.27</span>
     </div>
 
     <div class="toolbar">

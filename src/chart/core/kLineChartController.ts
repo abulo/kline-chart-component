@@ -96,7 +96,7 @@ import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrim
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
-import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH, DEFAULT_FETCH_LIMIT } from "./constants";
+import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH } from "./constants";
 import type { KLineChartOptions, MainIndicatorName, ChartLoadStatus } from "./types";
 import type { ChartDataService } from "../../services/chartDataService";
 
@@ -658,11 +658,11 @@ export class KLineChartController {
       const points = await this.service.fetchHistory({
         symbol: this.symbol,
         period: this.period,
-        limit: DEFAULT_FETCH_LIMIT,
+        limit: this.service.fetchLimit,
       });
       if (seq !== this.loadSeq) return; // 期间又切换了周期 / 标的 → 丢弃过期响应
       // 返回满页说明还有更早数据，允许后续左滑边缘自动加载
-      this.hasMoreHistory = points.length >= DEFAULT_FETCH_LIMIT;
+      this.hasMoreHistory = points.length >= this.service.fetchLimit;
       this.setKlineData(points);
       this.setStatus('ready');
       this.startRealtime();
@@ -702,11 +702,11 @@ export class KLineChartController {
         symbol: this.symbol,
         period: this.period,
         before: earliest,
-        limit: DEFAULT_FETCH_LIMIT,
+        limit: this.service.fetchLimit,
       });
       if (seq !== this.loadSeq) return; // 期间重新 init（周期 / 标的切换）→ 丢弃，状态由新 init 自己发
       const added = this.prependHistory(points);
-      if (added === 0 || points.length < DEFAULT_FETCH_LIMIT) this.hasMoreHistory = false;
+      if (added === 0 || points.length < this.service.fetchLimit) this.hasMoreHistory = false;
       this.setStatus('ready');
     } catch (error) {
       if (seq !== this.loadSeq) return;

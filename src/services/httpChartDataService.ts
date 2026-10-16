@@ -3,7 +3,8 @@
  *
  * 组件 / 控制器已通过 ChartDataService 接口解耦，接入后端只需：
  *   1. 本文件按你的后端地址配置 baseUrl / wsUrl（或直接改用你自己的字段名）；
- *   2. 在 App.vue 中把 `new MockChartDataService()` 替换为 `new HttpChartDataService({...})`；
+ *   2. 在 App.vue 中把 `new MockChartDataService({ fetchLimit: 200 })` 替换为
+ *      `new HttpChartDataService({ baseUrl: '/api', fetchLimit: 200 })`；
  *   3. 如需鉴权 / 租户 / 版本等上下文，通过外部参数注入：
  *        headers  → 附加请求头（所有 HTTP 请求）；
  *        cookies  → 附加 Cookie（**对象形式**，序列化后注入所有 HTTP 请求的 Cookie 头）；
@@ -33,6 +34,8 @@ import type { ChartDataService, HistoryQuery, RealtimeHandler } from './chartDat
 
 /** HttpChartDataService 构造参数（baseUrl 必填，其余可选） */
 export interface HttpChartDataServiceOptions {
+  /** 每页拉取条数（构造必填，如 200） */
+  fetchLimit: number
   /** 后端 HTTP 地址，如 '/api'（开发走 vite proxy）或 'http://10.0.0.8:8080/api' */
   baseUrl: string
   /** 实时行情 WebSocket 地址（realtimeTransport='ws' 时使用）；不传则不做实时订阅 */
@@ -118,6 +121,9 @@ interface CacheEntry {
  *  - normalizePoint：兼容 open/high/low/close/volume 与 o/h/l/c/v 缩写字段。
  */
 export class HttpChartDataService implements ChartDataService {
+  /** 每页拉取条数（v1.6.27：构造必填） */
+  readonly fetchLimit: number
+
   private readonly opts: {
     baseUrl: string
     wsUrl?: string
@@ -153,6 +159,7 @@ export class HttpChartDataService implements ChartDataService {
   private knownTotals = new Map<string, number>()
 
   constructor(options: HttpChartDataServiceOptions) {
+    this.fetchLimit = options.fetchLimit
     this.opts = {
       baseUrl: options.baseUrl,
       wsUrl: options.wsUrl,
