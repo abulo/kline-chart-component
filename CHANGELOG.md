@@ -8,6 +8,18 @@
 
 ---
 
+## v1.6.33（2026-10-16）
+
+左移 / 右移改为每次固定平移 50 根 K 线（原为每次一屏宽度）。
+
+### 变更
+- `src/chart/core/constants.ts`：新增 `VIEW_SHIFT_STEP = 50`（顺带清理孤儿注释）。
+- `src/chart/core/kLineChartController.ts`：`shiftLeft` / `shiftRight` 以
+  `VIEW_SHIFT_STEP` 替代视口宽度；到达最左 / 最右由库逻辑范围 clamp 自然停止，不跳变。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；未运行 / 未截图。
+
 ## v1.6.32（2026-10-16）
 
 冗余代码审计清理：删除未使用的分时附图层与组合函数。

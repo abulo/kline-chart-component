@@ -96,7 +96,7 @@ import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrim
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
-import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH } from "./constants";
+import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH, VIEW_SHIFT_STEP } from "./constants";
 import type { KLineChartOptions, MainIndicatorName, ChartLoadStatus } from "./types";
 import type { ChartDataService } from "../../services/chartDataService";
 
@@ -896,7 +896,7 @@ export class KLineChartController {
   };
 
   /**
-   * 左移（视口向左平移一屏宽度，看更早数据）。
+   * 左移（视口向左平移 50 根K线，看更早数据）。
    * 用逻辑范围平移替代 scrollToPosition（后者距右边缘不足一屏时减幅变负被 clamp，
    * 直接跳到最新数据末尾）；逻辑范围平移到达最左自然停止，无跳变。
    */
@@ -904,22 +904,20 @@ export class KLineChartController {
     const timeScaleApi = this.chart.timeScale();
     const range = timeScaleApi.getVisibleLogicalRange();
     if (!range) return;
-    const width = range.to - range.from;
     timeScaleApi.setVisibleLogicalRange({
-      from: range.from - width,
-      to: range.to - width,
+      from: range.from - VIEW_SHIFT_STEP,
+      to: range.to - VIEW_SHIFT_STEP,
     });
   };
 
-  /** 右移（视口向右平移一屏宽度，看更晚数据；到达最右自然停止，不跳变） */
+  /** 右移（视口向右平移 50 根K线，看更晚数据；到达最右自然停止，不跳变） */
   shiftRight = (): void => {
     const timeScaleApi = this.chart.timeScale();
     const range = timeScaleApi.getVisibleLogicalRange();
     if (!range) return;
-    const width = range.to - range.from;
     timeScaleApi.setVisibleLogicalRange({
-      from: range.from + width,
-      to: range.to + width,
+      from: range.from + VIEW_SHIFT_STEP,
+      to: range.to + VIEW_SHIFT_STEP,
     });
   };
 
