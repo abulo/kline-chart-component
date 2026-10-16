@@ -14,7 +14,6 @@
  *  - LLV/HHV：从首根到当根窗口的最值（不足 N 根取全部）。
  */
 import type { IndicatorLine, K } from './types'
-import type { ChartDataPoint } from '../../types/chart'
 
 /** 取收盘价序列（指标默认输入） */
 export const closes = (bars: K[]): number[] => bars.map((b) => b.close!)
@@ -109,32 +108,3 @@ export const toLines = (times: number[], values: number[]): IndicatorLine[] => {
   }
   return out
 }
-
-/* ===================== 分时输入适配（price 充当 OHLC） ===================== */
-/**
- * utils.ts —— 分时指标输入适配
- *
- * 分时点（pointType='timeshare'）只有 price / avgPrice / volume，
- * 没有 open/high/low/close。技术指标公式（RSI/KDJ/MACD/...）以 OHLC 为输入，
- * 因此把 price 同时充当 open/high/low/close 映射为标准指标输入 K：
- *  - 分时成交量柱 / OBV 直接用 volume；
- *  - 涨跌方向由指标公式对 price 序列自行判定（相对前一分钟）。
- *
- * 这样每个指标文件只需一行映射 + 调用 K 线同名函数，
- * 算法口径与 K 线附图完全一致（东财），不产生第二套公式。
- */
-
-/** 单个分时点 → 指标输入 K（price 充当 OHLC） */
-export const toK = (p: ChartDataPoint): K => ({
-  time: p.time,
-  open: p.price,
-  high: p.price,
-  low: p.price,
-  close: p.price,
-  volume: p.volume,
-})
-
-/** 分时数组 → 指标输入 K 数组（跳过无 price 的点） */
-export const toKBars = (bars: ChartDataPoint[]): K[] =>
-  bars.filter((b) => b.price !== undefined).map(toK)
-

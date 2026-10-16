@@ -8,9 +8,7 @@
  * 颜色见控制器 SUB_INDICATOR_META：
  *   BIAS6 #666666 / BIAS12 #F4AA0A / BIAS24 #FF1DFF。
  */
-import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'
-import { toKBars } from './utils'
 
 /** 计算 BIAS 三条线（6/12/24） */
 export const calcBIAS = (bars: K[]): IndicatorLine[][] => {
@@ -34,12 +32,3 @@ export const calcBIAS = (bars: K[]): IndicatorLine[][] => {
 
   return [bias(6), bias(12), bias(24)]
 }
-/**
- * 计算分时 BIAS 曲线。
- * 算法与 K 线版（calcBIAS）完全一致（东财口径，无第二套公式），
- * 仅输入不同：分时点用 price 充当 OHLC（见 utils.ts toKBars），
- * 参数与颜色见控制器 TS_SUB_INDICATOR_META。
- * @param bars 升序分时点数组（pointType='timeshare'）
- */
-export const calcTSBIAS = (bars: ChartDataPoint[]): IndicatorLine[][] => calcBIAS(toKBars(bars))
-

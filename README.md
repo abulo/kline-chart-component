@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.30（2026-10-16）**
+> **当前版本：v1.6.32（2026-10-16）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -270,6 +270,11 @@ chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 
 历史 / 实时接口地址**全部显式配置**（v1.6.30，无基址派生）：`historyUrl`（历史，
 **必填**完整地址）、`wsUrl` / `sseUrl` / `pollUrl`（实时三种模式，使用时必填完整
 地址；缺省对应模式不启用并 warn）；自带 query 的完整地址以 `&` 追加参数。
+
+SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式读取）：可携带
+自定义 `headers` / `cookies`（与 HTTP 请求一致注入），断线自动 3s 重连；HTTP 401/403
+鉴权失败时中止订阅避免死循环。WebSocket 仍受浏览器限制无法注入自定义头，鉴权依赖
+自定义头时请改用 `'sse'` 或 `'poll'`。
 
 后端接口约定：`GET {historyUrl}?symbol=&period=&before=&limit=` 返回（historyUrl 必填）
 `{ code: 200, data: ChartDataPoint[] }`（time 升序、返回条数 < limit 表示无更早数据）；

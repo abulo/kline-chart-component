@@ -64,33 +64,3 @@ export type SubIndicatorType =
 
 /** 全部附图指标计算结果（每种为若干条线，下标顺序见各指标文件注释） */
 export type SubIndicators = Record<SubIndicatorType, IndicatorLine[][]>
-
-/* ===================== 分时（timeshare）专属类型 ===================== */
-/**
- * types.ts —— 分时指标公共类型定义
- *
- * 分时附图指标集合与 K 线附图指标的区别（合并前分属两个目录，现已统一）：
- *  - K 线附图 10 个（含 CR）；
- *  - 分时附图 9 个（无 CR，东财分时副图不含 CR）。
- * 指标名与算法与 K 线完全一致（复用 kline/ 下同名计算函数），
- * 差异只在输入：分时点用 price（当前成交价）充当 OHLC。
- */
-
-/**
- * 分时附图指标类型（Pane 2 可选，同时只显示一种）。
- * 新增分时指标时：扩展联合类型 + 新建同名文件 + index.ts 汇总。
- */
-export type TimeshareSubIndicatorType =
-  | 'rsi'
-  | 'kdj'
-  | 'macd'
-  | 'wr'
-  | 'dmi'
-  | 'bias'
-  | 'obv'
-  | 'cci'
-  | 'roc'
-
-/** 全部分时附图指标计算结果（每种为若干条线，下标顺序见各指标文件注释） */
-export type TimeshareIndicators = Record<TimeshareSubIndicatorType, IndicatorLine[][]>
-

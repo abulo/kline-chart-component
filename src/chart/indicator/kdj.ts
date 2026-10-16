@@ -10,9 +10,8 @@
  * 颜色见控制器 SUB_INDICATOR_META：
  *   K #666666 / D #F4AA0A / J #FF1DFF。
  */
-import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'
-import { toKBars, runningMax, runningMin, tdxSMA, toLines } from './utils'
+import { runningMax, runningMin, tdxSMA, toLines } from './utils'
 
 /** 计算 KDJ 三条线（K/D/J） */
 export const calcKDJ = (bars: K[]): IndicatorLine[][] => {
@@ -29,12 +28,3 @@ export const calcKDJ = (bars: K[]): IndicatorLine[][] => {
   const j = k.map((ki, i) => 3 * ki - 2 * d[i])
   return [toLines(times, k), toLines(times, d), toLines(times, j)]
 }
-/**
- * 计算分时 KDJ 曲线。
- * 算法与 K 线版（calcKDJ）完全一致（东财口径，无第二套公式），
- * 仅输入不同：分时点用 price 充当 OHLC（见 utils.ts toKBars），
- * 参数与颜色见控制器 TS_SUB_INDICATOR_META。
- * @param bars 升序分时点数组（pointType='timeshare'）
- */
-export const calcTSKDJ = (bars: ChartDataPoint[]): IndicatorLine[][] => calcKDJ(toKBars(bars))
-

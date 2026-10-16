@@ -9,9 +9,8 @@
  * 颜色见控制器 SUB_INDICATOR_META：
  *   OBV #666666 / OBV_MA #F4AA0A。
  */
-import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'
-import { toKBars, toLines } from './utils'
+import { toLines } from './utils'
 
 /** 计算 OBV 两条线（OBV / OBVMA30） */
 export const calcOBV = (bars: K[]): IndicatorLine[][] => {
@@ -41,12 +40,3 @@ export const calcOBV = (bars: K[]): IndicatorLine[][] => {
 
   return [toLines(times, acc), toLines(times, mav)]
 }
-/**
- * 计算分时 OBV 曲线。
- * 算法与 K 线版（calcOBV）完全一致（东财口径，无第二套公式），
- * 仅输入不同：分时点用 price 充当 OHLC（见 utils.ts toKBars），
- * 参数与颜色见控制器 TS_SUB_INDICATOR_META。
- * @param bars 升序分时点数组（pointType='timeshare'）
- */
-export const calcTSOBV = (bars: ChartDataPoint[]): IndicatorLine[][] => calcOBV(toKBars(bars))
-

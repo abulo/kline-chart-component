@@ -8,6 +8,51 @@
 
 ---
 
+## v1.6.32（2026-10-16）
+
+冗余代码审计清理：删除未使用的分时附图层与组合函数。
+
+### 变更
+- `src/chart/indicator/`：
+  - 删除分时附图整层（**全库零引用**）：`calcTS*`（9 个：rsi/kdj/macd/wr/dmi/bias/obv/cci/roc）、
+    `calcTimeshareSubIndicators`、`toK` / `toKBars`（utils）、`TimeshareSubIndicatorType` /
+    `TimeshareIndicators`（types）及相关 import / re-export；
+  - 删除未使用组合函数：`calcMainIndicators`、`calcVolumeMAs`（controller 均直接调用单个 calc）；
+  - `index.ts` 清理遗留死 import（6 个主图 calc import + 冗余类型 import）与注释；
+  - 头部 / JSDoc 注释同步（注明后续接入分时副图按需恢复）。
+- 说明：分时 K 线渲染不受影响（指标层未接线）；K 线附图十指标 / 主图五指标均保留。
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；导出符号 0 冗余（全库无未引用导出）；
+未运行 / 未截图。
+
+## v1.6.31（2026-10-16）
+
+SSE 实时改为基于 `@microsoft/fetch-event-source`（原生 EventSource 无法自定义请求头）。
+
+### 变更
+- `package.json`：新增依赖 `@microsoft/fetch-event-source ^2.0.1`。
+- `src/services/httpChartDataService.ts`：
+  - `startSSE` 改用 `fetchEventSource`（fetch 流式读取）：`headers` / `cookies` 与
+    HTTP 请求一致注入（原生 EventSource 浏览器禁止自定义头，鉴权受限）；
+  - 断线自动重连：`onerror` 返回 3000 → 3s 重连；HTTP 401/403 鉴权失败抛出 → 中止，
+    避免无限重连死循环；
+  - `sseEventName` 语义保留：非默认事件名按事件名过滤（无 event 字段的块默认 message）；
+  - 清理函数改为 `() => ctrl.abort()`（中止 fetch 流）；主动 abort 静默处理。
+
+### 用法
+```ts
+new HttpChartDataService({
+  historyUrl: '.../kline/history',
+  realtimeTransport: 'sse',
+  sseUrl: 'https://push.example.com/kline/stream',
+  headers: { Authorization: 'Bearer <token>' }, // v1.6.31 起 SSE 可注入
+})
+```
+
+### 验证
+vue-tsc 通过；vitest 114/114 全绿（14 文件）；原生 EventSource 残留 0 处；未运行 / 未截图。
+
 ## v1.6.30（2026-10-16）
 
 删除 `baseUrl`，历史 / 实时接口地址全部显式配置。

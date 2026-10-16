@@ -15,9 +15,8 @@
  * 颜色见控制器 SUB_INDICATOR_META：
  *   PDI #666666 / MDI #F4AA0A / ADX #FF1DFF / ADXR #007130。
  */
-import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'
-import { toKBars, tdxSum, toLines } from './utils'
+import { tdxSum, toLines } from './utils'
 
 /** 计算 DMI 四条线（PDI/MDI/ADX/ADXR） */
 export const calcDMI = (bars: K[]): IndicatorLine[][] => {
@@ -57,12 +56,3 @@ export const calcDMI = (bars: K[]): IndicatorLine[][] => {
   const adxr = adx.map((a, i) => (i >= 6 && Number.isFinite(a) ? (a + adx[i - 6]) / 2 : NaN))
   return [toLines(times, pdi), toLines(times, mdi), toLines(times, adx), toLines(times, adxr)]
 }
-/**
- * 计算分时 DMI 曲线。
- * 算法与 K 线版（calcDMI）完全一致（东财口径，无第二套公式），
- * 仅输入不同：分时点用 price 充当 OHLC（见 utils.ts toKBars），
- * 参数与颜色见控制器 TS_SUB_INDICATOR_META。
- * @param bars 升序分时点数组（pointType='timeshare'）
- */
-export const calcTSDMI = (bars: ChartDataPoint[]): IndicatorLine[][] => calcDMI(toKBars(bars))
-

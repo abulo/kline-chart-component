@@ -31,6 +31,7 @@
  *   - 返回给调用方的一律是独立副本，实时更新不会污染缓存。
  */
 import type { ChartDataPoint } from '../types/chart'
+import { fetchEventSource, type EventSourceMessage } from '@microsoft/fetch-event-source'
 import type { ChartDataService, HistoryQuery, RealtimeHandler } from './chartDataService'
 
 /** HttpChartDataService 构造参数（v1.6.30：各接口地址全部显式配置，无基址派生） */
@@ -59,15 +60,15 @@ export interface HttpChartDataServiceOptions {
    * 附加请求头（外部参数）：注入到**所有 HTTP 请求**（history / latest 轮询）的 fetch 头中，
    * 与默认的 Accept 合并（同名以这里的值为准）。示例：
    *   headers: { Authorization: 'Bearer <token>', 'X-App-Version': '1.0.0' }
-   * 注意：SSE（EventSource）与 WebSocket 因浏览器安全限制**无法自定义请求头**，
-   * 若鉴权依赖自定义头，请改用 realtimeTransport='poll'。
+ * v1.6.31：SSE 基于 @microsoft/fetch-event-source（fetch 流），**可注入自定义头**；
+ * WebSocket 仍受浏览器限制无法自定义请求头，鉴权依赖自定义头时请改用 'sse' 或 'poll'。
    */
   headers?: Record<string, string>
   /**
    * 附加 Cookie（外部参数）：**对象形式**，例如 { session: 'abc123', theme: 'dark' }，
    * 内部序列化为 `session=abc123; theme=dark` 注入到**所有 HTTP 请求**的 `Cookie` 头。
-   * 注意：SSE/WebSocket 由浏览器自动携带当前域名 Cookie（同源），
-   * 本参数**不会**注入到 SSE/WS（浏览器禁止自定义该头）；跨域时请配合后端 CORS credentials 或改用 poll。
+ * v1.6.31：SSE 基于 fetch 可注入 Cookie 头（与 HTTP 一致）；WebSocket 仍由浏览器
+ * 自动携带同源 Cookie，无法注入自定义 Cookie；跨域 WS 请配合后端 CORS credentials 或改用 poll。
    */
   cookies?: Record<string, string>
   /**
@@ -116,8 +117,9 @@ interface CacheEntry {
  *      'poll'：HTTP 轮询（默认 3000ms 一次，独立实时接口 {pollUrl}（必填完整地址）
  *              拉最新 pollLimit 根；增量过滤 + 同根刷新回调；防重入；
  *              返回 () => clearInterval 清理函数）；
- *      'sse' ：Server-Sent Events {sseUrl}?symbol=&period=（默认监听 message 事件，
- *              浏览器内建自动重连；返回 () => es.close() 清理函数）；
+ *      'sse' ：Server-Sent Events {sseUrl}?symbol=&period=（v1.6.31 起基于
+ *              @microsoft/fetch-event-source，可注入 headers/cookies；默认监听 message
+ *              事件，断线自动重连；返回 () => ctrl.abort() 清理函数）；
  *  - 历史数据 LRU 缓存（Map + 容量上限，命中/未命中都会更新时间戳，防内存无限增长）；
  *  - normalizePoint：兼容 open/high/low/close/volume 与 o/h/l/c/v 缩写字段。
  */
@@ -135,7 +137,7 @@ export class HttpChartDataService implements ChartDataService {
     pollIntervalMs: number
     pollLimit: number
     timeoutMs: number
-    /** 外部附加请求头（注入所有 HTTP fetch；SSE/WS 无法注入，见接口注释） */
+    /** 外部附加请求头（注入所有 HTTP fetch 与 SSE（v1.6.31）；WS 无法注入，见接口注释） */
     headers?: Record<string, string>
     /** 外部附加 Cookie（对象 → 序列化为 Cookie 头注入所有 HTTP fetch） */
     cookies?: Record<string, string>
@@ -373,11 +375,12 @@ export class HttpChartDataService implements ChartDataService {
    * SSE 实时模式（startSSE 内部实现）
    *
    * 行为约定：
-   *  - 端点：{sseUrl}?symbol=&period=（EventSource 自动携带 Cookie/凭证）；
+   *  - 端点：{sseUrl}?symbol=&period=（fetch 流式读取，可注入 headers / cookies 鉴权）；
    *  - 事件：默认监听 'message' 事件（sseEventName 可改，如后端自定义 'quote'）；
    *    数据格式与 WS 一致：单点对象或 { data: 对象 | 数组 }，经 normalizePoint 规范化；
-   *  - 重连：EventSource 浏览器内建自动重连（无需手动处理）；
-   *  - 清理：返回 () => es.close()。
+   *  - 重连：onerror 返回 3000 → 3s 后自动重连；HTTP 401/403（鉴权失败）抛出 → 中止，
+   *    避免无限重连死循环；
+   *  - 清理：返回 () => ctrl.abort()（中止 fetch 流并释放连接）。
    */
   private startSSE(symbol: string, period: string, handler: RealtimeHandler): () => void {
     // v1.6.30：sseUrl 必填完整地址；缺省不订阅（warn）
@@ -389,11 +392,13 @@ export class HttpChartDataService implements ChartDataService {
       symbol,
       period,
     })
-    const es = new EventSource(url)
+    const ctrl = new AbortController()
 
-    const onMessage = (ev: MessageEvent) => {
+    const onMessage = (ev: EventSourceMessage): void => {
+      // v1.6.31：非默认事件名时按 sseEventName 过滤（无 event 字段的块默认 'message'）
+      if (ev.event && ev.event !== this.opts.sseEventName) return
       try {
-        const msg = JSON.parse(ev.data as string) as Record<string, unknown>
+        const msg = JSON.parse(ev.data) as Record<string, unknown>
         // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）
         const points = Array.isArray(msg) ? msg : msg.data !== undefined ? msg.data : msg
         const list = Array.isArray(points) ? points : points !== undefined ? [points] : []
@@ -403,19 +408,38 @@ export class HttpChartDataService implements ChartDataService {
       }
     }
 
-    if (this.opts.sseEventName === 'message') {
-      es.onmessage = onMessage
-    } else {
-      es.addEventListener(this.opts.sseEventName, onMessage)
-    }
-    es.onerror = (e) => {
-      // EventSource 断开后由浏览器自动重连，这里只记录日志
-      console.error('[HttpChartDataService] SSE 连接错误（浏览器将自动重连）：', e)
-    }
+    void fetchEventSource(url, {
+      signal: ctrl.signal,
+      // v1.6.31：基于 fetch，headers / cookies 与 HTTP 请求一致注入（原生 EventSource 做不到）
+      headers: {
+        Accept: 'text/event-stream',
+        ...this.opts.headers,
+        ...(this.opts.cookies && Object.keys(this.opts.cookies).length > 0
+          ? { Cookie: serializeCookies(this.opts.cookies) }
+          : {}),
+      },
+      openWhenHidden: true,
+      onopen: async (resp): Promise<void> => {
+        if (!resp.ok) {
+          // 非 2xx：记录并抛出 → 中止（401/403 鉴权失败无限重连无意义）
+          console.error(`[HttpChartDataService] SSE 打开失败：HTTP ${resp.status} ${resp.statusText}`)
+          throw new Error(`SSE 打开失败：HTTP ${resp.status}`)
+        }
+      },
+      onmessage: onMessage,
+      onerror: (err): number | null | undefined => {
+        console.error('[HttpChartDataService] SSE 连接错误，3s 后重连：', err)
+        if (err instanceof Error && /HTTP 401|HTTP 403/.test(err.message)) {
+          throw err // 鉴权失败 → 中止订阅
+        }
+        return 3000 // 普通错误 → 3s 后自动重连
+      },
+    }).catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === 'AbortError') return // 主动 abort，静默
+      console.error('[HttpChartDataService] SSE 异常终止：', e)
+    })
 
-    return () => {
-      es.close()
-    }
+    return () => ctrl.abort()
   }
 
   /** 将轮询拉到的最新点合并进历史缓存（无缓存条目则创建） */

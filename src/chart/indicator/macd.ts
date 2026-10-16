@@ -10,9 +10,8 @@
  *   DIF #666666 / DEA #F4AA0A / MACD 柱 #FF1DFF
  * （柱体由 macdBarPrimitive 插件绘制：红空心 / 绿实心，宽与 K 线柱一致）。
  */
-import type { ChartDataPoint } from '../../types/chart'
 import type { IndicatorLine, K } from './types'
-import { toKBars, ema, toLines } from './utils'
+import { ema, toLines } from './utils'
 
 /** 计算 MACD 三条线（DIF/DEA/柱值） */
 export const calcMACD = (bars: K[]): IndicatorLine[][] => {
@@ -26,12 +25,3 @@ export const calcMACD = (bars: K[]): IndicatorLine[][] => {
   const hist = dif.map((d1, i) => (d1 - dea[i]) * 2)
   return [toLines(times, dif), toLines(times, dea), toLines(times, hist)]
 }
-/**
- * 计算分时 MACD 曲线。
- * 算法与 K 线版（calcMACD）完全一致（东财口径，无第二套公式），
- * 仅输入不同：分时点用 price 充当 OHLC（见 utils.ts toKBars），
- * 参数与颜色见控制器 TS_SUB_INDICATOR_META。
- * @param bars 升序分时点数组（pointType='timeshare'）
- */
-export const calcTSMACD = (bars: ChartDataPoint[]): IndicatorLine[][] => calcMACD(toKBars(bars))
-
