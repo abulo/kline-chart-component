@@ -9,6 +9,12 @@
  *   内置约 3 年日线数据池，支持向左滚动分页加载、模拟实时 tick 与新 K 线推送；
  *   分时周期（1d~5d）按最近 N 个交易日生成 241 分钟分时点/交易日（价格线/均价线/量），
  *   并支持分时实时推送（模拟盘中每分钟刷新）。
+ *
+ * - A股情绪形态注入（v1.6.56）：日 K 池按 3.5% 概率触发情绪形态段，仿东方财富——
+ *   上涨：一字板（1~10 连板）/ 厂字板 / 尾盘上板 / 地天板 / 天地天板；
+ *   下跌：一字跌停（1~10 连板）/ 尾盘下板 / 天底板 / 地天地板；
+ *   涨停 / 跌停价按主板 ±10% 计算。周 / 月 K 由日 K 聚合、分钟 K 锚定日 K 开收价，
+ *   形态自动跨周期携带且价格自洽。
  */
 import type { ChartDataPoint } from '../types/chart'
 
@@ -288,6 +294,94 @@ const toTradeDate = (d: Date): string => {
   ].join('-')
 }
 
+/* ============================== A股情绪形态（v1.6.56） ============================== */
+
+/** 涨跌停情绪形态（仿东方财富日 K：连板 / 天地板等） */
+type LimitPattern =
+  | 'limit-up' // 一字板（涨停）：O=H=L=C=涨停价，1~10 连板
+  | 'factory-up' // 厂字板：涨停一字开盘 → 盘中开板（L 回落 2%~5%）→ 尾盘回封
+  | 'tail-up' // 尾盘上板：平开/微高开震荡，尾盘拉涨停（长下影大阳）
+  | 'ground-sky' // 地天板：跌停开盘 → 涨停收盘（振幅 20%）
+  | 'sky-ground-sky' // 天地天板：涨停开盘 → 盘中砸跌停 → 尾盘拉回涨停
+  | 'limit-down' // 一字跌停：O=H=L=C=跌停价，1~10 连板
+  | 'tail-down' // 尾盘下板：微高开震荡，尾盘砸跌停（长上影大阴）
+  | 'sky-ground' // 天底板：涨停开盘 → 跌停收盘（天地反转）
+  | 'ground-sky-ground' // 地天地板：跌停开盘 → 盘中拉涨停 → 跌停收盘
+
+/** 主板涨停价（昨收 × 1.10，四舍五入到分） */
+const limitUp = (p: number): number => +Math.round(p * 1.1 * 100) / 100
+
+/** 主板跌停价（昨收 × 0.90，四舍五入到分） */
+const limitDown = (p: number): number => +Math.round(p * 0.9 * 100) / 100
+
+/**
+ * 形态 K 线（基于昨收计算涨停/跌停价，OHLC 自洽）：
+ *  - 一字板封死缩量（买/卖不到）；开板 / 天地板放量（情绪剧烈）。
+ */
+const patternBar = (
+  pattern: LimitPattern,
+  preClose: number,
+  rand: () => number,
+): { open: number; high: number; low: number; close: number; volume: number } => {
+  const up = limitUp(preClose)
+  const down = limitDown(preClose)
+  switch (pattern) {
+    case 'limit-up':
+    case 'limit-down': {
+      // 一字板：O=H=L=C=涨/跌停价，封死缩量
+      const px = pattern === 'limit-up' ? up : down
+      return { open: px, high: px, low: px, close: px, volume: Math.round(200_000 + rand() * 600_000) }
+    }
+    case 'factory-up': {
+      // 厂字板：涨停一字开盘 → 盘中开板（L 回落 2%~5%）→ 尾盘回封
+      const low = +Math.max(up * (1 - (0.02 + rand() * 0.03)), 0.01).toFixed(2)
+      return { open: up, high: up, low, close: up, volume: Math.round(3_000_000 + rand() * 15_000_000) }
+    }
+    case 'tail-up': {
+      // 尾盘上板：平开/微高开震荡，尾盘拉涨停（长下影大阳）
+      const open = +Math.max(preClose * (1 + (rand() - 0.55) * 0.012), 0.01).toFixed(2)
+      const low = +Math.max(Math.min(open, up) * (1 - rand() * 0.02), 0.01).toFixed(2)
+      return { open, high: up, low, close: up, volume: Math.round(5_000_000 + rand() * 20_000_000) }
+    }
+    case 'ground-sky': {
+      // 地天板：跌停一字开盘 → 尾盘拉涨停
+      return { open: down, high: up, low: down, close: up, volume: Math.round(8_000_000 + rand() * 25_000_000) }
+    }
+    case 'sky-ground-sky': {
+      // 天地天板：涨停开盘 → 盘中砸跌停 → 尾盘拉回涨停
+      return { open: up, high: up, low: down, close: up, volume: Math.round(10_000_000 + rand() * 30_000_000) }
+    }
+    case 'tail-down': {
+      // 尾盘下板：微高开震荡，尾盘砸跌停（长上影大阴）
+      const open = +Math.max(preClose * (1 + (rand() - 0.45) * 0.012), 0.01).toFixed(2)
+      const high = +Math.max(open * (1 + rand() * 0.02), 0.01).toFixed(2)
+      return { open, high, low: down, close: down, volume: Math.round(5_000_000 + rand() * 20_000_000) }
+    }
+    case 'sky-ground': {
+      // 天底板：涨停一字开盘 → 砸至跌停收盘（天地反转）
+      return { open: up, high: up, low: down, close: down, volume: Math.round(8_000_000 + rand() * 25_000_000) }
+    }
+    case 'ground-sky-ground': {
+      // 地天地板：跌停开盘 → 盘中拉涨停 → 收盘再砸跌停
+      return { open: down, high: up, low: down, close: down, volume: Math.round(10_000_000 + rand() * 30_000_000) }
+    }
+  }
+}
+
+/** 9 种情绪形态的固定顺序（用于覆盖保证：形态段优先选择未出现过的形态，
+ * 确保每个标的的数据池内 9 种形态全部齐全，确定性可测，v1.6.56） */
+const PATTERN_SEQUENCE: LimitPattern[] = [
+  'limit-up',
+  'factory-up',
+  'tail-up',
+  'ground-sky',
+  'sky-ground-sky',
+  'limit-down',
+  'tail-down',
+  'sky-ground',
+  'ground-sky-ground',
+]
+
 /**
  * Mock 行情服务
  */
@@ -334,43 +428,105 @@ export class MockChartDataService implements ChartDataService {
     let trend: 'up' | 'down' | 'flat' = 'flat'
     let trendLen = 0
     let prevRet = 0 // 昨收涨跌幅（波动聚集：|prevRet| 大 → 今日波动放大，GARCH 式）
+    // —— A股情绪形态段状态（v1.6.56）：pattern 非 none 时逐根消耗 patternLeft ——
+    let pattern: LimitPattern | 'none' = 'none'
+    let patternLeft = 0
+    // 已出现过的形态（覆盖保证：9 种形态各至少出现一次后再恢复随机）
+    const seenPatterns = new Set<LimitPattern>()
 
     for (let i = 0; i < dates.length; i++) {
-      // —— 趋势状态机：每根 12% 概率切换；同向连续 ≥6~10 根强制切换（波段回调）——
-      trendLen++
-      if (rand() < 0.12 || trendLen >= 6 + Math.floor(rand() * 4)) {
-        const r = rand()
-        trend = r < 0.4 ? 'up' : r < 0.8 ? 'down' : 'flat'
+      // —— 形态段结束：恢复常态（重置趋势状态，避免与脱节价格冲突）——
+      if (pattern !== 'none' && patternLeft <= 0) {
+        pattern = 'none'
+        trend = 'flat'
         trendLen = 0
       }
-      const drift = trend === 'up' ? 0.0016 : trend === 'down' ? -0.0016 : 0
+      // —— 形态段启动：价格未过高（<120 元）时 3.5% 概率触发一段情绪形态 ——
+      if (pattern === 'none' && preClose < 120 && rand() < 0.035) {
+        let chosen: LimitPattern
+        // 覆盖保证：优先选择尚未出现过的形态（前 9 次启动依次补齐 9 种，确定性齐全）
+        const missing = PATTERN_SEQUENCE.filter((p) => !seenPatterns.has(p))
+        if (missing.length > 0) {
+          chosen = missing[Math.floor(rand() * missing.length)]
+        } else {
+          // 9 种已齐全：恢复真实随机分布（涨跌各半 + 连板/单板权重）
+          const isUp = rand() < 0.5
+          const roll = rand()
+          if (isUp) {
+            // 上涨族：一字板（1~10 连板）| 厂字板 | 尾盘上板 | 地天板 | 天地天板
+            if (roll < 0.5) { chosen = 'limit-up' }
+            else if (roll < 0.62) { chosen = 'factory-up' }
+            else if (roll < 0.74) { chosen = 'tail-up' }
+            else if (roll < 0.87) { chosen = 'ground-sky' }
+            else { chosen = 'sky-ground-sky' }
+          } else {
+            // 下跌族：一字跌停（1~10 连板）| 尾盘下板 | 天底板 | 地天地板
+            if (roll < 0.5) { chosen = 'limit-down' }
+            else if (roll < 0.62) { chosen = 'tail-down' }
+            else if (roll < 0.74) { chosen = 'sky-ground' }
+            else if (roll < 0.87) { chosen = 'ground-sky-ground' }
+            else { chosen = 'limit-down' }
+          }
+        }
+        seenPatterns.add(chosen)
+        pattern = chosen
+        // 一字板/一字跌停支持 1~10 连板，其余单根形态
+        patternLeft = chosen === 'limit-up' || chosen === 'limit-down'
+          ? 1 + Math.floor(rand() * 10)
+          : 1
+      }
 
-      // —— 波动率（GARCH 式聚集）：基础波动 × 昨日波动放大 × 消息面冲击 ——
-      const baseVol = 0.014 * (0.6 + 0.8 * rand())
-      const cluster = 1 + Math.min(Math.abs(prevRet) / 0.02, 1) * 0.9
-      const shock = rand() < 0.07 ? 2.4 : 1
-      const vol = Math.min(baseVol * cluster * shock, 0.09)
+      // —— 单根 K 生成：形态段内走形态模板，常态走随机游走 ——
+      let open: number
+      let close: number
+      let high: number
+      let low: number
+      let volume: number
+      if (pattern !== 'none') {
+        patternLeft -= 1
+        const pb = patternBar(pattern, preClose, rand)
+        open = pb.open
+        high = pb.high
+        low = pb.low
+        close = pb.close
+        volume = pb.volume
+      } else {
+        // —— 趋势状态机：每根 12% 概率切换；同向连续 ≥6~10 根强制切换（波段回调）——
+        trendLen++
+        if (rand() < 0.12 || trendLen >= 6 + Math.floor(rand() * 4)) {
+          const r = rand()
+          trend = r < 0.4 ? 'up' : r < 0.8 ? 'down' : 'flat'
+          trendLen = 0
+        }
+        const drift = trend === 'up' ? 0.0016 : trend === 'down' ? -0.0016 : 0
 
-      // —— 跳空：常态小（±0.3%）、消息大（±1.4%）；趋势中开盘同向微偏（东财口径）——
-      const gapBias = trend === 'up' ? 0.0008 : trend === 'down' ? -0.0008 : 0
-      const gap = (rand() < 0.07 ? (rand() - 0.4) * 0.028 : (rand() - 0.5) * 0.006) + gapBias
-      const open = Math.max(preClose * (1 + gap), 0.01)
+        // —— 波动率（GARCH 式聚集）：基础波动 × 昨日波动放大 × 消息面冲击 ——
+        const baseVol = 0.014 * (0.6 + 0.8 * rand())
+        const cluster = 1 + Math.min(Math.abs(prevRet) / 0.02, 1) * 0.9
+        const shock = rand() < 0.07 ? 2.4 : 1
+        const vol = Math.min(baseVol * cluster * shock, 0.09)
 
-      // —— 收盘：漂移 + 噪声（趋势中噪声同向偏置，阳线更易延续）——
-      const noiseBias = trend === 'up' ? 0.3 : trend === 'down' ? -0.3 : 0
-      const close = Math.max(
-        open * (1 + drift + (rand() - 0.5 + noiseBias * 0.5) * 2 * vol),
-        0.01,
-      )
-      const body = Math.abs(close - open) / open
+        // —— 跳空：常态小（±0.3%）、消息大（±1.4%）；趋势中开盘同向微偏（东财口径）——
+        const gapBias = trend === 'up' ? 0.0008 : trend === 'down' ? -0.0008 : 0
+        const gap = (rand() < 0.07 ? (rand() - 0.4) * 0.028 : (rand() - 0.5) * 0.006) + gapBias
+        open = Math.max(preClose * (1 + gap), 0.01)
 
-      // —— 影线：波动越大影线越长（真实 K 线常态带影线）——
-      const high = Math.max(open, close) * (1 + rand() * vol * 0.6)
-      const low = Math.max(Math.min(open, close) * (1 - rand() * vol * 0.6), 0.01)
+        // —— 收盘：漂移 + 噪声（趋势中噪声同向偏置，阳线更易延续）——
+        const noiseBias = trend === 'up' ? 0.3 : trend === 'down' ? -0.3 : 0
+        close = Math.max(
+          open * (1 + drift + (rand() - 0.5 + noiseBias * 0.5) * 2 * vol),
+          0.01,
+        )
+        const body = Math.abs(close - open) / open
 
-      // —— 价量联动：涨放量（阳线量 1.15 倍）、跌缩量、大波动恐慌放量 ——
-      const volK = 1 + body * 22 * (close >= open ? 1.15 : 0.85)
-      const volume = Math.round((5_000_000 + rand() * 40_000_000) * Math.min(volK, 3.2))
+        // —— 影线：波动越大影线越长（真实 K 线常态带影线）——
+        high = Math.max(open, close) * (1 + rand() * vol * 0.6)
+        low = Math.max(Math.min(open, close) * (1 - rand() * vol * 0.6), 0.01)
+
+        // —— 价量联动：涨放量（阳线量 1.15 倍）、跌缩量、大波动恐慌放量 ——
+        const volK = 1 + body * 22 * (close >= open ? 1.15 : 0.85)
+        volume = Math.round((5_000_000 + rand() * 40_000_000) * Math.min(volK, 3.2))
+      }
       const amount = Math.round(volume * ((open + close) / 2))
 
       pool.push({
@@ -387,7 +543,9 @@ export class MockChartDataService implements ChartDataService {
       })
       const ret = (close - preClose) / preClose
       prevRet = ret
-      preClose = close
+      // 昨收口径统一：取整到分，与 pool 记录的 close 严格一致（形态涨停/跌停价
+      // 基于同一口径计算，避免临界舍入差 0.01 导致形态检测/展示不一致，v1.6.56）
+      preClose = +close.toFixed(2)
     }
 
     this.pools.set(symbol, pool)

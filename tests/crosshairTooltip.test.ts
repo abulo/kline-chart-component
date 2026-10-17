@@ -61,6 +61,30 @@ describe('buildTooltipRows', () => {
     expect(rows[6].value).toBe('0.00%')
   })
 
+  it('开盘/收盘/最高/最低：高于昨收着上涨色（红）', () => {
+    const rows = buildTooltipRows(makeBar({}), 't', colors) // preClose 10：open 10.2 / close 10.4 / high 10.5 / low 10.1
+    expect(rows[1].color).toBe('#FF0000')
+    expect(rows[2].color).toBe('#FF0000')
+    expect(rows[3].color).toBe('#FF0000')
+    expect(rows[4].color).toBe('#FF0000')
+  })
+
+  it('开盘/收盘/最高/最低：低于昨收着下跌色（绿）', () => {
+    const rows = buildTooltipRows(makeBar({ open: 9.8, high: 9.9, low: 9.5, close: 9.6 }), 't', colors)
+    expect(rows[1].color).toBe('#008000')
+    expect(rows[2].color).toBe('#008000')
+    expect(rows[3].color).toBe('#008000')
+    expect(rows[4].color).toBe('#008000')
+  })
+
+  it('开盘/收盘/最高/最低：等于昨收不着色', () => {
+    const rows = buildTooltipRows(makeBar({ open: 10, high: 10, low: 10, close: 10 }), 't', colors)
+    expect(rows[1].color).toBeUndefined()
+    expect(rows[2].color).toBeUndefined()
+    expect(rows[3].color).toBeUndefined()
+    expect(rows[4].color).toBeUndefined()
+  })
+
   it('缺失昨收时以开盘点兜底（不抛错）', () => {
     const rows = buildTooltipRows(makeBar({ preClose: undefined, open: 10, close: 10.5 }), 't', colors)
     expect(rows[5].value).toBe('+0.50')

@@ -65,13 +65,20 @@ export const buildTooltipRows = (
   const changePct = preClose > 0 ? (change / preClose) * 100 : 0
   const sign = change > 0 ? '+' : change < 0 ? '-' : ''
   const changeColor = change > 0 ? colors.up : change < 0 ? colors.down : undefined
+  // 单值对比昨收着色：> preClose 红（up）、< preClose 绿（down）、相等中性（v1.6.55）
+  const colorByPreClose = (value: number | undefined): string | undefined => {
+    if (value == null) return undefined
+    if (value > preClose) return colors.up
+    if (value < preClose) return colors.down
+    return undefined
+  }
   // 第一行时间直显（label 置空，show 时该行 label 列不占位，v1.6.44）
   return [
     { label: '', value: timeText },
-    { label: '开盘', value: formatPrice(bar.open) },
-    { label: '收盘', value: formatPrice(bar.close) },
-    { label: '最高', value: formatPrice(bar.high) },
-    { label: '最低', value: formatPrice(bar.low) },
+    { label: '开盘', value: formatPrice(bar.open), color: colorByPreClose(bar.open) },
+    { label: '收盘', value: formatPrice(bar.close), color: colorByPreClose(bar.close) },
+    { label: '最高', value: formatPrice(bar.high), color: colorByPreClose(bar.high) },
+    { label: '最低', value: formatPrice(bar.low), color: colorByPreClose(bar.low) },
     { label: '涨跌', value: `${sign}${formatPrice(Math.abs(change))}`, color: changeColor },
     { label: '涨幅', value: `${sign}${Math.abs(changePct).toFixed(2)}%`, color: changeColor },
     { label: '成交量', value: formatVolume(bar.volume) },
@@ -188,7 +195,7 @@ export class CrosshairTooltip {
     root.style.boxSizing = 'border-box'
     root.style.borderRadius = '4px'
     root.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.25)'
-    root.style.padding = '6px 8px'
+    root.style.padding = '5px 5px'
     root.style.fontFamily =
       '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif'
     root.style.fontSize = '12px'

@@ -110,7 +110,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#1E222D',
     crosshairLabelBackground: '#2A2E39',
     crosshairLabelText: '#D1D4DC',
-    tooltipBackground: '#1E222D',
+    tooltipBackground: 'rgba(30, 34, 45, 0.8)', // 深系 tooltip 背景（90% 不透明，轻微透出图表）
     tooltipText: '#D1D4DC',
     // 深系：基于图表背景 #131722 的半透明遮罩，文字沿用指示值标签色
     maskBackground: 'rgba(19, 23, 34, 0.72)',
@@ -145,7 +145,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#E6E8EC',
     crosshairLabelBackground: '#F0F2F5',
     crosshairLabelText: '#33373E',
-    tooltipBackground: '#FFFFFF',
+    tooltipBackground: 'rgba(255, 255, 255, 0.8)', // 浅系 tooltip 背景（90% 不透明，轻微透出图表）
     tooltipText: '#33373E',
     // 浅系：白底半透明遮罩，文字深色保证可读
     maskBackground: 'rgba(255, 255, 255, 0.72)',

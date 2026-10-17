@@ -83,4 +83,58 @@ describe('Mock 真实化（v1.6.34）', () => {
     }
     expect(checked).toBeGreaterThan(5)
   }, 30000)
+
+  it('A股情绪形态：日 K 池出现一字板 / 连板 / 尾盘板 / 天地板（v1.6.56）', async () => {
+    const service = createService()
+    const day = await service.fetchHistory({ symbol: '600000.SH', period: 'day', limit: 100000 })
+    let upRun = 0
+    let downRun = 0
+    let hasOneUp = false
+    let hasOneDown = false
+    let hasFactory = false // 厂字板：O=C=涨停且 L 明显跌破涨停（盘中开板）
+    let hasTailUp = false // 尾盘上板：C=涨停且 O 明显低于涨停
+    let hasTailDown = false // 尾盘下板：C=跌停且 O 明显高于跌停
+    let hasGroundSky = false // 地天板：O=跌停、C=涨停
+    let hasSkyGround = false // 天底板：O=涨停、C=跌停
+    let hasSkyGroundSky = false // 天地天板：O=C=涨停且 L=跌停
+    let hasGroundSkyGround = false // 地天地板：O=C=跌停且 H=涨停
+    for (let i = 1; i < day.length; i++) {
+      const b = day[i]
+      const pre = day[i - 1].close!
+      const up = +Math.round(pre * 1.1 * 100) / 100
+      const down = +Math.round(pre * 0.9 * 100) / 100
+      const oneUp = b.open === up && b.high === up && b.low === up && b.close === up
+      const oneDown = b.open === down && b.high === down && b.low === down && b.close === down
+      if (oneUp) { upRun++; downRun = 0; hasOneUp = true }
+      else if (oneDown) { downRun++; upRun = 0; hasOneDown = true }
+      else { upRun = 0; downRun = 0 }
+      if (b.open === up && b.close === up && b.low < up * 0.98) hasFactory = true
+      if (b.close === up && b.open < up * 0.98) hasTailUp = true
+      if (b.close === down && b.open > down * 1.02) hasTailDown = true
+      if (b.open === down && b.close === up) hasGroundSky = true
+      if (b.open === up && b.close === down) hasSkyGround = true
+      if (b.open === up && b.close === up && b.low === down) hasSkyGroundSky = true
+      if (b.open === down && b.close === down && b.high === up) hasGroundSkyGround = true
+    }
+    // 连板：相邻两根均为一字板且第二根价 = 第一根 ×1.10 / ×0.90（涨/跌连板）
+    let hasMultiBoard = false
+    for (let i = 2; i < day.length; i++) {
+      const b = day[i - 1]
+      const c = day[i]
+      const bOne = b.open === b.high && b.high === b.low && b.low === b.close
+      const cOne = c.open === c.high && c.high === c.low && c.low === c.close
+      if (bOne && cOne && c.close === +Math.round(b.close! * 1.1 * 100) / 100) hasMultiBoard = true
+      if (bOne && cOne && c.close === +Math.round(b.close! * 0.9 * 100) / 100) hasMultiBoard = true
+    }
+    expect(hasOneUp).toBe(true)
+    expect(hasOneDown).toBe(true)
+    expect(hasFactory).toBe(true)
+    expect(hasTailUp).toBe(true)
+    expect(hasTailDown).toBe(true)
+    expect(hasGroundSky).toBe(true)
+    expect(hasSkyGround).toBe(true)
+    expect(hasSkyGroundSky).toBe(true)
+    expect(hasGroundSkyGround).toBe(true)
+    expect(hasMultiBoard).toBe(true)
+  }, 30000)
 })
