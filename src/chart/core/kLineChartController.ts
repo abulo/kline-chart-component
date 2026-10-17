@@ -832,6 +832,16 @@ export class KLineChartController {
           value: bar.avgPrice ?? 0, // pointType='timeshare' 必含 avgPrice
         })),
       );
+      // 右刻度承载 series 同步价格数据（v1.7.1 修复）：right scale 必须有
+      // firstValue（非空数据）——否则左刻度关 + 右刻度开时，库 defaultPriceScale
+      // 回退到 right（空 scale）→ 十字星横线 price/y = NaN 消失；同步 price 后
+      // right 范围与 left 同源一致，横线与指示值均正常。
+      this.timeshareRightAxisSeries?.setData(
+        normalized.map(({ bar, time }) => ({
+          time: time as UTCTimestamp,
+          value: bar.price ?? 0,
+        })),
+      );
       // 成交量（分时，v1.7.0）：Histogram 透明锚点（仅建 scale 值域），
       // 可见 1px 细柱由 VolumeBarPrimitive 自绘（红绿按 price vs preClose 三态，
       // 与 K 线柱同一判定基准）；主题切换时由 applyTheme 同步锚点色
@@ -869,6 +879,15 @@ export class KLineChartController {
     // 分时双线清空（K 线周期不显示分时线）
     this.timesharePriceSeries?.setData([]);
     this.timeshareAvgSeries?.setData([]);
+    // 右刻度承载 series 同步收盘数据（v1.7.1 修复，同分时分支原因）：
+    // right scale 保持有数据 → 左刻度关 + 右刻度开时库 defaultPriceScale 回退
+    // 到 right 也不至于 firstValue=null（十字星横线不消失）
+    this.timeshareRightAxisSeries?.setData(
+      normalized.map(({ bar, time }) => ({
+        time: time as UTCTimestamp,
+        value: bar.close ?? 0,
+      })),
+    );
     // 成交量：Histogram 仅作 scale 锚点，颜色统一走 options.color（背景色，不可见），
     // 主题切换时由 applyTheme 同步更新；可见柱体由 VolumeBarPrimitive 按 bars 自绘
     this.volumeSeries.setData(
@@ -1023,6 +1042,11 @@ export class KLineChartController {
         time: time as UTCTimestamp,
         value: point.volume ?? 0,
       });
+      // 右刻度承载 series 同步（v1.7.1 修复：保持 right scale 有数据，见 applyData 注释）
+      this.timeshareRightAxisSeries?.update({
+        time: time as UTCTimestamp,
+        value: point.price ?? 0,
+      });
     } else {
       this.klineSeries.update({
         time: time as UTCTimestamp,
@@ -1035,6 +1059,11 @@ export class KLineChartController {
       this.volumeSeries.update({
         time: time as UTCTimestamp,
         value: point.volume ?? 0,
+      });
+      // 右刻度承载 series 同步（v1.7.1 修复：K 线实时推送保持 right scale 有数据）
+      this.timeshareRightAxisSeries?.update({
+        time: time as UTCTimestamp,
+        value: point.close ?? 0,
       });
     }
     if (last && time > normalizeChartTime(last.time)!) {
