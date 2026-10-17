@@ -523,6 +523,9 @@ export class KLineChartController {
         formatPercent(Number(price.toFixed(2)), this.getTimesharePreClose()),
     });
     this.timeshareRightAxisSeries!.attachPrimitive(pane1RightCrosshairLabel);
+    // 注册进十字星管理器（move 回调按 paneIndex 注入横线 y；漏注册则 y 恒 null 不绘制，
+    // v1.7.1 右刻度区指示值不显示根因）
+    this.crosshairManager.registerPrimitive(pane1RightCrosshairLabel);
     this.crosshairManager.registerPrimitive(pane1CrosshairLabel);
     // pane1 最高价 / 最低价标注：可视区域内 high 最大 / low 最小的 bar，
     // 最高价黄色标注在柱顶上方、最低价蓝色标注在柱底下方（各带同色实线
