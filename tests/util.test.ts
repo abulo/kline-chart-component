@@ -118,9 +118,9 @@ describe('formatAxisTime 按周期格式化时间（pane0 信息行 / 十字星�
     expect(formatAxisTime(t0, 'month')).toBe('2026-10-14')
   })
 
-  it('分时（1d~5d）→ HH:mm', () => {
-    expect(formatAxisTime(t0, '1d')).toBe('09:35')
-    expect(formatAxisTime(t0, '5d')).toBe('09:35')
+  it('分时（1d~5d）→ YYYY-MM-DD HH:mm（v1.7.0 调整：跨多交易日需区分日期）', () => {
+    expect(formatAxisTime(t0, '1d')).toBe('2026-10-14 09:35')
+    expect(formatAxisTime(t0, '5d')).toBe('2026-10-14 09:35')
   })
 
   it('分钟 K（60/30/15/5/1 分）→ YYYY-MM-DD HH:mm', () => {

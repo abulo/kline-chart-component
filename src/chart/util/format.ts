@@ -78,13 +78,14 @@ export const formatDateTime = (seconds?: number | null): string => {
 /**
  * 按周期格式化时间（pane0 信息行 / 十字星时间轴指示值，v1.5.10）：
  *  - 日 K / 周 K / 月 K        → YYYY-MM-DD；
- *  - 分时（1d~5d）              → HH:mm；
+ *  - 分时（1d~5d）              → YYYY-MM-DD HH:mm（v1.7.0 调整：跨多交易日分时
+ *    需区分日期，由 HH:mm 改为日期 + 时间）；
  *  - 60/30/15/5/1 分钟 K       → YYYY-MM-DD HH:mm。
  * 未知周期默认按日 K（YYYY-MM-DD），容错外部传入非常用周期值。
  */
 export const formatAxisTime = (seconds?: number | null, period?: string): string => {
   if (period === '1d' || period === '2d' || period === '3d' || period === '4d' || period === '5d') {
-    return formatClock(seconds)
+    return formatDateTime(seconds)
   }
   if (
     period === '60min' ||

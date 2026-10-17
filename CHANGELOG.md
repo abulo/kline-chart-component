@@ -13,7 +13,7 @@
 - **MACD 抽取**：K 线周期保留 `MacdBarPrimitive` 自绘红绿柱（锚点透明，正值空心红柱）；分时周期同用 `MacdBarPrimitive` 自绘但 **柱宽固定 1px 的实心细线**（`getIsTimeshare` 注入：正值实心红线 / 负值实心绿线，不做空心）。
 - **附图指标分时适配**：指标数据源换算 K 口径（`close = price`，按价格序列计算）；分时无 CR（`TIMESHARE_DISABLED_SUB_INDICATORS`，App 按钮过滤 + 管理器兜底）。
 - **栅格竖线份数**：`timeshareGridVerticalCount`（1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5）；`GridPrimitive.verticalCount` 静态字段改 `getVerticalCount` 动态取数（分时按周期 / K 线恒 4）。
-- **交互差异**：分时下平移 / 缩放按钮隐藏（App `isTimeshare` computed），且 **分时不可平移**（`setPeriod` 动态切换 `handleScroll`：滚轮 / 按住拖拽 / 触摸全关，缩放仍由工具栏按钮控制）；分时 `hasMoreHistory=false` 不参与左滑翻页；`formatAxisTime` 分时分支输出 HH:mm。
+- **交互差异**：分时下平移 / 缩放按钮隐藏（App `isTimeshare` computed），且 **分时不可平移**（`setPeriod` 动态切换 `handleScroll`：滚轮 / 按住拖拽 / 触摸全关，缩放仍由工具栏按钮控制）；分时 `hasMoreHistory=false` 不参与左滑翻页；`formatAxisTime` 分时分支输出 **YYYY-MM-DD HH:mm**（v1.7.0 调整：跨多交易日分时需区分日期）。
 - **tooltip 分时适配**：分时点无 OHLC，显示 价格 / 均价（最高 / 最低 '—'），涨跌基准 = 昨收。
 - **服务层**：`isTimesharePeriod` 统一为公共版（`../chart/periods` import）。
 - **测试**：新增 `tests/timeshare.test.ts`（判定函数 + 241/240/1201 条数 + 字段 + 严格递增 + 交易日数）。
