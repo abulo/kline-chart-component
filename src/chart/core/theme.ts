@@ -46,6 +46,10 @@ export interface ChartThemeColors {
   crosshairLabelBackground: string
   /** 十字星指示值标签文字颜色（深浅系区分） */
   crosshairLabelText: string
+  /** 十字星 tooltip 浮层背景颜色（深/浅系区分，需与图表背景可见区分） */
+  tooltipBackground: string
+  /** 十字星 tooltip 浮层默认文字颜色（涨跌行按 up/down 着色，其余用本色） */
+  tooltipText: string
   /** 加载遮罩（kline__mask）与更早数据提示（kline__older-tip）背景颜色（半透明随深浅系） */
   maskBackground: string
   /** 加载遮罩 / 更早数据提示文字颜色 */
@@ -106,6 +110,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#1E222D',
     crosshairLabelBackground: '#2A2E39',
     crosshairLabelText: '#D1D4DC',
+    tooltipBackground: '#1E222D',
+    tooltipText: '#D1D4DC',
     // 深系：基于图表背景 #131722 的半透明遮罩，文字沿用指示值标签色
     maskBackground: 'rgba(19, 23, 34, 0.72)',
     maskText: '#D1D4DC',
@@ -139,6 +145,8 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     grid: '#E6E8EC',
     crosshairLabelBackground: '#F0F2F5',
     crosshairLabelText: '#33373E',
+    tooltipBackground: '#FFFFFF',
+    tooltipText: '#33373E',
     // 浅系：白底半透明遮罩，文字深色保证可读
     maskBackground: 'rgba(255, 255, 255, 0.72)',
     maskText: '#33373E',

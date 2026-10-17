@@ -94,6 +94,7 @@ import type { PeriodValue } from "../periods";
 import { AxisLabelPrimitive } from "../axis/axisLabelPrimitive";
 import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrimitive";
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
+import { CrosshairTooltip } from "../crosshair/crosshairTooltip";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
 import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH, VIEW_SHIFT_STEP } from "./constants";
@@ -115,6 +116,12 @@ export class KLineChartController {
    *  直接作为指标库 / primitive / series 数据源，无内部中间类型。
    *  可变引用：service 拉取（setKlineData）整体替换、实时订阅（updateLastBar）原地更新） */
   private bars: ChartDataPoint[] = [];
+  /** time → bar 索引（十字星 tooltip 命中取数 O(1)；批量重建 / 实时增量维护） */
+  private barIndex = new Map<number, ChartDataPoint>();
+  /** 各 Pane 像素高度（applyStretchFactors 更新；十字星 tooltip 定位 paneTop 用） */
+  private paneHeights: number[] = [];
+  /** 十字星数据浮层（v1.6.35：命中显示时间/OHLC/涨跌/涨幅/量额九项） */
+  private readonly tooltip: CrosshairTooltip;
   /** 股票名称（pane0 顶部信息行显示：名称 [代码]） */
   private name: string;
   /** 股票代码（pane0 顶部信息行显示：名称 [代码]） */
@@ -182,6 +189,9 @@ export class KLineChartController {
     // 数据服务（组件构造时注入 props.service ?? defaultService；未注入则 init 报错不拉数）
     this.service = options.service;
     this.onStatusChange = options.onStatusChange;
+    // 十字星数据浮层：挂 document.body（position: fixed，v1.6.40 脱离图表 DOM 树，
+    // 杜绝层级 / 事件拦截不确定性；传入 chart 容器作为定位基准 rect）
+    this.tooltip = new CrosshairTooltip(this.container, themeColors(this.theme));
 
     /* ---------- 0. 实例保护：容器打标记防重复创建 chart 实例 ----------
      * 组件重复挂载 / HMR / 路由切换时可能再次进入构造；标记在 destroy 时清除，
@@ -285,8 +295,16 @@ export class KLineChartController {
       getTimeFormat: () => this.timeFormat,
       getPeriod: () => this.period,
     });
-    // 十字星管理器：构造即订阅十字星移动（pane0 不触发 / 内容 Pane 注入左刻度指示值）
-    this.crosshairManager = new CrosshairManager({ chart: this.chart });
+    // 十字星管理器：构造即订阅十字星移动（pane0 不触发 / 内容 Pane 注入左刻度指示值 /
+    // 命中更新数据浮层 v1.6.35）
+    this.crosshairManager = new CrosshairManager({
+      chart: this.chart,
+      tooltip: this.tooltip,
+      getBarByTime: this.getBarByTime,
+      getPaneTop: this.getPaneTop,
+      getTimeText: this.getTimeText,
+      getWidth: () => this.container.clientWidth,
+    });
 
     /* ---------- 3. pane0：顶部空 Pane（无数据，自绘"名称 [代码] 时间 + 指标值"） ---------- */
     this.chart
@@ -603,6 +621,15 @@ export class KLineChartController {
       ratios,
     );
     panes.forEach((pane, index) => pane.setStretchFactor(paneHeights[index]));
+    // v1.6.35：记录各 Pane 像素高度（十字星 tooltip 定位：paneTop = 前序 Pane 高度累加）
+    this.paneHeights = paneHeights;
+  };
+
+  /** 所在 pane 顶部 y（相对图表 canvas）：前序 Pane 像素高度累加（v1.6.35 tooltip 定位） */
+  private getPaneTop = (paneIndex: number): number => {
+    let top = 0
+    for (let i = 0; i < paneIndex; i++) top += this.paneHeights[i] ?? 0
+    return top
   };
 
   /* ===================== 数据 ===================== */
@@ -730,6 +757,7 @@ export class KLineChartController {
    */
   setKlineData = (points: ChartDataPoint[]): void => {
     this.bars = points.filter((point) => point.pointType === "kline");
+    this.rebuildBarIndex();
     this.applyData();
     this.chart.timeScale().fitContent();
   };
@@ -768,6 +796,8 @@ export class KLineChartController {
       );
       if (index >= 0) this.bars[index] = { ...point, time };
     }
+    // 实时增量维护 tooltip 索引（O(1)；批量场景走 rebuildBarIndex）
+    this.barIndex.set(time, { ...point, time });
     this.indicatorManager.rebuildVolumeData();
     this.indicatorManager.refreshMainIndicatorData();
     this.indicatorManager.rebuildIndicatorData();
@@ -787,6 +817,7 @@ export class KLineChartController {
     // 保存当前可见逻辑范围，setData 后偏移恢复（新数据前置 → 原有数据右移 added 根）
     const range = this.chart.timeScale().getVisibleLogicalRange();
     this.bars = bars;
+    this.rebuildBarIndex();
     this.applyData();
     if (range) {
       this.chart.timeScale().setVisibleLogicalRange({
@@ -796,6 +827,19 @@ export class KLineChartController {
     }
     return added;
   };
+
+  /** 重建 time → bar 索引（批量数据变更后调用：setKlineData / prependHistory） */
+  private rebuildBarIndex = (): void => {
+    this.barIndex = new Map(this.bars.map((bar) => [bar.time, bar]));
+  };
+
+  /** 按 time 取整根 K 线（十字星 tooltip 命中数据源，O(1) 索引） */
+  private getBarByTime = (time: number): ChartDataPoint | undefined =>
+    this.barIndex.get(time);
+
+  /** 时间文本（十字星 tooltip 时间列；与 pane0 信息行同款格式：format 模板或按周期自动） */
+  private getTimeText = (time: number): string =>
+    this.timeFormat ? formatTimeByFmt(time, this.timeFormat) : formatAxisTime(time, this.period);
 
   /** 当前最早一根 K 线 time（无数据时 undefined；组件用作 before 分页锚点） */
   getEarliestTime = (): number | undefined => this.bars[0]?.time;
@@ -836,6 +880,7 @@ export class KLineChartController {
   applyTheme = (name: ChartThemeName): void => {
     this.theme = name;
     const themeColorSet = themeColors(name);
+    this.tooltip.setTheme(themeColorSet);
     this.chart.applyOptions({
       layout: {
         background: { type: ColorType.Solid, color: themeColorSet.background },
@@ -982,6 +1027,8 @@ export class KLineChartController {
     this.loadSeq++;
     // 十字星管理器退订监听 + 清空指示值 primitive 引用
     this.crosshairManager.destroy();
+    // 移除十字星数据浮层节点（防泄漏）
+    this.tooltip.destroy();
     // 指标管理器清空全部内部引用 / 缓存
     this.indicatorManager.destroy();
     // 卸载 SAR 圆点 primitive（挂在 klineSeries 上，随 chart.remove 一起释放，显式 detach 更保险）

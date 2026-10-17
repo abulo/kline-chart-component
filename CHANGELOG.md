@@ -2,11 +2,223 @@
 
 版本号遵循语义化版本（Semantic Versioning）：`主版本号.次版本号.修订号`
 
+## v1.6.48（2026-10-17）
+
+### 修复：十字星 tooltip 无法选中文字（CDP 实测闭环）
+
+- **根因**：tooltip 挂 document.body（图表 DOM 外）。鼠标移入浮层时，lightweight-charts 向图表容器派发 `mouseleave` → 库清除十字星 → `crosshairMove(null)` → `CrosshairManager.applyCrosshairMove` 未命中分支直接隐藏浮层——浮层在按下选中前就消失，文字永远无法选中（v1.6.40 挂 body 起即存在）。
+- **修复**：
+  - `CrosshairTooltip` 新增悬停态记录（`mouseenter`/`mouseleave` → `isHovered`）；
+  - `applyCrosshairMove` 未命中分支增加 hovered 守卫：鼠标仍悬停在浮层上时跳过 hide / pane0 时间回退 / 指示值清除；
+  - 保留 v1.6.47 的浮层 `mousedown` `stopPropagation`（阻止 document 级 `outsideHandler`，纯点击图标外不触发十字星清除）。
+- **验证（CDP headless Chrome 实测）**：进入图表 → tooltip 显示 → 鼠标移入浮层保持显示（KEPT）→ 按下拖动选出 `-05-18` 文本 → 松开后选区持续（selection 非空）。
+- 移除全部临时诊断日志（console.log/trace）。
+- 验证：`vue-tsc --noEmit` 零输出；`vitest` 16 files / 129 tests 全绿。
+
 - **主版本号（MAJOR）**：不兼容的重构 / 架构变更；
 - **次版本号（MINOR）**：向后兼容的功能新增；
 - **修订号（PATCH）**：向后兼容的缺陷修复。
 
 ---
+
+## v1.6.46（2026-10-16）
+
+修复 tooltip 无法选中：选中期间冻结内容更新（mousedown → mouseup），选区不被破坏。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`：
+  - **选中冻结**：浮层 mousedown → window mouseup 期间 `frozen = true`，
+    show 直接跳过（不更新 textContent）——文字选区不会被内容更新破坏；
+    松开（window 级，拖选移出浮层也能恢复）后恢复更新；
+  - `-webkit-user-select: text` 兼容 Safari；
+  - destroy 清理冻结监听（防泄漏）。
+
+### 验证
+vue-tsc 通过；vitest 129/129 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.45（2026-10-16）
+
+tooltip 悬停手势：鼠标在浮层上时显示手型光标（pointer）。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`：浮层根节点 `cursor` 由 default
+  改为 pointer —— 指示浮层可交互。
+
+### 验证
+vue-tsc 通过；vitest 129/129 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.44（2026-10-16）
+
+tooltip 第一行时间直显（去掉"时间"汉字标签）。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`：
+  - `buildTooltipRows` 第一行 label 置空（时间文本原样直显）；
+  - show 时第一行 label 列隐藏（`display: none`），时间顶格显示，其余行
+    保持 label + value 两列结构。
+- 测试：`tests/crosshairTooltip.test.ts` 九行 label 断言首项改为空串。
+
+### 验证
+vue-tsc 通过；vitest 129/129 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.43（2026-10-16）
+
+修正 tooltip 进入方向与角落的映射（左进入 → 右上角，右进入 → 左上角）。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`：`resolveTooltipPosition` 映射反转——
+  **鼠标从左侧进入 → pane 右上角；从右侧进入 → pane 左上角**（原实现相反）；
+  过宽 clamp 逻辑不变（右上角浮层过宽时仍不越界）。
+- 测试：`tests/crosshairTooltip.test.ts` 对应更新左 / 右进入用例断言。
+
+### 验证
+vue-tsc 通过；vitest 129/129 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.42（2026-10-16）
+
+移除十字星 tooltip 拖动手柄（≡）与全部拖动逻辑，浮层固定角落定位 + 文字可选中。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`：
+  - 删除拖动手柄元素（≡）及 handleDragStart / handleDragMove / handleDragUp /
+    dragStart / mouseDown / fixedPos 等全部拖动逻辑；
+  - 保留：进入方向角落定位（左/右半区 → pane1 左/右上角）、`userSelect: text`
+    自由选中 / 复制文字、挂 body + 幂等显示（防闪防抖）、tnum 等宽数字；
+  - `resolveTooltipPosition` / `TooltipPositionParams` 移除 fixedPos 参数
+    （无拖动后固定位置恒为角落定位）。
+- 测试：`tests/crosshairTooltip.test.ts` 删除"拖动固定保持"用例（126 → 129 用例
+  区间调整：定位用例保留左/右上角、过宽 clamp）。
+
+### 验证
+vue-tsc 通过；vitest 129/129 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.41（2026-10-16）
+
+十字星 tooltip 数字等宽（font-feature-settings "tnum"）。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`：浮层根节点增加
+  `font-feature-settings: "tnum"` —— 九行数值按位对齐，十字星移动 / 数据变化时
+  数字宽度稳定不跳动。
+
+### 验证
+vue-tsc 通过；vitest 130/130 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.40（2026-10-16）
+
+tooltip 重构：挂 body + 拖动手柄 + 幂等显示，根治"无法选中 + 高频闪现"。
+
+### 根因
+- **无法选中**：tooltip 整块可拖动（位移阈值判定）——选中文字必然移动鼠标超过
+  4px → 误判为拖动并置 `userSelect: none`，文字选区被取消；且 show 每帧更新
+  textContent，选中后鼠标稍动即破坏选区；
+- **高频闪现**：tooltip 挂在图表容器内，show 每帧重置 left/top（0px → 角落）并
+  强制 reflow（offsetWidth）；浮层紧贴 pane0 边界时鼠标晃动 → pane0/内容 pane
+  事件交替 → hide/show 每帧切换。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`（重构）：
+  - **挂 document.body（position: fixed, z-index 9999）**：脱离图表 DOM 树 /
+    canvas 层级 / overflow 裁剪；pointer-events auto 明确拦截——鼠标在浮层上时
+    图表收不到事件（十字星冻结、内容不再被每帧更新破坏），文字选区稳定；
+  - **拖动手柄**：左上角 ≡（20px）专属拖动（window 级监听）；主体区域
+    `userSelect: text` 自由选中 / 复制，无 preventDefault、无位移阈值——
+    彻底消除"选中与拖动冲突"；
+  - **幂等显示**：show 仅在 hidden → visible 时置 display / 重测尺寸 / 定位；
+    已显示时只更新文本，不再每帧重置位置、不再每帧强制 reflow；
+  - hide 幂等（仅显示中置 none）+ 解除拖动固定（再次进入按方向重定位）。
+- `kLineChartController.ts`：tooltip 构造改传 chart 容器本体（定位 rect 基准）。
+
+### 验证
+vue-tsc 通过；vitest 130/130 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.39（2026-10-16）
+
+修复 tooltip 高频闪烁 + 文字选区被销毁（pane0 分支缺 return + 按住期间冻结内容更新）。
+
+### 变更
+- `src/chart/core/crosshairManager.ts`：
+  - **修复闪烁根因**：`paneIndex === 0` 分支原缺少 `return` —— pane0 内每帧
+    先 `hide()` 再继续走命中逻辑 `show()`，tooltip 高频闪烁；现隐藏后直接返回
+    （同时清 overlayTime / wasHit / 指示值，与未命中分支行为一致）。
+- `src/chart/crosshair/crosshairTooltip.ts`：
+  - **按住期间冻结内容更新**：mousedown → mouseup 期间 `show()` 直接跳过——
+    textContent 更新会破坏正在进行的文字选区（选中后鼠标稍动即丢失）；
+    拖动位置仍由拖动逻辑维护，松手恢复更新。
+
+### 验证
+vue-tsc 通过；vitest 130/130 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.38（2026-10-16）
+
+十字星 tooltip 支持文字选中 / 复制（位移阈值区分点击与拖动）。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`：
+  - 修复：tooltip 文字无法选中 —— 原实现 mousedown 即 `preventDefault` 阻止了文本选择；
+  - 改为**位移阈值判定**：按下不阻止默认行为（`userSelect: 'text'` 明确可选），
+    位移 < 4px = 点击（正常选中 / 复制浮层文字）；位移 ≥ 4px = 拖动
+    （此时才固定位置 + `body.userSelect: none` 临时禁止选择，松开恢复）；
+  - 纯点击（无位移）不再固定位置（拖动固定仅在判定为拖动后生效）。
+
+### 验证
+vue-tsc 通过；vitest 130/130 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.37（2026-10-16）
+
+十字星 tooltip 默认位置固定为 pane1（K 线主图）角落，不随命中 pane 变化。
+
+### 变更
+- `src/chart/core/crosshairManager.ts`：`tooltip.show` 的 paneTop 由"命中 pane 顶部"
+  改为固定 `getPaneTop(1)`（pane1 顶部）—— 鼠标命中 pane3 / pane5 时，
+  tooltip 默认仍在 pane1 左上 / 右上角；进入方向判定与拖动固定逻辑不变。
+
+### 验证
+vue-tsc 通过；vitest 130/130 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.36（2026-10-16）
+
+十字星 tooltip 交互升级：进入方向角落定位 + 可拖动固定。
+
+### 变更
+- `src/chart/crosshair/crosshairTooltip.ts`：
+  - **进入方向定位**：鼠标从图表左半区进入 → 浮层固定 pane 左上角；右半区进入 →
+    右上角（不再跟随鼠标移动；定位算法抽为纯函数 `resolveTooltipPosition`）；
+  - **可拖动**：pointer-events auto + cursor move；按住拖动（window 级监听，
+    鼠标移出浮层仍可拖），松开后位置固定不变，内容仍随十字星更新；
+  - **再次进入重置**：离开图表（hide）时解除拖动固定，下次进入按新方向重定位；
+  - destroy 清理拖动监听（防泄漏）。
+- `crosshairManager.ts`：新增进入方向判定（deps.getWidth；上帧未命中 + 鼠标 x 半区），
+  未命中分支重置 wasHit（"再次进入"语义）。
+- `kLineChartController.ts`：deps 注入 getWidth（容器宽度）。
+- 测试：`tests/crosshairTooltip.test.ts` 新增 4 用例（resolveTooltipPosition：
+  左/右上角定位、拖动固定保持、过宽 clamp）。
+
+### 验证
+vue-tsc 通过；vitest 130/130 全绿（16 文件）；未运行 / 未截图。
+
+## v1.6.35（2026-10-16）
+
+十字星数据浮层 tooltip：命中时跟随鼠标显示九项数据。
+
+### 变更
+- 新增 `src/chart/crosshair/crosshairTooltip.ts`（`CrosshairTooltip` + `buildTooltipRows`）：
+  - 九项数据：时间 / 开盘 / 收盘 / 最高 / 最低 / 涨跌 / 涨幅 / 成交量 / 成交额；
+  - **时间格式与 pane0 信息行一致**（format 模板或按周期自动，同一逻辑 getTimeText）；
+  - **涨跌 / 涨幅红涨绿跌**（theme.upColor / downColor），其余文字主题默认色；
+  - 纯 DOM 管理：预建九行固定节点、仅 textContent 更新（无 innerHTML）；
+  - 定位：鼠标右下偏移 14px，贴容器右 / 下边缘自动翻转；离开图表 / pane0 内自动隐藏；
+  - 主题：背景 / 边框 / 文字色随深浅系（新增 theme.tooltipBackground / tooltipText）。
+- `crosshairManager.ts`：deps 注入 tooltip / getBarByTime / getPaneTop / getTimeText；
+  命中显示 / 未命中隐藏（rAF 节流内，每帧至多一次 DOM 更新）。
+- `kLineChartController.ts`：创建 / 销毁 / 主题同步 tooltip；新增 `time→bar` O(1) 索引
+  （setKlineData / prependHistory 批量重建，updateLastBar 实时增量）与 paneTop 定位
+  （paneHeights 累加）；`getTimeText` 复用 pane0 时间格式逻辑。
+- 新增 `tests/crosshairTooltip.test.ts`（8 用例）：九行顺序、时间透传、红涨绿跌、
+  平盘无色、昨收兜底、量额格式化、OHLC 缺失安全。
+
+### 验证
+vue-tsc 通过；vitest 126/126 全绿（16 文件）；未运行 / 未截图。
 
 ## v1.6.34（2026-10-16）
 

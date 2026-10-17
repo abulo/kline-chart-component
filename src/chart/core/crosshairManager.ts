@@ -15,15 +15,29 @@
  */
 import { type MouseEventParams } from 'lightweight-charts'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+import { CrosshairTooltip } from '../crosshair/crosshairTooltip'
+import type { ChartDataPoint } from '../../types/chart'
 
 /** 十字星管理器构造依赖 */
 export interface CrosshairManagerDeps {
   /** chart 实例（subscribe / unsubscribeCrosshairMove、clearCrosshairPosition） */
   chart: ReturnType<typeof import('lightweight-charts').createChart>
+  /** 十字星数据浮层（命中显示九项数据 / 离开隐藏，v1.6.35） */
+  tooltip: CrosshairTooltip
+  /** 命中 bar 数据源（按 time 取整根 K 线：OHLC + 量额 + 昨收） */
+  getBarByTime: (time: number) => ChartDataPoint | undefined
+  /** 指定 pane 顶部 y（相对图表 canvas；tooltip 默认取 pane1 角落定位） */
+  getPaneTop: (paneIndex: number) => number
+  /** 时间文本（按 pane0 信息行同款格式：format 模板或按周期自动） */
+  getTimeText: (time: number) => string
+  /** 图表容器宽度（px；进入方向判定：鼠标 x < 宽/2 → 左进入，v1.6.36） */
+  getWidth: () => number
 }
 
 export class CrosshairManager {
   /** 依赖（构造注入，只读） */
+  private readonly deps: CrosshairManagerDeps
+  /** chart 实例（退订 / 清除十字星） */
   private readonly chart: CrosshairManagerDeps['chart']
 
   /** 十字星当前命中的 bar 时间（null = 未命中 → 信息行显示最新 bar） */
@@ -31,6 +45,10 @@ export class CrosshairManager {
 
   /** 十字星左刻度指示值 primitive 注册表（pane1 / pane3 / pane5 各一个） */
   private crosshairAxisLabelPrimitives: CrosshairAxisLabelPrimitive[] = []
+  /** 当前进入方向（鼠标从图表左 / 右侧进入；tooltip 角落定位基准，v1.6.36） */
+  private entrySide: 'left' | 'right' = 'left'
+  /** 上一帧是否命中（false → 本次为"再次进入"，按鼠标 x 重判进入方向） */
+  private wasHit = false
 
   /* ---------- 十字星 move rAF 节流（性能，v1.5.9） ----------
    * 拖拽平移 / 快速 mousemove 时 crosshairMove 触发频率可能远高于帧率，
@@ -43,6 +61,7 @@ export class CrosshairManager {
   private frameScheduled = false
 
   constructor(deps: CrosshairManagerDeps) {
+    this.deps = deps
     this.chart = deps.chart
     this.chart.subscribeCrosshairMove(this.handleCrosshairMove)
   }
@@ -86,12 +105,33 @@ export class CrosshairManager {
     // pane0 内不触发十字星（库十字星由内部 mousemove 驱动，此回调与库 set
     // 同帧执行，同一次 invalidate 重绘，视觉上 pane0 内十字星不出现）
     if (param.paneIndex === 0) {
+      // pane0 内不触发十字星：清除十字星 + 隐藏浮层后**直接返回**（v1.6.39 修复：
+      // 原实现缺少 return，pane0 内每帧 hide 后继续走命中逻辑 show →
+      // tooltip 高频闪烁，且 display 切换销毁文字选区导致无法选中）
       this.chart.clearCrosshairPosition()
+      this.overlayTime = null
+      this.wasHit = false
+      this.deps.tooltip.hide()
+      for (const primitive of this.crosshairAxisLabelPrimitives) {
+        primitive.setCrosshairY(null)
+      }
+      return
     }
     if (!point || param.paneIndex === undefined) {
       // 未命中（鼠标离开图表 / pane0 内）：pane0 时间回退到最新 bar 日期，
-      // 并清除各 pane 指示值
+      // 清除各 pane 指示值 + 隐藏数据浮层（隐藏解除 tooltip 拖动固定，下次进入重定位）
+      //
+      // **hovered 守卫（v1.6.48，修复"tooltip 无法选中"根因）**：浮层挂 body
+      // （图表 DOM 外），鼠标移入浮层时库向图表容器派发 mouseleave → 清除十字星 →
+      // crosshairMove(null) 走到此分支。若直接 hide，浮层在按下选中前就消失。
+      // 鼠标仍悬停在浮层上（isHovered）时跳过 hide / 回退 / 清指示值，保持浮层
+      // 与 pane0 时间，文字选区可正常进行。
+      if (this.deps.tooltip.isHovered) {
+        return
+      }
       this.overlayTime = null
+      this.wasHit = false
+      this.deps.tooltip.hide()
       for (const primitive of this.crosshairAxisLabelPrimitives) {
         primitive.setCrosshairY(null)
       }
@@ -100,6 +140,29 @@ export class CrosshairManager {
     // 十字星命中（pane1/3/5）：pane0 时间跟随命中 bar 的日期。
     // 库 crosshairMove 事件本身会触发重绘，pane0 draw 现取 overlayTime 即时更新
     this.overlayTime = (param.time as number | undefined) ?? null
+    // 命中时更新数据浮层（时间按 pane0 格式；取不到 bar 则隐藏防残留）：
+    //  - "再次进入"（上帧未命中）时按鼠标 x 判定进入方向（左/右半区）；
+    //  - 进入方向仅决定角落初始位置；用户拖动后由 tooltip 内部固定，不覆盖。
+    const hitTime = this.overlayTime
+    if (hitTime !== null) {
+      const bar = this.deps.getBarByTime(hitTime)
+      if (bar) {
+        if (!this.wasHit) {
+          const width = this.deps.getWidth()
+          this.entrySide = point.x < width / 2 ? 'left' : 'right'
+        }
+        this.wasHit = true
+        this.deps.tooltip.show({
+          entrySide: this.entrySide,
+          // 默认固定在 pane1（K 线主图）的角落，不随命中 pane 变化（v1.6.37）
+          paneTop: this.deps.getPaneTop(1),
+          bar,
+          timeText: this.deps.getTimeText(hitTime),
+        })
+      } else {
+        this.deps.tooltip.hide()
+      }
+    }
     // 库 MouseEventParams.point 相对"十字星当前所在 pane 的 canvas"（数据区本地坐标），
     // 因此 point.y 即为该 pane 内的本地 y，无需再减去前序 pane 高度和
     const localY = point.y

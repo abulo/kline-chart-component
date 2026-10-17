@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.34（2026-10-16）**
+> **当前版本：v1.6.48（2026-10-17）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -54,6 +54,27 @@
   - 实现路径：`priceAxisPaneViews` + zOrder 'top'（价格轴 top canvas，Cursor 级重绘，流畅无卡顿）；
   - 坐标：库 `point.y` 为 Pane 本地坐标，直接注入，不做前序 Pane 高度换算；
   - 文字右对齐绘制（`textAlign = 'right'`），避免超出价格轴 canvas 被裁剪；
+- **十字星数据浮层 tooltip**（`CrosshairTooltip`，v1.6.35）：十字星命中（pane1/3/5）时
+  跟随鼠标显示九项数据 —— 时间 / 开盘 / 收盘 / 最高 / 最低 / 涨跌 / 涨幅 / 成交量 / 成交额；
+  - **时间格式与 pane0 信息行一致**（`format` 模板或按周期自动，见 §5.2 format）；
+  - **涨跌 / 涨幅红涨绿跌**（theme.upColor / downColor），其余文字用主题默认色；
+  - 背景 / 边框 / 文字色随深浅系（`tooltipBackground` / `tooltipText` / `paneBorder`）；
+  - **进入方向定位（v1.6.43 修正）**：鼠标从图表左半区进入 → 浮层固定
+    **pane1**（K 线主图）**右上角**；从右半区进入 → 固定 pane1 **左上角**
+    （不再跟随鼠标、不随命中 pane 变化）；
+  - **文字可选中（v1.6.48 修复根因）**：浮层主体可自由选中 / 复制文字；浮层固定角落，
+  - **可选中根因修复（v1.6.48）**：浮层挂 body（图表 DOM 外），鼠标移入浮层时
+    lightweight-charts 会向图表容器派发 mouseleave → 清除十字星 → crosshairMove(null)
+    → 未命中分支隐藏浮层（文字无法选中）。修复：浮层记录悬停态（mouseenter /
+    mouseleave → `isHovered`），`applyCrosshairMove` 未命中分支在鼠标仍悬停于
+    浮层上时跳过 hide / 时间回退 / 指示值清除，选区可正常进行（CDP 实测：
+    移入浮层保持显示、按下拖动选出文本、松开后选区持续）；
+    无拖动功能（v1.6.42 已移除拖动手柄）；鼠标离开图表再进入 → 按新进入方向重新定位；
+  - **挂载与防闪（v1.6.40）**：浮层挂 document.body（position: fixed），脱离图表
+    DOM 树；显示后仅更新文本、不重定位 / 不强制 reflow（幂等显示，无高频闪现）；
+  - 性能：预建九行固定节点（仅 textContent 更新，无 innerHTML）、十字星事件 rAF 节流
+    已复用（每帧至多一次 DOM 更新）、命中取数走 time→bar 索引 O(1)（实时增量维护）；
+  - 定位算法抽为纯函数 resolveTooltipPosition（单测覆盖：角落定位 / 拖动固定 / 越界 clamp）；
 - **十字星不贯穿 pane0**：pane0 内不触发十字星（controller 清除），pane0 顶层遮罩（`TopPaneOverlayPrimitive`，zOrder 'top'）以背景色覆盖竖线；
 - **十字星细虚线**（`CrosshairLineCapPrimitive` + `CrosshairLineCapPaneView`，v1.4.101）：竖线在 top 层重绘为 0.75 CSS px 亚像素细虚线（虚线周期 [1,1] 物理 px（最密）），底部补齐实线保证"到底"；横竖线颜色 `crosshairLineColor` 透明度 0.25（深浅系区分，theme.ts），视觉更细更淡；库横竖线本体仍保留（时间轴时间 label 依赖库绘制）；
 - **指标叠加绘图在十字星之上**（`IndicatorLinePrimitive`，zOrder 'top' top canvas 自绘）：主图指标线（MA / EXPMA / BOLL / BBI）与成交量均量线（VOL MA5 / MA10）自绘折线，绘制在十字星之上 —— 十字星横线穿过时指标线完整可见（库十字星画在 top canvas 的 series 之上，LineSeries 必被横线压住，故改自绘）；坐标 = timeScale.timeToCoordinate × anchorSeries.priceToCoordinate，按可视时间范围裁剪，坐标缺失断开路径；
@@ -104,9 +125,10 @@ src/
 │   │   ├── axisLabelPrimitive.ts
 │   │   ├── axisLabelView.ts
 │   │   └── axisLabelPaneView.ts  # 自绘渲染 + 公共 drawAxisLabel（指示值共用）
-│   ├── crosshair/             # 十字星左刻度指示值 + 竖线底部补齐（虚线相位缺口）
+│   ├── crosshair/             # 十字星左刻度指示值 + 竖线底部补齐 + 数据浮层 tooltip
 │   │   ├── crosshairAxisLabelPrimitive.ts
 │   │   ├── crosshairAxisLabelPaneView.ts
+│   │   ├── crosshairTooltip.ts   # 十字星数据浮层（九项数据跟随鼠标，v1.6.35）
 │   │   ├── crosshairLineCapPrimitive.ts # 竖线底部补齐（填 LargeDashed 最后空白段，v1.4.90）
 │   │   └── crosshairLineCapPaneView.ts
 │   ├── border/                # 内容 Pane 边框自绘
