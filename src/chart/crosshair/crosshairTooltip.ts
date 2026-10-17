@@ -8,8 +8,14 @@
  *  - **进入方向定位（v1.6.43 修正）**：鼠标从图表左半区进入 → 浮层固定在
  *    pane **右上角**；从右半区进入 → pane **左上角**（不随命中 pane 变化，
  *    默认 pane1 主图，v1.6.37）；
- *  - **文字可选中（v1.6.38 / v1.6.42）**：浮层主体 `userSelect: text` 可自由
- *    选中 / 复制文字；**无拖动功能**（v1.6.42 删除拖动手柄，浮层固定角落）；
+ *  - **文字可选中（v1.6.38 / v1.6.48 / v1.6.53）**：浮层主体 `userSelect: text`
+ *    可自由选中 / 复制文字（v1.6.48 修复"无法选中"根因：鼠标移入浮层时图表
+ *    mouseleave → 未命中分支隐藏浮层，以 isHovered 悬停守卫跳过 hide）；
+ *  - **拖动（v1.6.53 按下即拖）**：**只要鼠标在 tooltip 任何位置按下即可拖动**
+ *    （无 ≡ 手柄图标，grab 光标）——按下后位移 ≥ 4px 即拖动浮层（拖动期间
+ *    userSelect:none），松开后位置**固定**直到鼠标离开图表（hide 清除固定位，
+ *    再次进入重新角落定位）；无位移 = 点击（单击放光标 / **双击选词 / 三击
+ *    选行**仍可用，与拖动互不冲突）；
  *  - 鼠标离开图表再进入 → 按新进入方向重新定位。
  *
  * 防闪 / 防抖（v1.6.40）：
@@ -125,6 +131,8 @@ export interface CrosshairTooltipShowParams {
 
 /** 行高（px） */
 const ROW_HEIGHT = 19
+/** 拖动判定阈值（px）：位移 < 阈值 = 点击（双击 / 三击选词），≥ 阈值 = 拖动浮层 */
+const DRAG_THRESHOLD = 4
 /** 左列标签列宽（px，九行等宽对齐） */
 const LABEL_WIDTH = 48
 
@@ -147,15 +155,24 @@ export class CrosshairTooltip {
    * crosshairManager.applyCrosshairMove 未命中分支的 hovered 守卫）。
    */
   private hovered = false
-  /** 鼠标是否悬停在浮层上（crosshairManager 未命中分支读取） */
+  /** 鼠标是否悬停在浮层上（crosshairManager 未命中分支读取；拖动中视为悬停，
+   *  拖拽时鼠标可能短暂离开浮层边缘，未命中分支不能 hide，v1.6.49） */
   get isHovered(): boolean {
-    return this.hovered
+    return this.hovered || this.dragging
   }
   /** 显示后测量的实际尺寸（px，hidden → visible 时重测，避免每帧强制 reflow） */
   private size: { width: number; height: number } | null = null
   /** 文本选区冻结中（mousedown → mouseup：选中文字期间暂停 show 内容更新，
    *  防止 textContent 变更破坏正在进行的选区；v1.6.46 修复"无法选中"） */
   private frozen = false
+  /** 拖动起点（mousedown 按下点；位移 ≥ DRAG_THRESHOLD 判定为拖动，v1.6.49） */
+  private dragStart: { x: number; y: number } | null = null
+  /** 按下点相对浮层左上角的偏移（px；拖动跟随用） */
+  private dragOffset: { x: number; y: number } | null = null
+  /** 是否正在拖动浮层（拖动期间禁用文字选择，防止拖出选区） */
+  private dragging = false
+  /** 拖动后的固定位置（body 坐标；hide 时清除 → 下次进入重新角落定位） */
+  private fixedPos: { left: number; top: number } | null = null
 
   constructor(container: HTMLElement, theme: ChartThemeColors) {
     this.theme = theme
@@ -166,7 +183,7 @@ export class CrosshairTooltip {
     root.style.pointerEvents = 'auto' // 拦截自身区域：浮层上鼠标事件不穿透到图表
     root.style.userSelect = 'text' // 允许选中 / 复制文字
     root.style.webkitUserSelect = 'text' // Safari 兼容（v1.6.46）
-    root.style.cursor = 'pointer' // 悬停手势：指示浮层可交互（v1.6.45）
+    root.style.cursor = 'grab' // 按下即拖（v1.6.53）：全容器任意位置可拖动
     root.style.zIndex = '9999' // 脱离图表层级，永远置顶
     root.style.boxSizing = 'border-box'
     root.style.borderRadius = '4px'
@@ -232,7 +249,13 @@ export class CrosshairTooltip {
     this.root.style.left = '0px'
     this.root.style.top = '0px'
     this.size = { width: this.root.offsetWidth, height: this.root.offsetHeight }
-    this.place(params.entrySide, params.paneTop)
+    if (this.fixedPos) {
+      // 拖动后的固定位置优先（鼠标未离开图表期间保持，v1.6.49）
+      this.root.style.left = `${this.fixedPos.left}px`
+      this.root.style.top = `${this.fixedPos.top}px`
+    } else {
+      this.place(params.entrySide, params.paneTop)
+    }
   }
 
   /** 隐藏浮层（幂等：仅显示中才置 none）；下次进入按新方向重新定位 */
@@ -240,6 +263,8 @@ export class CrosshairTooltip {
     if (!this.visible) return
     this.visible = false
     this.root.style.display = 'none'
+    // 隐藏解除拖动固定（下次进入按新方向重新角落定位，v1.6.49）
+    this.fixedPos = null
   }
 
   /** 主题切换：背景 / 边框 / 文字色跟随深浅系 */
@@ -253,6 +278,7 @@ export class CrosshairTooltip {
     this.root.removeEventListener('mousedown', this.handleMouseDown)
     this.root.removeEventListener('mouseenter', this.handleMouseEnter)
     this.root.removeEventListener('mouseleave', this.handleMouseLeave)
+    window.removeEventListener('mousemove', this.handleMouseMove)
     window.removeEventListener('mouseup', this.handleMouseUp)
     this.root.remove()
   }
@@ -287,15 +313,59 @@ export class CrosshairTooltip {
   }
 
   private handleMouseDown = (event: MouseEvent): void => {
-    event.stopPropagation()
-    this.frozen = true
+    event.stopPropagation() // v1.6.47：阻止冒泡到 document（库 outsideHandler 点击图表外 → 清十字星）
+    this.frozen = true // 拖动 / 点击期间暂停 show 内容更新（防视觉跳动 / 选区被破坏）
     window.addEventListener('mouseup', this.handleMouseUp)
+    // v1.6.53 按下即拖：任意位置按下立即注册拖动监听（位移 ≥ 阈值即拖动）
+    this.dragStart = { x: event.clientX, y: event.clientY }
+    window.addEventListener('mousemove', this.handleMouseMove)
   }
 
-  /** 松开（window 级：拖选移出浮层也能恢复）：解除冻结，恢复内容更新 */
+  /**
+   * 移动（window 级：拖出浮层也能继续拖动，v1.6.49）：
+   *  - 位移 < DRAG_THRESHOLD：算点击（双击 / 三击选词可用，不移动浮层）；
+   *  - 首次超过阈值：进入拖动（禁用文字选择，防止拖出选区）+ 记录按下点相对
+   *    浮层左上角的偏移；
+   *  - 拖动中：浮层跟随鼠标（clientX/Y 即 body 坐标，position: fixed 直接用）。
+   */
+  private handleMouseMove = (event: MouseEvent): void => {
+    if (!this.dragStart) return
+    if (!this.dragging) {
+      const dx = event.clientX - this.dragStart.x
+      const dy = event.clientY - this.dragStart.y
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return // 点击：未过阈值不拖动
+      this.dragging = true
+      this.root.style.userSelect = 'none'
+      this.root.style.webkitUserSelect = 'none'
+      this.root.style.cursor = 'grabbing'
+      this.dragOffset = {
+        x: this.dragStart.x - this.root.offsetLeft,
+        y: this.dragStart.y - this.root.offsetTop,
+      }
+    }
+    this.root.style.left = `${event.clientX - this.dragOffset!.x}px`
+    this.root.style.top = `${event.clientY - this.dragOffset!.y}px`
+  }
+
+  /**
+   * 松开（window 级：拖出浮层也能结束）：
+   *  - 拖动结束 → 记录固定位置（鼠标未离开图表期间保持），恢复文字选择能力；
+   *  - 点击（无位移，双击 / 三击选词）→ 仅解除冻结，浏览器原生选区保持；
+   *  - 清理拖动监听与起点。
+   */
   private handleMouseUp = (): void => {
     this.frozen = false
+    window.removeEventListener('mousemove', this.handleMouseMove)
     window.removeEventListener('mouseup', this.handleMouseUp)
+    if (this.dragging) {
+      this.fixedPos = { left: this.root.offsetLeft, top: this.root.offsetTop }
+      this.dragging = false
+      this.root.style.userSelect = 'text'
+      this.root.style.webkitUserSelect = 'text'
+    }
+    this.root.style.cursor = 'grab' // 恢复按下即拖提示
+    this.dragStart = null
+    this.dragOffset = null
   }
 
   /** 定位：容器内坐标 + 容器 rect → body 坐标（position: fixed） */

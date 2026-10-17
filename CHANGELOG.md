@@ -2,6 +2,55 @@
 
 版本号遵循语义化版本（Semantic Versioning）：`主版本号.次版本号.修订号`
 
+## v1.6.53（2026-10-17）
+
+### 按下即拖：鼠标在 tooltip 任意位置按下即可拖动
+
+- **需求**：只要鼠标在 tooltip 任何位置按下，即可拖动浮层（不再长按 / 停顿）。
+- **实现**（`CrosshairTooltip`）：
+  - mousedown（任意位置）立即注册 window 级 mousemove：位移 ≥ 4px（DRAG_THRESHOLD）即进入拖动（userSelect:none + grabbing 光标），浮层跟手；
+  - **无位移 = 点击**：单击放光标 / **双击选词 / 三击选行**仍可用（浏览器原生行为，与拖动不冲突）；
+  - 保留：拖动后 `fixedPos` 固定直到 `hide` 清除（再次进入重新角落定位）、`isHovered` 拖动中视为悬停、`stopPropagation` 防 document outsideHandler；删除长按计时器逻辑（v1.6.52 的 HOLD_TO_DRAG_WAIT / dragPending / movedAway / holdTimer）。
+- **验证（headless Chrome CDP 实测）**：数据行按下立即拖动 (+100,+40) 浮层跟手并松开固定；双击选词、三击选行正常（浮层保持固定位）；连续路径移出图表隐藏；再次进入角落重新定位。
+- 验证：`vue-tsc --noEmit` 零输出；`vitest` 16 files / 129 tests 全绿。
+
+## v1.6.52（2026-10-17）
+
+### 长按拖动：文本选择 100% 原生，拖动 = 按住 350ms 后移动
+
+- **问题**：v1.6.51 的 150ms 停顿判定在真实手势下不成立——用户拖选文字也是"按下即移动"的连续手势，位移 ≥ 4px 时浮层被拖动，拖选 / 双击 / 三击全部失效（用户反馈"tooltip 不能文本选择"）。
+- **方案**（`CrosshairTooltip`，v1.6.52）：
+  - **mousedown 不拦截浏览器原生文本选择**：按住立即移动 = 拖选多字符 / 双击选词 / 三击选行，100% 原生；
+  - **拖动 = 长按**：按住任意位置 ≥ 350ms（HOLD_TO_DRAG_WAIT）不动 → 进入拖动预备（光标 text → grab 反馈），此后移动即拖动浮层（userSelect:none + grabbing）；期间任何 ≥ 4px 位移（用户在拖选）→ 取消长按判定，保持文本选择；
+  - 保留：拖动后 `fixedPos` 固定直到 `hide` 清除（再次进入重新角落定位）、`isHovered` 拖动中视为悬停、`stopPropagation` 防 document outsideHandler；计时器 mouseup / destroy 清理。
+- **验证（headless Chrome CDP 实测）**：立即拖选 → 选中值文本且浮层不动；双击选词正常；三击选整行正常；长按 420ms 光标变 grab → 移动浮层跟手 → 松开固定；拖动后立即拖选仍保持固定位。
+- 验证：`vue-tsc --noEmit` 零输出；`vitest` 16 files / 129 tests 全绿。
+
+## v1.6.51（2026-10-17）
+
+### 全容器拖动把手 + 停顿判定（拖动 / 选中互斥共存）
+
+- **需求**：拖动把手从"第一行时间行"改为**整个 tooltip 容器**。
+- **实现**（`CrosshairTooltip`）：
+  - mousedown 后进入 **150ms（TEXT_SELECT_WAIT）判定窗口**：窗口内位移 ≥ 4px → 拖动浮层（`dragging`，userSelect:none + grabbing 光标）；窗口到期仍无超阈值位移 → 判定为文字选择（`textSelectMode`，切换 text 光标，交还浏览器原生选区，拖选多字符 / 双击 / 三击选词正常）；
+  - "立即拖动 / 停顿选中"按时间互斥，**全容器任意位置**均可拖动（不再限定时间行）；
+  - 保留：拖动后 `fixedPos` 固定直到 `hide` 清除（再次进入重新角落定位）、`isHovered` 拖动中视为悬停、`stopPropagation` 防 document outsideHandler；
+  - 计时器在 mouseup / destroy 时清理（无内存泄漏）。
+- **验证（headless Chrome CDP 实测）**：数据行立即拖动 (+100,+40) 浮层同步位移并松开固定；数据行停顿 250ms 后拖选 → 浮层不动 + 文本选中；双击数据行选词正常。
+- 验证：`vue-tsc --noEmit` 零输出；`vitest` 16 files / 129 tests 全绿。
+
+## v1.6.50（2026-10-17）
+
+### 修复：tooltip 拖动与文字选中互斥（时间行 = 拖动把手）
+
+- **问题**：v1.6.49 恢复浮层拖动后，mousedown + mousemove 位移 ≥ 4px 一律判为拖动浮层，导致数据行文字无法拖选（用户反馈"tooltip 里面不能选中文字"）。
+- **方案**：拖动 / 选中按行分区，无额外 UI：
+  - **第一行时间行 = 拖动把手**（`timeRow`，grab 光标）：仅该行 `mousedown` 启动拖动监听（位移 ≥ `DRAG_THRESHOLD` 移动浮层，拖动中临时 `userSelect:none`）；
+  - **数据行（2~9 行，text 光标）**：`mousedown` 不注册拖动，走浏览器原生文本选择——拖选多字符 / 双击选词正常；
+  - 保留 v1.6.49：拖动后 `fixedPos` 固定直到 `hide` 清除（再次进入重新角落定位）、`isHovered` 拖动中视为悬停、`stopPropagation` 防 document outsideHandler。
+- **验证（headless Chrome CDP 实测）**：拖时间行 (+100,+40) 浮层同步位移并松开固定；拖数据行（按下点命中 tooltip 行）浮层不动且选中文本；双击数据行选词正常。
+- 验证：`vue-tsc --noEmit` 零输出；`vitest` 16 files / 129 tests 全绿。
+
 ## v1.6.48（2026-10-17）
 
 ### 修复：十字星 tooltip 无法选中文字（CDP 实测闭环）
