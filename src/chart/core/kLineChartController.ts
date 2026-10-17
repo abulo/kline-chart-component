@@ -335,6 +335,9 @@ export class KLineChartController {
     });
 
     /* ---------- 3. pane0：顶部空 Pane（无数据，自绘"名称 [代码] 时间 + 指标值"） ---------- */
+    // 调试暴露（仅开发用）：window.__klineChartDebug —— 控制台实时查看数据与刻度
+    // （getter 每次访问取最新值：bars / preClose / 对称半幅 / 等差刻度序列等）
+    this.exposeDebugApi();
     this.chart
       .addSeries(
         LineSeries,
@@ -758,6 +761,55 @@ export class KLineChartController {
    *  （用户指定口径：中间横线永远是第一根的 preClose，不随交易日变化）。 */
   private getTimesharePreClose = (): number => {
     return this.bars.length > 0 ? (this.bars[0].preClose ?? 0) : 0
+  }
+
+  /**
+   * 调试数据暴露（仅开发用）：挂 window.__klineChartDebug，控制台实时查看
+   * 当前数据与分时刻度计算（getter 每次访问取最新值，无缓存开销）：
+   *  - bars：原始数据（分时点含 preClose / price / avgPrice / volume）
+   *  - preClose：首根 bar 的昨收（中间值基准）
+   *  - timeshareHalf：对称半幅 expandDistance = max(上偏, 下偏)
+   *  - scaleValues：当前等差刻度序列（首尾 = newMax / newMin，中间 = preClose）
+   *  - getMaxMin()：遍历全部 bar 返回最高 / 最低价（price / avgPrice 极值）
+   */
+  private exposeDebugApi = (): void => {
+    const win = window as unknown as { __klineChartDebug?: Record<string, unknown> }
+    const debug: Record<string, unknown> = {}
+    // 静态字段（构造时固定）
+    debug.symbol = this.symbol
+    debug.name = this.name
+    debug.period = this.period
+    debug.isTimeshare = this.isTimeshare
+    debug.theme = this.theme
+    // 动态字段（getter 实时取最新值，随数据更新自动刷新）
+    const define = (key: string, get: () => unknown): void => {
+      Object.defineProperty(debug, key, {
+        get,
+        enumerable: true,
+        configurable: true,
+      })
+    }
+    define('bars', () => this.bars)
+    define('barCount', () => this.bars.length)
+    define('preClose', () => this.getTimesharePreClose())
+    define('timeshareHalf', () => this.timeshareHalf)
+    define('scaleValues', () => this.getTimeshareFixedValues())
+    define('horizontalCount', () => this.getTimeshareHorizontalCount())
+    // 遍历全部 bar 返回最高 / 最低价（price / avgPrice 极值）
+    debug.getMaxMin = (): { maxPrice: number; minPrice: number } => {
+      let maxPrice = Number.NEGATIVE_INFINITY
+      let minPrice = Number.POSITIVE_INFINITY
+      for (const bar of this.bars) {
+        const price = bar.price ?? 0
+        const avgPrice = bar.avgPrice ?? 0
+        if (price > maxPrice) maxPrice = price
+        if (avgPrice > maxPrice) maxPrice = avgPrice
+        if (price < minPrice) minPrice = price
+        if (avgPrice < minPrice) minPrice = avgPrice
+      }
+      return { maxPrice, minPrice }
+    }
+    win.__klineChartDebug = debug
   }
 
   /** 分时左右刻度按值着色（v1.7.1）：刻度值 vs 首根 preClose 三态 ——
