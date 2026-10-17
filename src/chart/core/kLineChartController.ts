@@ -90,7 +90,7 @@ import { VolumeBarPrimitive } from "../volume/volumeBarPrimitive";
 import { SarMarkerPrimitive } from "../indicator/sarMarkerPrimitive";
 import { PaneBorderPrimitive } from "../border/paneBorderPrimitive";
 import { GridPrimitive } from "../grid/gridPrimitive";
-import { formatVolume, formatPrice, normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock, formatPercent } from "../util/format";
+import { formatVolume, formatPrice, normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock, formatPercent, chooseNiceStep } from "../util/format";
 import {
   isTimesharePeriod,
   timeshareVerticalCount,
@@ -460,10 +460,10 @@ export class KLineChartController {
         getFont: () => chartFont,
         format: (price) => formatPrice(price),
         getValueColor: this.getScaleValueColor,
-        // 分时中间刻度固定 = 首根 preClose（确定性显示，不依赖坐标反算像素精度）；
-        // K 线周期 undefined（保持反算）
-        getFixedMiddleValue: () =>
-          this.isTimeshare ? this.getTimesharePreClose() : undefined,
+        // 分时：全序列固定等差刻度（中间 = 首根 preClose，上下 = preClose ± k×step，
+        // v1.7.1 等差数列需求；首尾同样参与等差，不随平移 / 缩放变化）。
+        // K 线周期返回 null → 回退坐标反算
+        getFixedValues: this.getTimeshareFixedValues,
       }),
     );
     // pane1 右刻度标签（v1.7.1，分时专用）：挂右刻度承载 series，百分比刻度与
@@ -481,14 +481,11 @@ export class KLineChartController {
         getColor: () => themeColors(this.theme).textColor,
         getBackColor: () => themeColors(this.theme).background,
         getFont: () => chartFont,
-        // 百分比：相对首根 preClose（与左刻度价格同一 y 处反算，值对齐）
+        // 百分比：相对首根 preClose（与左刻度共用同一等差序列，值对齐）
         format: (price) => formatPercent(price, this.getTimesharePreClose()),
         getValueColor: this.getScaleValueColor,
-        getPrice: (y) => this.timesharePriceSeries?.coordinateToPrice(y) ?? null,
-        // 分时中间刻度固定 = 首根 preClose → formatPercent 显示 0.00%（确定性，
-        // 不依赖坐标反算像素精度；K 线周期 undefined 且 getEnabled=false 无输出）
-        getFixedMiddleValue: () =>
-          this.isTimeshare ? this.getTimesharePreClose() : undefined,
+        // 分时：与左刻度共用同一等差序列（价格等差 → 百分比等差，中间精确 0.00%）
+        getFixedValues: this.getTimeshareFixedValues,
       }),
     );
     // pane1 十字星左刻度指示值：十字星横线所在价格（K 线价格 2 位小数）。
@@ -772,9 +769,38 @@ export class KLineChartController {
     return resolveVsBaseColor(value, preClose, themeColors(this.theme))
   }
 
+  /** 分时等差刻度步长（v1.7.1）：applyTimesharePriceRange 按 1-2-5 规则计算并缓存，
+   *  getTimeshareFixedValues / 价格范围共用（同一基准 → 刻度与栅格严格对齐） */
+  private timeshareStep = 0
+
+  /** 分时横向等分数：指标关 8 / 指标开 6（与栅格 / 刻度标签同一配置） */
+  private getTimeshareHorizontalCount = (): number =>
+    this.indicatorManager.getShowIndicator() ? 6 : 8
+
+  /**
+   * 分时 pane1 全序列固定等差刻度（v1.7.1 等差数列需求）：
+   * 中间值 = 首根 preClose，上下 = preClose ± k×step（k = 1..N/2，首尾同样参与），
+   * 值严格等差、对称、不随平移 / 缩放变化（不再坐标反算 → 无像素取整误差）。
+   * 右刻度 format 为百分比（价格等差 → 百分比等差，中间精确 0.00%）。
+   * K 线周期返回 null（回退坐标反算，保持原行为）。
+   */
+  private getTimeshareFixedValues = (): (number | undefined)[] | null => {
+    if (!this.isTimeshare || this.timeshareStep <= 0) return null
+    const preClose = this.getTimesharePreClose()
+    if (preClose <= 0) return null
+    const hCount = this.getTimeshareHorizontalCount()
+    const half = this.timeshareStep * (hCount / 2)
+    const values: number[] = []
+    for (let i = 0; i <= hCount; i++) {
+      values.push(preClose + half - this.timeshareStep * i)
+    }
+    return values
+  }
+
   /** 分时 pane1 价格范围（v1.7.1）：以首根 preClose 为对称中心（上下同幅），
    *  使栅格中间横线（50% 高度）= preClose = 左刻度中间值 = 右刻度 0%；
-   *  幅度 = 数据（price / avgPrice）相对 preClose 的最大偏离 × 1.06（≥ 0.001 防零值域）。
+   *  幅度精确对齐等差刻度边界 = N/2 × step（step 由 1-2-5 规则按数据最大
+   *  偏离自适应，≥ 0.001 防零值域）——等分像素 ↔ 刻度值严格线性对应。
    *  实现：timesharePriceSeries 的 autoscaleInfoProvider 固定返回对称范围
    *  （lightweight-charts v5 无 PriceScaleOptions.minValue/maxValue）；
    *  provider 闭包实时读数据 → 数据加载 / 实时推送后重设即可。
@@ -792,7 +818,11 @@ export class KLineChartController {
       )
       if (dev > maxDev) maxDev = dev
     }
-    const half = Math.max(maxDev, 0.001) * 1.06
+    // 等差步长：覆盖数据最大偏移所需的最小步长 → 1-2-5 系列"漂亮步长"
+    const hCount = this.getTimeshareHorizontalCount()
+    const step = chooseNiceStep(Math.max(maxDev, 0.001) / (hCount / 2))
+    this.timeshareStep = step
+    const half = step * (hCount / 2)
     this.timesharePriceSeries.applyOptions({
       autoscaleInfoProvider: () => {
         // K 线周期 / 数据清空：返回 null 不覆盖库默认 autoscale（空 series 无贡献，

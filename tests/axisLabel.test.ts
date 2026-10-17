@@ -12,7 +12,7 @@
  *  - 左右刻度同一 y 坐标显示同一价格（左 = 价格、右 = 百分比，值对齐）。
  */
 import { describe, expect, it } from 'vitest'
-import { formatPercent } from '../src/chart/util/format'
+import { formatPercent, chooseNiceStep } from '../src/chart/util/format'
 import { resolveVsBaseColor, type BarPalette } from '../src/chart/core/resolveBarColors'
 
 const darkPalette: BarPalette = {
@@ -42,6 +42,34 @@ describe('formatPercent（分时右刻度百分比，v1.7.1）', () => {
     expect(formatPercent(10, 0)).toBe('')
     expect(formatPercent(10, Number.NaN)).toBe('')
     expect(formatPercent(Number.NaN, 10)).toBe('')
+  })
+})
+
+describe('chooseNiceStep（分时等差刻度步长 1-2-5 规则，v1.7.1）', () => {
+  it('3.55 → 5（用户示例：中间 50 步长 5 → 65,60,55,50,45,40,35）', () => {
+    expect(chooseNiceStep(3.55)).toBe(5)
+  })
+
+  it('0.225 → 0.25（低价股细步长）', () => {
+    expect(chooseNiceStep(0.225)).toBe(0.25)
+  })
+
+  it('1 → 1 / 1.9 → 2 / 2.1 → 2.5 / 4.7 → 5 / 9.3 → 10', () => {
+    expect(chooseNiceStep(1)).toBe(1)
+    expect(chooseNiceStep(1.9)).toBe(2)
+    expect(chooseNiceStep(2.1)).toBe(2.5)
+    expect(chooseNiceStep(4.7)).toBe(5)
+    expect(chooseNiceStep(9.3)).toBe(10)
+  })
+
+  it('跨数量级：35 → 50 / 450 → 500', () => {
+    expect(chooseNiceStep(35)).toBe(50)
+    expect(chooseNiceStep(450)).toBe(500)
+  })
+
+  it('非法 / 非正输入返回 0.001 保底', () => {
+    expect(chooseNiceStep(0)).toBe(0.001)
+    expect(chooseNiceStep(Number.NaN)).toBe(0.001)
   })
 })
 

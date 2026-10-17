@@ -10,6 +10,7 @@
 - **基础设施**：AxisLabelPrimitive 扩展 `getEnabled` / `getValueColor` / `getPrice`（value() 统一求值，渲染层按值着色）；+7 单测（tests/axisLabel.test.ts，20 files / 186 tests）。
 - **中间刻度固定（修复）**：左刻度中间值 = preClose（`getFixedMiddleValue` 确定性显示，如 preClose=5 → 中间显示 5.00）、右刻度中间 = 0.00%（formatPercent 转换）——不再依赖坐标反算的像素级对称（价格范围仍保持 preClose 对称，视觉中间横线 = 昨收）。
 - **分时基准定版（v1.7.1）**：中间横线值 **永远是第一根 bar 的 preClose**（1d~5d 统一，用户指定口径）；2d~5d 多日分时同样以最早交易日第一根的 preClose 为基准；价格范围对称 / 中间固定 / 三态着色全部跟随首根基准。
+- **分时左右刻度等差序列（v1.7.1）**：刻度值不再坐标反算，改为**确定性等差数列**——中间 = 首根 preClose，上下 = preClose ± k×step（k=1..N/2，首尾同样参与等差）；step 按 1-2-5 规则自适应（覆盖数据最大偏离），价格范围精确对齐刻度边界（±N/2×step，去掉 ×1.06 余量）。示例：中间 50、步长 5 → 65,60,55,50,45,40,35（N=6）；右刻度百分比同步等差（中间精确 0.00%）。左右刻度共用同一序列 → 同一 y 严格对齐。新增 `chooseNiceStep` 纯函数（1-2-5 系列步长选择）+ 5 组单测。
 - **分时右刻度文字左对齐（v1.7.1）**：右刻度文字左缘 = 右刻度区左缘 + 6px，与左刻度文字右缘距左刻度区右缘 6px 对称（`AxisLabelConfig.align` 扩展，右刻度专用，指示值默认右对齐不受影响）。
 - **修复：右刻度打开后分时 pane1 十字星横线消失（v1.7.1）**——根因：库 `defaultPriceScale` 回退逻辑（左刻度关 + 右刻度开时 primary(left) 不可见 → 回退 secondary(right)；右刻度承载 series 空数据 → right.firstValue=null → 十字星 price/y=NaN，横线不绘制）。修复：右刻度承载 series **始终同步 pane1 主数据**（分时=price / K线=close，含实时 update）——right scale 恒有 firstValue 且范围与 left 同源一致，横线 / 指示值 / 右刻度标签全部正常。
 

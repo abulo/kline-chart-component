@@ -90,6 +90,15 @@ export interface AxisLabelConfig {
    * （maxValue / minValue），|max| = |min| 严格成立、与平移无关。
    */
   getEdgeFixedValues?: () => { topValue: number; bottomValue: number } | undefined
+  /**
+   * 全序列固定值获取器（可选，v1.7.1）：返回长度 = 等分数 + 1 的数值数组时，
+   * **每个刻度直接显示该值**（不做坐标反算）——用于要求严格等差数列 /
+   * 对称刻度的场景（分时 pane1 左右刻度：中间 = 首根 preClose，上下 =
+   * preClose ± k×step，首尾同样参与等差，显示值不随平移 / 缩放变化）。
+   * 返回 null 时回退现有逻辑（首尾固定 / 中间固定 / 坐标反算）。
+   * 数组元素为 undefined 的索引回退现有逻辑（与 fixedValue 语义一致）。
+   */
+  getFixedValues?: () => (number | undefined)[] | null
 }
 
 export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
@@ -161,20 +170,24 @@ export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
             ? paneHeight - AXIS_LABEL_PAD
             : Math.round((paneHeight * i) / hCount)
       // 首尾固定值（如 MACD 直接显示 ±absMax，保证 |max| = |min| 且不随平移变化）；
-      // 中间固定值（如 MACD 中间 = 0）；其余反推该 y 处价格（随数据实时变化）
+      // 中间固定值（如 MACD 中间 = 0）；全序列固定值（分时左右刻度等差序列，
+      // v1.7.1）优先——固定值取 fixedValues[i]，undefined 回退下方现有逻辑
+      const fixedValues = this.config.getFixedValues?.()
       const edgeValues = this.config.getEdgeFixedValues?.()
       views.push(
         new AxisLabelView({
           primitive: this,
           coordinate: y,
           fixedValue:
-            i === 0
-              ? edgeValues?.topValue
-              : i === hCount
-                ? edgeValues?.bottomValue
-                : i === Math.floor(hCount / 2)
-                  ? this.config.getFixedMiddleValue?.()
-                  : undefined,
+            fixedValues !== null && fixedValues !== undefined
+              ? fixedValues[i]
+              : i === 0
+                ? edgeValues?.topValue
+                : i === hCount
+                  ? edgeValues?.bottomValue
+                  : i === Math.floor(hCount / 2)
+                    ? this.config.getFixedMiddleValue?.()
+                    : undefined,
         }),
       )
     }
