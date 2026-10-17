@@ -878,6 +878,16 @@ export class KLineChartController {
     const range = symmetricExpandRange(maxPrice, preClose, minPrice)
     const half = Math.max(range.expandDistance, 0.001)
     this.timeshareHalf = half
+    // v1.7.1 修复：库默认 scaleMargins 不对称（top 0.2 / bottom 0.1）→ 数据中间值
+    // 映射在 0.55H 而非像素中间 H/2，导致十字星横线指示值（coordinateToPrice 反算）
+    // 与刻度标签（像素等分固定值）在同一 y 显示不一致（如刻度中间 10、指示值 9.43）。
+    // 分时下设置对称 margins（top = bottom = 0.1）→ 坐标中间 ↔ 像素中间严格对齐。
+    this.chart.priceScale("left", 1).applyOptions({
+      scaleMargins: { top: 0.1, bottom: 0.1 },
+    })
+    this.chart.priceScale("right", 1).applyOptions({
+      scaleMargins: { top: 0.1, bottom: 0.1 },
+    })
     this.timesharePriceSeries.applyOptions({
       autoscaleInfoProvider: () => {
         // K 线周期 / 数据清空：返回 null 不覆盖库默认 autoscale（空 series 无贡献，
@@ -947,8 +957,15 @@ export class KLineChartController {
     }
 
     // —— K 线周期（原逻辑）：蜡烛 + 成交量自绘柱体 ——
-    // 恢复价格轴自动缩放（分时固定范围不带到 K 线周期，v1.7.1）
-    this.chart.priceScale("left", 1).applyOptions({ autoScale: true });
+    // 恢复价格轴自动缩放与库默认 margins（分时固定范围 + 对称 margins 不带到 K 线周期，
+    // v1.7.1；K 线刻度为坐标反算值，与十字星同源，无"固定中间值"矛盾）
+    this.chart.priceScale("left", 1).applyOptions({
+      autoScale: true,
+      scaleMargins: { top: 0.2, bottom: 0.1 },
+    });
+    this.chart.priceScale("right", 1).applyOptions({
+      scaleMargins: { top: 0.2, bottom: 0.1 },
+    });
     // K 线三态颜色（v1.6.57）：按 close vs preClose 红/绿/平盘，覆盖库默认 close>=open
     // 判定（一字板 open===close 会被库画成上涨红）；主题切换时 applyTheme 会重设数据刷新
     const barPalette = themeColors(this.theme)
