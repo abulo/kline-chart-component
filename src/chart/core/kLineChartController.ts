@@ -460,6 +460,10 @@ export class KLineChartController {
         getFont: () => chartFont,
         format: (price) => formatPrice(price),
         getValueColor: this.getScaleValueColor,
+        // 分时中间刻度固定 = 首根 preClose（确定性显示，不依赖坐标反算像素精度）；
+        // K 线周期 undefined（保持反算）
+        getFixedMiddleValue: () =>
+          this.isTimeshare ? this.getTimesharePreClose() : undefined,
       }),
     );
     // pane1 右刻度标签（v1.7.1，分时专用）：挂右刻度承载 series，百分比刻度与
@@ -480,6 +484,10 @@ export class KLineChartController {
         format: (price) => formatPercent(price, this.getTimesharePreClose()),
         getValueColor: this.getScaleValueColor,
         getPrice: (y) => this.timesharePriceSeries?.coordinateToPrice(y) ?? null,
+        // 分时中间刻度固定 = 首根 preClose → formatPercent 显示 0.00%（确定性，
+        // 不依赖坐标反算像素精度；K 线周期 undefined 且 getEnabled=false 无输出）
+        getFixedMiddleValue: () =>
+          this.isTimeshare ? this.getTimesharePreClose() : undefined,
       }),
     );
     // pane1 十字星左刻度指示值：十字星横线所在价格（K 线价格 2 位小数）。

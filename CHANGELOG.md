@@ -8,6 +8,7 @@
 - **左刻度按值着色**：刻度值 vs preClose 三态 —— 上红（upColor）/ 下绿（downColor）/ 平盘中色（flatColor，深白浅黑，`resolveVsBaseColor` 纯函数）；K 线周期保持主题单色。
 - **右刻度百分比**（分时专用）：新增右刻度承载 series（挂 pane1 right scale，空数据透明锚点）承载右刻度 AxisLabelPrimitive；同一 y 坐标取左刻度 price scale 反算价格 → 左右值严格对齐；中间 0.00%（无符号），向上 +%（红）/ 向下 -%（绿）（`formatPercent` 纯函数）；K 线周期 getEnabled=false 右刻度区保持空白。
 - **基础设施**：AxisLabelPrimitive 扩展 `getEnabled` / `getValueColor` / `getPrice`（value() 统一求值，渲染层按值着色）；+7 单测（tests/axisLabel.test.ts，20 files / 186 tests）。
+- **中间刻度固定（修复）**：左刻度中间值 = 首根 preClose（`getFixedMiddleValue` 确定性显示，如 preClose=5 → 中间显示 5.00）、右刻度中间 = 0.00%（formatPercent 转换）——不再依赖坐标反算的像素级对称（价格范围仍保持 preClose 对称，视觉中间横线 = 昨收）。
 
 ## v1.7.0（2026-10-17）
 ### 分时情绪形态 mock（半日/厂字板/一字板/天地天/地天地/连板）
