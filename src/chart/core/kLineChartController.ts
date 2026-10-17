@@ -1024,8 +1024,24 @@ export class KLineChartController {
   setPeriod = (period: PeriodValue): void => {
     if (this.period === period) return;
     this.period = period;
-    // 触发重绘（IChartApi 无公开 requestUpdate；applyOptions({}) 会触发全图 invalidate）
-    this.chart.applyOptions({});
+    // 分时不可平移（v1.7.0）：分时整日数据 fitContent 固定视口，滚轮 / 按住拖拽 /
+    // 触摸平移全部关闭（缩放仍由工具栏按钮控制，handleScale 全局已禁滚轮）；
+    // 切回 K 线周期恢复默认平移交互
+    this.chart.applyOptions({
+      handleScroll: this.isTimeshare
+        ? {
+            mouseWheel: false,
+            pressedMouseMove: false,
+            horzTouchDrag: false,
+            vertTouchDrag: false,
+          }
+        : {
+            mouseWheel: true,
+            pressedMouseMove: true,
+            horzTouchDrag: true,
+            vertTouchDrag: true,
+          },
+    });
   };
 
   applyTheme = (name: ChartThemeName): void => {
