@@ -753,14 +753,12 @@ export class KLineChartController {
     return isTimesharePeriod(this.period)
   }
 
-  /** 分时昨收基准（v1.7.1）：**最新交易日**（最后一根 bar）的 preClose ——
+  /** 分时昨收基准（v1.7.1）：**永远取第一根 bar 的 preClose**（1d~5d 统一）——
    *  栅格中间横线 = 左刻度中间值 = 右刻度 0%。
-   *  1d：首根 = 末根（同一天）→ 与"第一根 preClose"一致；
-   *  2d~5d（多日分时）：取最新交易日昨收（东财口径：多日分时右刻度百分比
-   *  统一相对最新日昨收，中间横线 = 最新日昨收）。分时数据同交易日 preClose 一致。 */
+   *  多日分时（2d~5d）同样以最早交易日第一根的 preClose 为基准
+   *  （用户指定口径：中间横线永远是第一根的 preClose，不随交易日变化）。 */
   private getTimesharePreClose = (): number => {
-    const last = this.bars[this.bars.length - 1]
-    return last ? (last.preClose ?? 0) : 0
+    return this.bars.length > 0 ? (this.bars[0].preClose ?? 0) : 0
   }
 
   /** 分时左右刻度按值着色（v1.7.1）：刻度值 vs 首根 preClose 三态 ——
