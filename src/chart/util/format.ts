@@ -62,24 +62,6 @@ export const formatPercent = (price: number, preClose: number): string => {
 }
 
 /**
- * 分时等差刻度步长选择（v1.7.1）：在"必须覆盖数据最大偏移"的前提下，
- * 取 1 / 2 / 2.5 / 5 × 10^n 的"漂亮步长"，使上下刻度值形成整齐等差数列
- * （如中间值 50、步长 5 → 65, 60, 55, 50, 45, 40, 35）。
- * @param required 需求步长下限 = maxDev / (N/2)，maxDev 为最大 |价-preClose|
- * @returns 不小于 required 的最接近的 1-2-5 系列步长
- */
-export const chooseNiceStep = (required: number): number => {
-  if (!Number.isFinite(required) || required <= 0) return 0.001
-  const power = Math.pow(10, Math.floor(Math.log10(required)))
-  const base = required / power
-  if (base <= 1) return power
-  if (base <= 2) return 2 * power
-  if (base <= 2.5) return 2.5 * power
-  if (base <= 5) return 5 * power
-  return 10 * power
-}
-
-/**
  * 秒级时间戳 → 本地日期字符串 YYYY-MM-DD（pane0 顶部信息行最新 bar 时间显示）。
  * 非法输入（NaN / Infinity）返回 '--'，避免展示层出现乱码。
  */

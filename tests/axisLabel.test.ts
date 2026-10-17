@@ -12,7 +12,8 @@
  *  - 左右刻度同一 y 坐标显示同一价格（左 = 价格、右 = 百分比，值对齐）。
  */
 import { describe, expect, it } from 'vitest'
-import { formatPercent, chooseNiceStep } from '../src/chart/util/format'
+import { formatPercent } from '../src/chart/util/format'
+import { symmetricExpandRange, buildTimeshareScaleValues } from '../src/chart/util/timeshareScale'
 import { resolveVsBaseColor, type BarPalette } from '../src/chart/core/resolveBarColors'
 
 const darkPalette: BarPalette = {
@@ -45,31 +46,61 @@ describe('formatPercent（分时右刻度百分比，v1.7.1）', () => {
   })
 })
 
-describe('chooseNiceStep（分时等差刻度步长 1-2-5 规则，v1.7.1）', () => {
-  it('3.55 → 5（用户示例：中间 50 步长 5 → 65,60,55,50,45,40,35）', () => {
-    expect(chooseNiceStep(3.55)).toBe(5)
+describe('symmetricExpandRange（区间对称扩展，用户定版算法，v1.7.1）', () => {
+  it('中间 10 / 最高 12 / 最低 6 → newMax 14 / newMid 10 / newMin 6（用户示例）', () => {
+    const range = symmetricExpandRange(12, 10, 6)
+    expect(range.expandDistance).toBe(4)
+    expect(range.newMax).toBe(14)
+    expect(range.newMid).toBe(10)
+    expect(range.newMin).toBe(6)
   })
 
-  it('0.225 → 0.25（低价股细步长）', () => {
-    expect(chooseNiceStep(0.225)).toBe(0.25)
+  it('上偏更大：最高 16 / 中间 10 / 最低 9 → 半幅 6 → 16 / 10 / 4', () => {
+    const range = symmetricExpandRange(16, 10, 9)
+    expect(range.expandDistance).toBe(6)
+    expect(range.newMax).toBe(16)
+    expect(range.newMin).toBe(4)
+    expect(range.newMid).toBe(10)
   })
 
-  it('1 → 1 / 1.9 → 2 / 2.1 → 2.5 / 4.7 → 5 / 9.3 → 10', () => {
-    expect(chooseNiceStep(1)).toBe(1)
-    expect(chooseNiceStep(1.9)).toBe(2)
-    expect(chooseNiceStep(2.1)).toBe(2.5)
-    expect(chooseNiceStep(4.7)).toBe(5)
-    expect(chooseNiceStep(9.3)).toBe(10)
+  it('下偏更大：最高 11 / 中间 10 / 最低 4 → 半幅 6 → 16 / 10 / 4', () => {
+    const range = symmetricExpandRange(11, 10, 4)
+    expect(range.expandDistance).toBe(6)
+    expect(range.newMax).toBe(16)
+    expect(range.newMin).toBe(4)
   })
 
-  it('跨数量级：35 → 50 / 450 → 500', () => {
-    expect(chooseNiceStep(35)).toBe(50)
-    expect(chooseNiceStep(450)).toBe(500)
+  it('两侧距离相等：最高 14 / 中间 10 / 最低 6 → 半幅 4，无需额外扩展', () => {
+    const range = symmetricExpandRange(14, 10, 6)
+    expect(range.expandDistance).toBe(4)
+    expect(range.newMax).toBe(14)
+    expect(range.newMin).toBe(6)
+  })
+})
+
+describe('buildTimeshareScaleValues（对称区间等分等差序列，v1.7.1）', () => {
+  it('mid 10 / half 4 / 指标关 8 等分 → 14..6 等差 1', () => {
+    const values = buildTimeshareScaleValues(10, 4, 8)
+    expect(values).toEqual([14, 13, 12, 11, 10, 9, 8, 7, 6])
   })
 
-  it('非法 / 非正输入返回 0.001 保底', () => {
-    expect(chooseNiceStep(0)).toBe(0.001)
-    expect(chooseNiceStep(Number.NaN)).toBe(0.001)
+  it('mid 10 / half 4 / 指标开 6 等分 → 14..6 等差 4/3（首尾/中间正确）', () => {
+    const values = buildTimeshareScaleValues(10, 4, 6)
+    expect(values).toHaveLength(7)
+    expect(values[0]).toBeCloseTo(14, 10)
+    expect(values[3]).toBeCloseTo(10, 10)
+    expect(values[6]).toBeCloseTo(6, 10)
+    // 等差性：相邻差值恒为 2×half/hCount
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i - 1] - values[i]).toBeCloseTo((2 * 4) / 6, 10)
+    }
+  })
+
+  it('中间值恒等于 mid（偶数 / 奇数等分均成立）', () => {
+    const v8 = buildTimeshareScaleValues(50, 15, 8)
+    expect(v8[4]).toBe(50)
+    const v6 = buildTimeshareScaleValues(50, 15, 6)
+    expect(v6[3]).toBe(50)
   })
 })
 
