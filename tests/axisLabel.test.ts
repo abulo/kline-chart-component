@@ -44,6 +44,13 @@ describe('formatPercent（分时右刻度百分比，v1.7.1）', () => {
     expect(formatPercent(10, Number.NaN)).toBe('')
     expect(formatPercent(Number.NaN, 10)).toBe('')
   })
+
+  it('右刻度由左刻度显示值回算（v1.7.1）：左 12.67 → 右 +26.70%', () => {
+    // 左刻度显示 2 位小数：12.6667 → 12.67；右刻度 = (12.67 − 10) / 10
+    expect(formatPercent(Number((12.6667).toFixed(2)), 10)).toBe('+26.70%')
+    expect(formatPercent(Number((11.3333).toFixed(2)), 10)).toBe('+13.30%')
+    expect(formatPercent(Number((8.6667).toFixed(2)), 10)).toBe('-13.30%')
+  })
 })
 
 describe('symmetricExpandRange（区间对称扩展，用户定版算法，v1.7.1）', () => {

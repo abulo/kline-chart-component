@@ -485,8 +485,11 @@ export class KLineChartController {
         getColor: () => themeColors(this.theme).textColor,
         getBackColor: () => themeColors(this.theme).background,
         getFont: () => chartFont,
-        // 百分比：相对首根 preClose（与左刻度共用同一等差序列，值对齐）
-        format: (price) => formatPercent(price, this.getTimesharePreClose()),
+        // 百分比：由**左刻度显示的数值**（同序列值按 2 位小数显示精度）相对首根
+        // preClose 计算 —— 右刻度值 = (左刻度显示值 − preClose) / preClose × 100%，
+        // 与左刻度文字严格一一对应（如左 12.67 → 右 +26.70%）
+        format: (price) =>
+          formatPercent(Number(price.toFixed(2)), this.getTimesharePreClose()),
         getValueColor: this.getScaleValueColor,
         // 分时：与左刻度共用同一等差序列（价格等差 → 百分比等差，中间精确 0.00%）
         getFixedValues: this.getTimeshareFixedValues,
