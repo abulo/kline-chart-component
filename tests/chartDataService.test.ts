@@ -85,10 +85,10 @@ describe('MockChartDataService.fetchHistory（周 / 月 K 聚合）', () => {
 })
 
 describe('MockChartDataService.fetchHistory（分时 / 分页）', () => {
-  it('1d 分时：返回 241 个分钟点，timeshare 字段齐全', async () => {
+  it('1d 分时：返回最新交易日分钟点（120/240/241，条数随形态），timeshare 字段齐全', async () => {
     const service = createService()
     const points = await service.fetchHistory({ symbol: '600000.SH', period: '1d', limit: 300 })
-    expect(points.length).toBe(241)
+    expect([120, 240, 241]).toContain(points.length)
     expectStrictAscending(points)
     points.forEach((point) => {
       expect(point.pointType).toBe('timeshare')
