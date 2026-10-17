@@ -10,6 +10,7 @@
 - **基础设施**：AxisLabelPrimitive 扩展 `getEnabled` / `getValueColor` / `getPrice`（value() 统一求值，渲染层按值着色）；+7 单测（tests/axisLabel.test.ts，20 files / 186 tests）。
 - **中间刻度固定（修复）**：左刻度中间值 = preClose（`getFixedMiddleValue` 确定性显示，如 preClose=5 → 中间显示 5.00）、右刻度中间 = 0.00%（formatPercent 转换）——不再依赖坐标反算的像素级对称（价格范围仍保持 preClose 对称，视觉中间横线 = 昨收）。
 - **分时基准定版（v1.7.1）**：中间横线值 **永远是第一根 bar 的 preClose**（1d~5d 统一，用户指定口径）；2d~5d 多日分时同样以最早交易日第一根的 preClose 为基准；价格范围对称 / 中间固定 / 三态着色全部跟随首根基准。
+- **代码质量收尾（v1.7.1）**：颜色集中 —— 右刻度承载 series 透明锚点改用 `transparentColor`、tooltip 阴影提取为 `theme.tooltipShadow`（深 / 浅系统一，去除硬编码 rgba）；README 补 5.7.1 分时左右刻度章节（对称扩展 / 0 margins / 指示值对齐 / 右刻度百分比 / 调试对象）并同步测试数 194 项 / 20 files；CHANGELOG 同步。
 - **修复：右刻度区指示值与右刻度值对不上（v1.7.1）**——反算 series 误用 right 轴承载 series（无 autoscaleInfoProvider，范围 = 实际数据波动、不对称）→ 与固定刻度序列错位。改为反算用 timesharePriceSeries（left 固定对称范围 [preClose±half]），挂载仍留右轴 → 指示值 = 与刻度同源百分比，中间 0.00%、上 +xx.xx% / 下 −xx.xx%（formatPercent 自带符号）。
 - **修复：右刻度区指示值不显示（v1.7.1）**——漏调 crosshairManager.registerPrimitive，新指示值 primitive 未进注册表、move 回调恒注入 null（y 恒 null 不绘制）。补注册后按 paneIndex 正常注入横线 y。
 - **分时右刻度区十字星指示值（v1.7.1）**——库按 priceScaleId 过滤渲染（左轴指示值不画到右刻度区）：在右刻度承载 series 上另挂 CrosshairAxisLabelPrimitive，背景 / 文字色 / 字体**照搬左刻度指示值**（crosshairLabelText / crosshairLabelBackground / chartFont），文字 = 右刻度同格式百分比（左显示值回算），左对齐贴区左缘；仅分时渲染（K 线周期右刻度区空白）。

@@ -99,6 +99,8 @@ export interface ChartThemeColors {
   buttonActiveColor: string
   /** 布局提示文字 */
   hintText: string
+  /** tooltip 浮层阴影（完整 box-shadow 值；深 / 浅系统一黑色半透明投影，v1.7.1 颜色集中） */
+  tooltipShadow: string
 }
 
 /** 主题名 */
@@ -143,6 +145,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     buttonHover: '#363C4A',
     buttonActiveColor: '#FF6B6B',
     hintText: '#787B86',
+    tooltipShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
   },
 
   /* ---------------- 浅系 ---------------- */
@@ -182,6 +185,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     buttonHover: '#E9EBEF',
     buttonActiveColor: '#E33A2C',
     hintText: '#8A9099',
+    tooltipShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
   },
 }
 

@@ -363,12 +363,21 @@ SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式
 - **tooltip**：分时点显示 时间 / 价格（着色）/ **均价（均价线同色）** / 涨跌 / 涨幅 / 成交量 / 成交额（七行，涨跌基准 = 昨收）；
 - **文件**：`src/chart/periods.ts`（`isTimesharePeriod` / `timeshareGridVerticalCount` / `timeshareVerticalCount`）、`src/chart/core/kLineChartController.ts`（分时双线分支）、`src/chart/core/subIndicatorPaneManager.ts`（分时指标适配）、`src/services/chartDataService.ts`（分时 mock：`timesharePatternPath` 8 形态 + `buildTsPool` 按日分配）。
 
+#### 5.7.1 分时 pane1 左右刻度（v1.7.1）
+
+- **值域**：区间对称扩展（用户定版 `symmetricExpandRange`）——半幅 `expandDistance = max(上偏, 下偏)`，范围 `[preClose−half, preClose+half]`，**中间值恒为首根 bar 的 preClose**（1d~5d 统一，`getTimesharePreClose`）；刻度值按 `buildTimeshareScaleValues` 生成严格等差序列（首尾 = newMax / newMin，中间 = preClose，指标开 6 等分 / 关 8 等分）；
+- **0 margins**：分时下 pane1 左 / 右刻度 `scaleMargins = { top: 0, bottom: 0 }`（对称）→ 中间横线精确在像素中间，一字板涨停价格线**紧贴 pane1 上边框**、跌停贴下边框；K 线周期恢复库默认 margins；
+- **十字星指示值 = 刻度值**：对称 0 margins 保证坐标中间 ↔ 像素中间严格对齐，十字星放中间横线指示值 = preClose（刻度中间值），上下逐格一一对应（修复：库默认不对称 margins 下同一 y 显示 9.43 而非 10）；
+- **右刻度**：百分比 = `(左刻度显示值 − preClose) / preClose × 100%`（序列值先按左刻度 2 位小数回算，左 12.67 → 右 +26.70%，`formatPercent` 自带 +/-）；**右刻度区十字星指示值**另挂 primitive（库按 priceScaleId 过滤，左轴指示值不画右刻度区），反算用 left 固定范围、背景 / 文字色 / 字体照搬左刻度指示值、左对齐贴区左缘，仅分时渲染；
+- **着色**：左刻度价格 / 右刻度百分比 vs preClose 三态（> 红 / < 绿 / = 平盘深系白 / 浅系黑，`getScaleValueColor` + `resolveVsBaseColor`）；
+- **调试**：`window.__klineChart`（仅开发）实时查看 `bars` / `preClose` / `timeshareHalf` / `scaleValues` / `horizontalCount` / `getMaxMin()`。
+
 ## 六、运行
 
 ```bash
 npm install        # 固定版本：lightweight-charts 5.2.1 / vue 3.5.43
 npm run dev        # 开发（http://127.0.0.1:5210）
-npm run test       # vitest 单测（175 项，18 files）
+npm run test       # vitest 单测（194 项，20 files）
 npm run build      # vue-tsc 类型检查 + 构建
 ```
 

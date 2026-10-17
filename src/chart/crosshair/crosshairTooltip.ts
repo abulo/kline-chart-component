@@ -276,8 +276,6 @@ export class CrosshairTooltip {
     root.style.zIndex = '9999' // 脱离图表层级，永远置顶
     root.style.boxSizing = 'border-box'
     root.style.borderRadius = '4px'
-    // 通用投影（深浅系一致的效果色，非数据语义色；数据/文字色均从 theme 提取）
-    root.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.25)'
     root.style.padding = '5px 5px'
     root.style.fontFamily =
       '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif'
@@ -386,6 +384,7 @@ export class CrosshairTooltip {
   private applyTheme = (colors: ChartThemeColors): void => {
     this.root.style.background = colors.tooltipBackground
     this.root.style.border = `1px solid ${colors.paneBorder}`
+    this.root.style.boxShadow = colors.tooltipShadow
     this.root.style.color = colors.tooltipText
     for (const node of this.rowNodes) {
       node.label.style.color = colors.textColor
