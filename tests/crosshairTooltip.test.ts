@@ -5,7 +5,7 @@
  * 红涨绿跌着色、涨跌基准（昨收）、缺失昨收兜底、量额格式化。
  */
 import { describe, expect, it } from 'vitest'
-import { buildTooltipRows, resolveTooltipPosition } from '../src/chart/crosshair/crosshairTooltip'
+import { buildTooltipRows, resolveTooltipPosition, clampTooltipPosition } from '../src/chart/crosshair/crosshairTooltip'
 import type { ChartDataPoint } from '../src/types/chart'
 
 const colors = { up: '#FF0000', down: '#008000' }
@@ -116,7 +116,6 @@ describe('resolveTooltipPosition（v1.6.36 进入方向角落定位 / v1.6.58 �
   const base = {
     paneTop: 22,
     tooltipWidth: 180,
-    tooltipHeight: 185,
     paneLeft: 0,
     paneRight: 1000,
   }
@@ -168,5 +167,53 @@ describe('resolveTooltipPosition（v1.6.36 进入方向角落定位 / v1.6.58 �
       entrySide: 'left',
     })
     expect(pos).toEqual({ left: 1000 - 72 - 180 - 2, top: 24 })
+  })
+})
+
+describe('clampTooltipPosition（v1.6.59 拖动边界纯函数）', () => {
+  // 容器原点 (100, 200)，数据区（相对容器）left 72 / right 928、top 22 / bottom 600
+  const base = {
+    bounds: { left: 72, right: 928, top: 22, bottom: 600 },
+    containerLeft: 100,
+    containerTop: 200,
+    width: 180,
+    height: 185,
+  }
+  // body 坐标 minLeft = 100+72+2 = 174；maxLeft = 100+928-180-2 = 846
+  // minTop = 200+22+2 = 224；maxTop = 200+600-185-2 = 613
+
+  it('在数据区内 → 原样返回（不 clamp）', () => {
+    expect(clampTooltipPosition({ ...base, left: 400, top: 300 })).toEqual({ left: 400, top: 300 })
+  })
+
+  it('越过左刻度区 → clamp 到数据区左缘（174）', () => {
+    expect(clampTooltipPosition({ ...base, left: 120, top: 300 }).left).toBe(174)
+  })
+
+  it('越过右刻度区 → clamp 到数据区右缘（846）', () => {
+    expect(clampTooltipPosition({ ...base, left: 900, top: 300 }).left).toBe(846)
+  })
+
+  it('越过 pane1 顶 → clamp 到 pane1 顶（224）', () => {
+    expect(clampTooltipPosition({ ...base, left: 400, top: 100 }).top).toBe(224)
+  })
+
+  it('越过 pane5 底 → clamp 到 pane5 底（613）', () => {
+    expect(clampTooltipPosition({ ...base, left: 400, top: 900 }).top).toBe(613)
+  })
+
+  it('数据区比浮层小（极端）→ 取最小边界不出界', () => {
+    const tiny = { left: 0, right: 100, top: 0, bottom: 50 }
+    const pos = clampTooltipPosition({
+      bounds: tiny,
+      containerLeft: 0,
+      containerTop: 0,
+      width: 200,
+      height: 185,
+      left: 999,
+      top: 999,
+    })
+    expect(pos.left).toBe(2) // max(minLeft=2, maxLeft=-202) → 2
+    expect(pos.top).toBe(2)
   })
 })

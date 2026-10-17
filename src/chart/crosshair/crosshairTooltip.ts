@@ -92,9 +92,8 @@ export interface TooltipPositionParams {
   entrySide: 'left' | 'right'
   /** 所在 pane 顶部 y（相对图表容器；角落定位基准） */
   paneTop: number
-  /** 浮层实际宽 / 高（px，显示后测量） */
+  /** 浮层实际宽（px，显示后测量） */
   tooltipWidth: number
-  tooltipHeight: number
   /** pane1~pane5 数据区左缘（相对容器；左刻度开 = 刻度区宽，关 = 0） */
   paneLeft: number
   /** pane1~pane5 数据区右缘（相对容器；容器宽 - 右刻度区宽） */
@@ -144,6 +143,41 @@ export const resolveTooltipPosition = (
   }
   // 右进入 → 左上角（数据区左缘内缩 2px）
   return { left: params.paneLeft + PANE_EDGE_OFFSET, top }
+}
+
+/** 拖动位置 clamp 参数（纯函数输入，可单测） */
+export interface TooltipClampParams {
+  /** 期望位置（body 坐标，鼠标跟随结果） */
+  left: number
+  top: number
+  /** pane1~pane5 可移动 / 可拖动区域（相对容器） */
+  bounds: TooltipBounds
+  /** 图表容器 body 坐标原点（getBoundingClientRect 一次，拖动帧复用） */
+  containerLeft: number
+  containerTop: number
+  /** 浮层宽 / 高（px） */
+  width: number
+  height: number
+}
+
+/**
+ * 拖动位置 clamp（纯函数，v1.6.59）：把浮层限制在 pane1~pane5 数据区内
+ * （body 坐标，由容器原点 + TooltipBounds 换算）：
+ *  - X ∈ [bounds.left + 2, bounds.right - width - 2]（不越左右刻度区）；
+ *  - Y ∈ [bounds.top + 2, bounds.bottom - height - 2]（不越 pane1 顶 / pane5 底）；
+ *  - 数据区比浮层小（极端）时取最小边界（left/top），保证不出界。
+ */
+export const clampTooltipPosition = (
+  params: TooltipClampParams,
+): { left: number; top: number } => {
+  const minLeft = params.containerLeft + params.bounds.left + PANE_EDGE_OFFSET
+  const maxLeft = params.containerLeft + params.bounds.right - params.width - PANE_EDGE_OFFSET
+  const minTop = params.containerTop + params.bounds.top + PANE_EDGE_OFFSET
+  const maxTop = params.containerTop + params.bounds.bottom - params.height - PANE_EDGE_OFFSET
+  return {
+    left: Math.min(Math.max(params.left, minLeft), Math.max(minLeft, maxLeft)),
+    top: Math.min(Math.max(params.top, minTop), Math.max(minTop, maxTop)),
+  }
 }
 
 /** 浮层显示参数（由十字星管理器在命中时注入） */
@@ -202,6 +236,9 @@ export class CrosshairTooltip {
   private dragOffset: { x: number; y: number } | null = null
   /** 是否正在拖动浮层（拖动期间禁用文字选择，防止拖出选区） */
   private dragging = false
+  /** 拖动开始时的容器 body 坐标原点（缓存一次，拖动帧复用——避免每帧
+   *  getBoundingClientRect 强制 reflow，v1.6.59 性能优化） */
+  private dragRect: { left: number; top: number } | null = null
   /** 拖动后的固定位置（body 坐标；hide 时清除 → 下次进入重新角落定位） */
   private fixedPos: { left: number; top: number } | null = null
   /** pane1~pane5 可移动 / 可拖动区域（相对容器；每次 show 注入，默认定位 + 拖动 clamp 用） */
@@ -220,6 +257,7 @@ export class CrosshairTooltip {
     root.style.zIndex = '9999' // 脱离图表层级，永远置顶
     root.style.boxSizing = 'border-box'
     root.style.borderRadius = '4px'
+    // 通用投影（深浅系一致的效果色，非数据语义色；数据/文字色均从 theme 提取）
     root.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.25)'
     root.style.padding = '5px 5px'
     root.style.fontFamily =
@@ -379,19 +417,26 @@ export class CrosshairTooltip {
         x: this.dragStart.x - this.root.offsetLeft,
         y: this.dragStart.y - this.root.offsetTop,
       }
+      // 拖动开始缓存容器 body 坐标原点（拖动帧复用，避免每帧 getBoundingClientRect 强制 reflow）
+      const rect = this.container.getBoundingClientRect()
+      this.dragRect = { left: rect.left, top: rect.top }
     }
     let left = event.clientX - this.dragOffset!.x
     let top = event.clientY - this.dragOffset!.y
-    // 拖动边界（body 坐标）：pane1~pane5 数据区 内缩 2px，浮层不越界到刻度区 / 图表外
-    const rect = this.container.getBoundingClientRect()
+    // 拖动边界（body 坐标）：pane1~pane5 数据区内缩 2px，浮层不越界到刻度区 / 图表外
     const bounds = this.bounds
-    if (bounds && this.size) {
-      const minLeft = rect.left + bounds.left + PANE_EDGE_OFFSET
-      const maxLeft = rect.left + bounds.right - this.size.width - PANE_EDGE_OFFSET
-      const minTop = rect.top + bounds.top + PANE_EDGE_OFFSET
-      const maxTop = rect.top + bounds.bottom - this.size.height - PANE_EDGE_OFFSET
-      left = Math.min(Math.max(left, minLeft), Math.max(minLeft, maxLeft))
-      top = Math.min(Math.max(top, minTop), Math.max(minTop, maxTop))
+    if (bounds && this.size && this.dragRect) {
+      const clamped = clampTooltipPosition({
+        left,
+        top,
+        bounds,
+        containerLeft: this.dragRect.left,
+        containerTop: this.dragRect.top,
+        width: this.size.width,
+        height: this.size.height,
+      })
+      left = clamped.left
+      top = clamped.top
     }
     this.root.style.left = `${left}px`
     this.root.style.top = `${top}px`
@@ -416,6 +461,7 @@ export class CrosshairTooltip {
     this.root.style.cursor = 'grab' // 恢复按下即拖提示
     this.dragStart = null
     this.dragOffset = null
+    this.dragRect = null // 清理拖动缓存（防残留，下次拖动重新测量）
   }
 
   /** 定位：容器内坐标 + 容器 rect → body 坐标（position: fixed）；
@@ -427,7 +473,6 @@ export class CrosshairTooltip {
       entrySide,
       paneTop,
       tooltipWidth: this.size.width,
-      tooltipHeight: this.size.height,
       paneLeft: this.bounds.left,
       paneRight: this.bounds.right,
     })

@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.58（2026-10-17）**
+> **当前版本：v1.6.59（2026-10-17）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -62,11 +62,15 @@
   - **进入方向定位（v1.6.43 修正）**：鼠标从图表左半区进入 → 浮层固定
     **pane1**（K 线主图）**右上角**；从右半区进入 → 固定 pane1 **左上角**
     （不再跟随鼠标、不随命中 pane 变化）；
-  - **拖动与选中（v1.6.53 按下即拖）**：**只要鼠标在 tooltip 任何位置按下即可
+  - **可移动 / 可拖动区域（v1.6.58）**：默认角落定位与拖动边界均限定在
+    **pane1~pane5 数据区**（`TooltipBounds` 每次命中注入）：X 方向扣除左 / 右刻度区宽
+    （左右刻度开关打开时浮层不越界到刻度区），Y 方向 pane1 顶部 → pane5 底部；
+  - **拖动与选中（v1.6.53 按下即拖 / v1.6.59 性能）**：**只要鼠标在 tooltip 任何位置按下即可
     拖动**（无 ≡ 手柄图标，grab 光标）——按下后位移 ≥ 4px 即拖动浮层（拖动期间
     userSelect:none），松开后位置固定直到鼠标离开图表，再次进入重新角落定位；
     **无位移 = 点击**（单击放光标 / **双击选词 / 三击选行**仍可用，与拖动互不
-    冲突）；
+    冲突）；拖动 clamp 抽为纯函数 `clampTooltipPosition`（可单测），拖动期间缓存
+    容器坐标原点（不每帧 getBoundingClientRect 强制 reflow）；
   - **文字可选中（v1.6.48 修复根因）**：浮层主体可自由选中 / 复制文字；浮层固定角落，
   - **可选中根因修复（v1.6.48）**：浮层挂 body（图表 DOM 外），鼠标移入浮层时
     lightweight-charts 会向图表容器派发 mouseleave → 清除十字星 → crosshairMove(null)

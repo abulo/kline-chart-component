@@ -2,6 +2,17 @@
 
 版本号遵循语义化版本（Semantic Versioning）：`主版本号.次版本号.修订号`
 
+## v1.6.59（2026-10-17）
+
+### tooltip 质量收尾：性能优化 / 死代码清理 / 拖动边界可测化
+
+- **性能**：拖动期间缓存容器 body 坐标原点（`dragRect`，拖动开始时测量一次），不再每帧 `getBoundingClientRect` 强制 reflow；松开时清理缓存。
+- **可测性**：拖动 clamp 逻辑从 `handleMouseMove` 内联提取为纯函数 `clampTooltipPosition`（body 坐标 + `TooltipBounds` 换算，X/Y 双向 clamp、数据区小于浮层的极端兜底）。
+- **死代码清理**：`TooltipPositionParams` 删除未使用的 `tooltipHeight` 参数（`resolveTooltipPosition` 只用宽 + pane 区域，测试同步更新）；`containerWidth/containerHeight` 旧参数无残留。
+- **文档**：README tooltip 章节补充"可移动 / 可拖动区域 pane1~pane5"（v1.6.58）与拖动性能说明（v1.6.59）；tooltip 通用投影注释说明深浅系一致（非数据色，数据 / 文字色均在 theme.ts）。
+- 全项目扫描：crosshair / volume 目录无孤儿文件；indicator 内 `#` 均为注释说明（实际取色在控制器 / theme）。
+- 验证：新增 `clampTooltipPosition` 单测 6 条（数据区内不 clamp / 越左 / 越右 / 越顶 / 越底 / 极端兜底），tooltip 单测 23 条全过；`vue-tsc --noEmit` 零输出；`vitest` 17 files / **148** tests 全绿。
+
 ## v1.6.58（2026-10-17）
 
 ### tooltip 可移动 / 可拖动区域限定 pane1~pane5（左右刻度开关感知）
