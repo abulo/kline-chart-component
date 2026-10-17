@@ -272,16 +272,14 @@ export class SubIndicatorPaneManager {
       5,
     )
     // MACD 红绿柱自绘（仅激活 MACD 时有数据；柱体 > 0 空心红 / < 0 绿实心）。
-    // v1.7.0 抽取：分时周期 MACD 柱改由库直方图渲染（indicatorsBarSeries 直接可见），
-    // 不挂自绘 primitive，避免柱体重复叠加
-    this.macdBarPrimitive = null
-    if (!this.getIsTimeshare()) {
-      this.macdBarPrimitive = new MacdBarPrimitive(
-        () => this.macdPoints,
-        () => themeColors(this.getTheme()),
-      )
-      this.indicatorsBarSeries.attachPrimitive(this.macdBarPrimitive)
-    }
+    // v1.7.0 分时抽取：分时周期柱宽固定 1px（getIsTimeshare 注入 MacdBarPrimitive），
+    // 与 K 线周期共用自绘 primitive（库直方图仅作透明锚点）
+    this.macdBarPrimitive = new MacdBarPrimitive(
+      () => this.macdPoints,
+      () => themeColors(this.getTheme()),
+      () => this.getIsTimeshare(),
+    )
+    this.indicatorsBarSeries.attachPrimitive(this.macdBarPrimitive)
     // 内容 Pane 边框（pane5）：自绘 1px 矩形，颜色随主题（深浅系区分）
     this.indicatorsBarSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.getTheme()).paneBorder),
@@ -443,23 +441,9 @@ export class SubIndicatorPaneManager {
       time: lines[0][lines[0].length - 1].time as UTCTimestamp,
       value: minValue,
     }
-    // pane5 柱数据写入：
-    //  - K 线周期：透明锚点（可见柱由 MacdBarPrimitive 自绘红绿柱）；
-    //  - 分时周期 MACD（v1.7.0 抽取）：库直方图直接渲染红绿柱（值 ≥ 0 红 / < 0 绿，
-    //    沿用 K 线 MACD 正负分界口径），不再透明锚点
-    if (this.getIsTimeshare() && name === 'macd') {
-      const histLine = lines[2]
-      const colors = themeColors(this.getTheme())
-      this.indicatorsBarSeries.setData(
-        histLine.map((point) => ({
-          time: point.time as UTCTimestamp,
-          value: point.value,
-          color: point.value >= 0 ? colors.upColor : colors.downColor,
-        })),
-      )
-    } else {
-      this.indicatorsBarSeries.setData(anchorPoints)
-    }
+    // pane5 柱数据写入：统一透明锚点（可见柱由 MacdBarPrimitive 自绘红绿柱；
+    // 分时周期柱宽 1px 由 getIsTimeshare 注入，v1.7.0）
+    this.indicatorsBarSeries.setData(anchorPoints)
     // 刻度对称锚点 series：全部时间点交替 ±absMax（可视区任意窗口恒含正 / 负锚点，
     // scale 值域恒为 [-absMax, +absMax] → 0 值线固定；平移 / 切换指标均不漂移）
     if (this.indicatorScaleAnchorSeries !== null) {

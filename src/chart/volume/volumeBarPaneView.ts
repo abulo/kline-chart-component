@@ -57,24 +57,26 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
           const barSpacing = timeScale.options().barSpacing
           const pixelRatio = window.devicePixelRatio || 1
+          const bars = this.source.getBars()
           // 柱宽 = 库源码原版 optimalCandlestickWidth + 奇偶修正（与 pane1 同一函数
-          // 同一 barSpacing → 位图像素宽度绝对一致），转 CSS 像素
-          const barWidthBitmap = candlestickBarWidth(barSpacing, pixelRatio)
+          // 同一 barSpacing → 位图像素宽度绝对一致），转 CSS 像素；
+          // 分时周期（v1.7.0）固定 1px（东财分时量柱细柱）——同周期数据同类型，
+          // 取首根判定即可（O(1)，避免每帧 some 全量遍历）
+          const isTimeshare = bars[0]?.pointType === 'timeshare'
+          const barWidthBitmap = isTimeshare
+            ? 1
+            : candlestickBarWidth(barSpacing, pixelRatio)
           const barWidth = barWidthBitmap / pixelRatio
           const colors = this.source.getThemeColors()
           // 柱体底部 = Pane 底部（mediaSize.height，绝对贴底）。
           // 注意：不能用 priceToCoordinate(0)——Histogram base=0 的 autoScale
           // 范围从 0 起，0 会映射到 Pane 底部内边距处，底部留出缝隙。
           const yBase = mediaSize.height
-          const bars = this.source.getBars()
 
           context.lineWidth = 1
           for (let index = fromIndex; index <= toIndex; index++) {
             const bar = bars[index]
             if (!bar) continue
-            // 仅 K 线点自绘柱体（v1.7.0）：分时周期 bars 为 timeshare 点（无 OHLC），
-            // 分时量柱由 HistogramSeries 直方图渲染，此处跳过防止 NaN 绘制
-            if (bar.pointType !== 'kline') continue
             // 柱中心 = 同一逻辑索引坐标；按库 bitmap 取整对齐：
             // left = round(center×dpr) - floor(barWidthBitmap/2)，再转 CSS
             const centerX = timeScale.logicalToCoordinate(index as Logical)
@@ -82,12 +84,28 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
             const centerBitmap = Math.round(centerX * pixelRatio)
             const leftBitmap = centerBitmap - Math.floor(barWidthBitmap / 2)
             const barX = leftBitmap / pixelRatio
-            const yTop = seriesApi.priceToCoordinate(bar.volume!) // pointType='kline' 必含 volume
+            // 柱顶 = volume 坐标（volume 必含：K 线 / 分时点均有 volume）
+            const yTop = seriesApi.priceToCoordinate(bar.volume ?? 0)
             if (yTop === null) continue
             const barHeight = yBase - yTop
             if (barHeight <= 0) continue
 
-            // 柱体三态色（v1.6.57）：按 close vs preClose 红涨绿跌平盘，
+            if (bar.pointType === 'timeshare') {
+              // 分时量柱（v1.7.0）：实心 1px 细柱，红绿按 price vs preClose 三态
+              // （与 K 线柱同一判定基准；平盘中性色）
+              const preClose = bar.preClose ?? bar.price ?? 0
+              if ((bar.price ?? 0) > preClose) {
+                context.fillStyle = colors.upColor
+              } else if ((bar.price ?? 0) < preClose) {
+                context.fillStyle = colors.downColor
+              } else {
+                context.fillStyle = colors.flatColor
+              }
+              context.fillRect(barX, yTop, barWidth, barHeight)
+              continue
+            }
+
+            // K 线点柱体三态色（v1.6.57）：按 close vs preClose 红涨绿跌平盘，
             // 与 pane1 K 线同一判定基准（不再用 close>=open，一字板平盘也正确）
             const preClose = bar.preClose ?? bar.open!
             if (bar.close! > preClose) {

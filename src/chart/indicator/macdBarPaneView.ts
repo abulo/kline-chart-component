@@ -65,10 +65,12 @@ export class MacdBarPaneView implements IPrimitivePaneView {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
           const barSpacing = timeScale.options().barSpacing
           const pixelRatio = window.devicePixelRatio || 1
-          // 柱宽 = 库源码原版 optimalCandlestickWidth + 奇偶修正
+          // 柱宽：分时周期固定 1px（东财分时 MACD 细柱，v1.7.0）；
+          // K 线周期 = 库源码原版 optimalCandlestickWidth + 奇偶修正
           // （与成交量 / pane1 同一函数同一 barSpacing → 位图像素宽度绝对一致），
           // 转 CSS 像素
-          const barWidthBitmap = candlestickBarWidth(barSpacing, pixelRatio)
+          const isTimeshare = this.source.getIsTimeshare()
+          const barWidthBitmap = isTimeshare ? 1 : candlestickBarWidth(barSpacing, pixelRatio)
           const barWidth = barWidthBitmap / pixelRatio
           const colors = this.source.getThemeColors()
           // 0 轴参考：priceToCoordinate(0) 仅用于计算"值相对 0 轴的像素距离"（延伸量）；

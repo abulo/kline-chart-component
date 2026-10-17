@@ -720,22 +720,14 @@ export class KLineChartController {
           value: bar.avgPrice ?? 0, // pointType='timeshare' 必含 avgPrice
         })),
       );
-      // 成交量直方图（分时）：Histogram 直接可见渲染，红绿按 price vs preClose 三态
-      // （与 K 线柱体同一判定基准，v1.6.57 口径）——颜色逐点注入
-      this.volumeSeries.applyOptions({ base: 0 });
+      // 成交量（分时，v1.7.0）：Histogram 透明锚点（仅建 scale 值域），
+      // 可见 1px 细柱由 VolumeBarPrimitive 自绘（红绿按 price vs preClose 三态，
+      // 与 K 线柱同一判定基准）；主题切换时由 applyTheme 同步锚点色
       this.volumeSeries.setData(
-        normalized.map(({ bar, time }) => {
-          const preClose = bar.preClose ?? bar.price ?? 0
-          const value = bar.volume ?? 0
-          const colors = themeColors(this.theme)
-          const color =
-            (bar.price ?? 0) > preClose
-              ? colors.upColor
-              : (bar.price ?? 0) < preClose
-                ? colors.downColor
-                : colors.flatColor
-          return { time: time as UTCTimestamp, value, color }
-        }),
+        normalized.map(({ bar, time }) => ({
+          time: time as UTCTimestamp,
+          value: bar.volume ?? 0, // pointType='timeshare' 必含 volume
+        })),
       );
       // 指标缓存重建（分时：成交量均量 / 附图指标 / 主图指标见 indicatorManager 守卫）
       this.indicatorManager.rebuildVolumeData();
@@ -901,7 +893,8 @@ export class KLineChartController {
     const last = this.bars[this.bars.length - 1];
     if (last && time < normalizeChartTime(last.time)!) return;
     if (this.isTimeshare) {
-      // 分时：更新价格 / 均价线 + 成交量直方图（红绿按 price vs preClose 三态）
+      // 分时：更新价格 / 均价线 + 成交量锚点（1px 细柱由 VolumeBarPrimitive 自绘，
+      // 红绿按 price vs preClose 三态，v1.7.0）
       this.timesharePriceSeries?.update({
         time: time as UTCTimestamp,
         value: point.price ?? 0,
@@ -910,17 +903,9 @@ export class KLineChartController {
         time: time as UTCTimestamp,
         value: point.avgPrice ?? 0,
       });
-      const preClose = point.preClose ?? point.price ?? 0
-      const colors = themeColors(this.theme)
       this.volumeSeries.update({
         time: time as UTCTimestamp,
         value: point.volume ?? 0,
-        color:
-          (point.price ?? 0) > preClose
-            ? colors.upColor
-            : (point.price ?? 0) < preClose
-              ? colors.downColor
-              : colors.flatColor,
       });
     } else {
       this.klineSeries.update({

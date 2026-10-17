@@ -51,10 +51,17 @@ export class MacdBarPrimitive implements ISeriesPrimitive<Time> {
 
   /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
   private readonly paneView: MacdBarPaneView
+  /** 分时模式判定（v1.7.0）：分时 MACD 柱固定 1px 宽（东财分时细柱），K 线周期柱宽与 pane1 一致 */
+  public readonly getIsTimeshare: () => boolean
 
-  constructor(getPoints: () => readonly MacdPoint[], getThemeColors: () => MacdThemeColors) {
+  constructor(
+    getPoints: () => readonly MacdPoint[],
+    getThemeColors: () => MacdThemeColors,
+    getIsTimeshare: () => boolean = () => false,
+  ) {
     this.getPoints = getPoints
     this.getThemeColors = getThemeColors
+    this.getIsTimeshare = getIsTimeshare
     this.paneView = new MacdBarPaneView(this)
   }
 
