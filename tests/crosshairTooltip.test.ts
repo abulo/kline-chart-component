@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { buildTooltipRows, resolveTooltipPosition, clampTooltipPosition } from '../src/chart/crosshair/crosshairTooltip'
 import type { ChartDataPoint } from '../src/types/chart'
 
-const colors = { up: '#FF0000', down: '#008000' }
+const colors = { up: '#FF0000', down: '#008000', avg: '#F4AA0A' }
 
 const makeBar = (partial: Partial<ChartDataPoint>): ChartDataPoint => ({
   time: 1728000000,
@@ -141,7 +141,7 @@ describe('buildTooltipRows 分时点（v1.7.0）', () => {
 
   it('均价不着色；涨跌 / 涨幅随价格着色', () => {
     const rows = buildTooltipRows(makeTs({ price: 9.5 }), 't', colors)
-    expect(rows[2].color).toBeUndefined()
+    expect(rows[2].color).toBe('#F4AA0A') // 均价 = 均价线同色（timeshareAvgColor，v1.7.0）
     expect(rows[3].color).toBe('#008000')
     expect(rows[4].color).toBe('#008000')
   })

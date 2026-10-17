@@ -372,7 +372,7 @@ export class IndicatorManager {
           { text: ' 价格: ', color: labelColor },
           { text: formatPrice(price), color: trendColor },
           { text: ' 均价: ', color: labelColor },
-          { text: formatPrice(tsBar.avgPrice ?? 0), color: labelColor },
+          { text: formatPrice(tsBar.avgPrice ?? 0), color: theme.timeshareAvgColor },
           { text: ' 涨跌: ', color: labelColor },
           { text: `${sign}${formatPrice(Math.abs(diff))}`, color: trendColor },
           { text: ' 涨幅: ', color: labelColor },

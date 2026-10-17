@@ -51,6 +51,8 @@ export interface TooltipColors {
   up: string
   /** 下跌色 */
   down: string
+  /** 分时均价色（v1.7.0：与均价线同色 timeshareAvgColor） */
+  avg?: string
 }
 
 /** 组装浮层行（纯函数，可单测；时间文本外部按 pane0 格式传入）：
@@ -79,11 +81,11 @@ export const buildTooltipRows = (
   }
   // 第一行时间直显（label 置空，show 时该行 label 列不占位，v1.6.44）
   if (isTimeshare) {
-    // 分时：价格（着色）+ 均价（不着色）+ 涨跌 / 涨幅（着色）+ 量额
+    // 分时：价格（着色）+ 均价（均价线同色 timeshareAvgColor）+ 涨跌 / 涨幅（着色）+ 量额
     return [
       { label: '', value: timeText },
       { label: '价格', value: formatPrice(bar.price), color: colorByPreClose(bar.price) },
-      { label: '均价', value: formatPrice(bar.avgPrice) },
+      { label: '均价', value: formatPrice(bar.avgPrice), color: colors.avg },
       { label: '涨跌', value: `${sign}${formatPrice(Math.abs(change))}`, color: changeColor },
       { label: '涨幅', value: `${sign}${Math.abs(changePct).toFixed(2)}%`, color: changeColor },
       { label: '成交量', value: formatVolume(bar.volume) },
@@ -322,6 +324,7 @@ export class CrosshairTooltip {
     const rows = buildTooltipRows(params.bar, params.timeText, {
       up: this.theme.upColor,
       down: this.theme.downColor,
+      avg: this.theme.timeshareAvgColor,
     })
     this.rowNodes.forEach((node, index) => {
       const row = rows[index]
