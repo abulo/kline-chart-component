@@ -47,6 +47,21 @@ export const formatAxisSmart = (v: number): string => {
 }
 
 /**
+ * 涨跌幅百分比格式化（v1.7.1，分时 pane1 右刻度专用）：
+ * (price / preClose - 1) × 100%，保留 2 位小数，带正负号（+1.23% / -0.87%）。
+ * 平盘（差值 |pct| < 1e-9）显示 '0.00%' 不带符号；preClose 非法（0 / NaN）返回 ''。
+ * 颜色三态由调用方（getValueColor：>0 红 / <0 绿 / =0 平盘）按返回值判定。
+ */
+export const formatPercent = (price: number, preClose: number): string => {
+  if (!Number.isFinite(price) || !Number.isFinite(preClose) || preClose === 0) return ''
+  const pct = ((price - preClose) / preClose) * 100
+  // 2 位小数下归零的幅度（< 0.005%）显示平盘 0.00%（无符号）
+  if (Math.abs(pct) < 0.005) return '0.00%'
+  const sign = pct > 0 ? '+' : '-'
+  return `${sign}${Math.abs(pct).toFixed(2)}%`
+}
+
+/**
  * 秒级时间戳 → 本地日期字符串 YYYY-MM-DD（pane0 顶部信息行最新 bar 时间显示）。
  * 非法输入（NaN / Infinity）返回 '--'，避免展示层出现乱码。
  */

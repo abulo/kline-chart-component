@@ -2,6 +2,13 @@
 
 版本号遵循语义化版本（Semantic Versioning）：`主版本号.次版本号.修订号`
 
+## v1.7.1（2026-10-17）
+### 分时 pane1 左右刻度：preClose 对称值域 + 三态着色 + 右刻度百分比
+- **价格范围对称于昨收**：分时 pane1 以首根 bar 的 preClose 为对称中心（`autoscaleInfoProvider` 固定返回 preClose ± 最大偏离×1.06），栅格中间横线（50% 高度）= preClose = 左刻度中间值 = 右刻度 0%；分时禁平移、缩放不改价格范围 → 刻度标签稳定；切回 K 线自动恢复 autoScale（provider 返回 null 不污染 K 线价格轴）。
+- **左刻度按值着色**：刻度值 vs preClose 三态 —— 上红（upColor）/ 下绿（downColor）/ 平盘中色（flatColor，深白浅黑，`resolveVsBaseColor` 纯函数）；K 线周期保持主题单色。
+- **右刻度百分比**（分时专用）：新增右刻度承载 series（挂 pane1 right scale，空数据透明锚点）承载右刻度 AxisLabelPrimitive；同一 y 坐标取左刻度 price scale 反算价格 → 左右值严格对齐；中间 0.00%（无符号），向上 +%（红）/ 向下 -%（绿）（`formatPercent` 纯函数）；K 线周期 getEnabled=false 右刻度区保持空白。
+- **基础设施**：AxisLabelPrimitive 扩展 `getEnabled` / `getValueColor` / `getPrice`（value() 统一求值，渲染层按值着色）；+7 单测（tests/axisLabel.test.ts，20 files / 186 tests）。
+
 ## v1.7.0（2026-10-17）
 ### 分时情绪形态 mock（半日/厂字板/一字板/天地天/地天地/连板）
 - **分时 mock 形态化**：`timesharePatternPath` 8 种形态分钟路径（半日 120 条 / 厂字板 / 一字涨 / 一字跌 / 天地天 / 地天地 / 连板涨 / 连板跌），围绕昨收涨停/跌停价阶段插值，封板缩量、开板/天地放量，节点精确对齐；`buildTsPool` 按"形态序列 × symbol 偏移"逐日分配，确定性覆盖齐全；`fetchHistory` 分时分支改按交易日分组取最近 N 日（不再硬编码 241/240）。

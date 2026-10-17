@@ -43,8 +43,29 @@ export interface AxisLabelConfig {
   getBackColor: () => string
   /** 全局字体（theme.chartFont：12px chartFontFamily，与指示值一致） */
   getFont: () => string
-  /** 数值格式化（按 pane 语义：K 线价格 / 成交量万·亿 / 指标值） */
+  /** 数值格式化（按 pane 语义：K 线价格 / 成交量万·亿 / 指标值 /
+   *  分时右刻度百分比，v1.7.1） */
   format: (price: number) => string
+  /**
+   * 标签启用开关（可选，v1.7.1）：返回 false 时本次更新不生成任何标签
+   * （updateAllViews 置空 labelViews，视图 draw 无输出）。
+   * 右刻度专用：分时周期 true（百分比刻度），K 线周期 false（右刻度区保持空白）。
+   */
+  getEnabled?: () => boolean
+  /**
+   * 标签按值着色回调（可选，v1.7.1）：返回该值应显示的文字颜色；
+   * 返回 undefined 时使用 getColor（默认单色）。
+   * 分时 pane1：价格 / 百分比 vs 首根 preClose 三态 —— 大于红 / 小于绿 / 等于平盘色。
+   * 注意：仅文字着色，背景块颜色保持 getBackColor 不变（深浅系统一）。
+   */
+  getValueColor?: (value: number) => string | undefined
+  /**
+   * 外部价格回调（可选，v1.7.1）：给定标签 y 坐标返回该处价格。
+   * 右刻度专用：取左刻度同一 price scale 的 coordinateToPrice(y) →
+   * 左右刻度在同一个 y 上显示同一价格（左 = 价格、右 = 百分比，值严格对齐）。
+   * 返回 null / undefined 时回退 series.coordinateToPrice。
+   */
+  getPrice?: (y: number) => number | null | undefined
   /**
    * 中间刻度固定值获取器（可选）：返回 number 时中间刻度标签固定显示该值
    * （如 MACD 中间 = 0）；返回 undefined 时按 scale 中间值显示。
@@ -94,9 +115,10 @@ export class AxisLabelPrimitive implements ISeriesPrimitive<Time> {
     this.labelViews = []
   }
 
-  /** 每次图表更新：按当前栅格等分数重建标签集合（位置与横线一致） */
+  /** 每次图表更新：按当前栅格等分数重建标签集合（位置与横线一致）；
+   *  getEnabled === false 时置空（右刻度 K 线周期保持空白，v1.7.1） */
   updateAllViews = (): void  => {
-    this.labelViews = this.buildLabelViews()
+    this.labelViews = this.config.getEnabled?.() === false ? [] : this.buildLabelViews()
   }
 
   /** 读取当前刻度标签数据（渲染视图绘制用） */

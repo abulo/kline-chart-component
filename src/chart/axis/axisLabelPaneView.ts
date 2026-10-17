@@ -83,7 +83,11 @@ class AxisLabelRenderer implements IPrimitivePaneRenderer {
       for (const label of labels) {
         const text = label.text()
         if (text === '') continue
-        drawAxisLabel(ctx, text, textRight, label.coordinate, font, textColor, backColor)
+        // v1.7.1：按值着色（分时 pane1 价格 / 百分比 vs preClose 三态红绿）；
+        // 未配置 getValueColor 或返回 undefined 时使用默认单色 textColor
+        const value = label.value()
+        const color = (value === null ? undefined : this.source.config.getValueColor?.(value)) ?? textColor
+        drawAxisLabel(ctx, text, textRight, label.coordinate, font, color, backColor)
       }
     })
   }

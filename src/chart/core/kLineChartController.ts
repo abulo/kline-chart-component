@@ -68,7 +68,7 @@ import {
   chartFont,
   type ChartThemeName,
 } from "./theme";
-import { resolveBarColors, type BarPalette } from "./resolveBarColors";
+import { resolveBarColors, resolveVsBaseColor, type BarPalette } from "./resolveBarColors";
 import { mergeBars } from "./mergeBars";
 import type { ChartDataPoint } from "../../types/chart";
 import {
@@ -90,7 +90,7 @@ import { VolumeBarPrimitive } from "../volume/volumeBarPrimitive";
 import { SarMarkerPrimitive } from "../indicator/sarMarkerPrimitive";
 import { PaneBorderPrimitive } from "../border/paneBorderPrimitive";
 import { GridPrimitive } from "../grid/gridPrimitive";
-import { formatVolume, formatPrice, normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock } from "../util/format";
+import { formatVolume, formatPrice, normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock, formatPercent } from "../util/format";
 import {
   isTimesharePeriod,
   timeshareVerticalCount,
@@ -126,6 +126,9 @@ export class KLineChartController {
   private timesharePriceSeries: ISeriesApi<"Line"> | null = null
   /** 分时均价线（pane1，LineSeries；分时周期渲染 avgPrice） */
   private timeshareAvgSeries: ISeriesApi<"Line"> | null = null
+  /** 分时右刻度承载 series（v1.7.1）：挂 pane1 right price scale（空数据透明锚点），
+   *  仅为右刻度百分比标签提供 priceAxisPaneViews 画布（右刻度区占位 + 自绘） */
+  private timeshareRightAxisSeries: ISeriesApi<"Line"> | null = null
   /** time → bar 索引（十字星 tooltip 命中取数 O(1)；批量重建 / 实时增量维护） */
   private barIndex = new Map<number, ChartDataPoint>();
   /** 各 Pane 像素高度（applyStretchFactors 更新；十字星 tooltip 定位 paneTop 用） */
@@ -409,6 +412,25 @@ export class KLineChartController {
       },
       1,
     );
+    // 分时右刻度承载 series（v1.7.1）：挂 pane1 right price scale（空数据透明锚点），
+    // 仅提供右刻度 canvas（右刻度区开关打开时占位 72px）；右刻度百分比标签由下方
+    // 右刻度 AxisLabelPrimitive 自绘（getPrice 复用左刻度 price scale 坐标反算 → 左右对齐）
+    this.timeshareRightAxisSeries = this.chart.addSeries(
+      LineSeries,
+      {
+        priceScaleId: "right",
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        lineWidth: 1,
+        color: "rgba(0, 0, 0, 0)",
+        priceFormat: {
+          type: "custom",
+          formatter: () => "",
+        },
+      },
+      1,
+    );
     // 内容 Pane 边框（pane1）：自绘 1px 矩形，颜色随主题（深浅系区分）
     this.klineSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
@@ -425,7 +447,8 @@ export class KLineChartController {
       }),
     );
     // pane1 左刻度标签：与栅格横线对齐（值 = 横线处价格，K 线价格 2 位小数）。
-    // series 动态取数（v1.7.0）：分时周期取 price 线（K 线空数据），K 线周期取 klineSeries
+    // series 动态取数（v1.7.0）：分时周期取 price 线（K 线空数据），K 线周期取 klineSeries；
+    // 分时按值着色（v1.7.1）：刻度值 vs 首根 preClose 三态 —— 上红 / 下绿 / 平盘中色
     this.klineSeries.attachPrimitive(
       new AxisLabelPrimitive({
         series: () => (this.isTimeshare ? this.timesharePriceSeries! : this.klineSeries),
@@ -436,6 +459,27 @@ export class KLineChartController {
         getBackColor: () => themeColors(this.theme).background,
         getFont: () => chartFont,
         format: (price) => formatPrice(price),
+        getValueColor: this.getScaleValueColor,
+      }),
+    );
+    // pane1 右刻度标签（v1.7.1，分时专用）：挂右刻度承载 series，百分比刻度与
+    // 左刻度同一 y 坐标（getPrice 取左 price scale 反算 → 左右值严格对齐）；
+    // 中间 = 0%（= preClose），向上 +%（红）/ 向下 -%（绿）/ 平盘 0.00%（中色）。
+    // K 线周期右刻度区保持空白（原行为，不显示标签）。
+    this.timeshareRightAxisSeries!.attachPrimitive(
+      new AxisLabelPrimitive({
+        series: () => this.timeshareRightAxisSeries!,
+        getEnabled: () => this.isTimeshare, // 仅分时显示；K 线周期右刻度区保持空白
+        getPaneIndex: () => 1,
+        getHorizontalCount: () =>
+          this.indicatorManager.getShowIndicator() ? 6 : 8,
+        getColor: () => themeColors(this.theme).textColor,
+        getBackColor: () => themeColors(this.theme).background,
+        getFont: () => chartFont,
+        // 百分比：相对首根 preClose（与左刻度价格同一 y 处反算，值对齐）
+        format: (price) => formatPercent(price, this.getTimesharePreClose()),
+        getValueColor: this.getScaleValueColor,
+        getPrice: (y) => this.timesharePriceSeries?.coordinateToPrice(y) ?? null,
       }),
     );
     // pane1 十字星左刻度指示值：十字星横线所在价格（K 线价格 2 位小数）。
@@ -701,6 +745,58 @@ export class KLineChartController {
     return isTimesharePeriod(this.period)
   }
 
+  /** 分时昨收基准（v1.7.1）：首根 bar 的 preClose —— 栅格中间横线 = 左刻度中间值
+   *  = 右刻度 0%。分时数据同交易日 preClose 一致，取首根稳定 */
+  private getTimesharePreClose = (): number => {
+    return this.bars.length > 0 ? (this.bars[0].preClose ?? 0) : 0
+  }
+
+  /** 分时左右刻度按值着色（v1.7.1）：刻度值 vs 首根 preClose 三态 ——
+   *  大于红（upColor）/ 小于绿（downColor）/ 等于平盘中色（flatColor，深白浅黑）。
+   *  K 线周期返回 undefined（左刻度保持主题单色，不按值着色） */
+  private getScaleValueColor = (value: number): string | undefined => {
+    if (!this.isTimeshare) return undefined
+    const preClose = this.getTimesharePreClose()
+    if (preClose <= 0) return undefined
+    return resolveVsBaseColor(value, preClose, themeColors(this.theme))
+  }
+
+  /** 分时 pane1 价格范围（v1.7.1）：以首根 preClose 为对称中心（上下同幅），
+   *  使栅格中间横线（50% 高度）= preClose = 左刻度中间值 = 右刻度 0%；
+   *  幅度 = 数据（price / avgPrice）相对 preClose 的最大偏离 × 1.06（≥ 0.001 防零值域）。
+   *  实现：timesharePriceSeries 的 autoscaleInfoProvider 固定返回对称范围
+   *  （lightweight-charts v5 无 PriceScaleOptions.minValue/maxValue）；
+   *  provider 闭包实时读数据 → 数据加载 / 实时推送后重设即可。
+   *  K 线周期 provider 返回 null（不覆盖库默认 autoscale，空 series 无贡献）。
+   *  分时禁平移、缩放不改价格范围 → 固定范围下刻度标签稳定。 */
+  private applyTimesharePriceRange = (): void => {
+    if (!this.isTimeshare || !this.timesharePriceSeries) return
+    const preClose = this.getTimesharePreClose()
+    if (preClose <= 0) return
+    let maxDev = 0
+    for (const bar of this.bars) {
+      const dev = Math.max(
+        Math.abs((bar.price ?? 0) - preClose),
+        Math.abs((bar.avgPrice ?? 0) - preClose),
+      )
+      if (dev > maxDev) maxDev = dev
+    }
+    const half = Math.max(maxDev, 0.001) * 1.06
+    this.timesharePriceSeries.applyOptions({
+      autoscaleInfoProvider: () => {
+        // K 线周期 / 数据清空：返回 null 不覆盖库默认 autoscale（空 series 无贡献，
+        // 避免分时对称范围污染 K 线价格轴）
+        if (!this.isTimeshare || this.bars.length === 0) return null
+        return {
+          priceRange: {
+            minValue: preClose - half,
+            maxValue: preClose + half,
+          },
+        }
+      },
+    })
+  }
+
   /* ===================== 数据 ===================== */
 
   /** K 线 / 成交量 / 指标数据写入（series 锚点 + 各 primitive 数据缓存重建） */
@@ -739,10 +835,14 @@ export class KLineChartController {
       this.indicatorManager.rebuildVolumeData();
       this.indicatorManager.rebuildIndicatorData();
       this.indicatorManager.refreshMainIndicatorData();
+      // 分时 pane1 价格范围：以首根 preClose 为对称中心（v1.7.1，左右刻度中间对齐）
+      this.applyTimesharePriceRange();
       return;
     }
 
     // —— K 线周期（原逻辑）：蜡烛 + 成交量自绘柱体 ——
+    // 恢复价格轴自动缩放（分时固定范围不带到 K 线周期，v1.7.1）
+    this.chart.priceScale("left", 1).applyOptions({ autoScale: true });
     // K 线三态颜色（v1.6.57）：按 close vs preClose 红/绿/平盘，覆盖库默认 close>=open
     // 判定（一字板 open===close 会被库画成上涨红）；主题切换时 applyTheme 会重设数据刷新
     const barPalette = themeColors(this.theme)
@@ -940,6 +1040,8 @@ export class KLineChartController {
     this.indicatorManager.rebuildVolumeData();
     this.indicatorManager.refreshMainIndicatorData();
     this.indicatorManager.rebuildIndicatorData();
+    // 分时实时推送：价格范围随最新数据重新对称（v1.7.1）
+    this.applyTimesharePriceRange();
   };
 
   /**

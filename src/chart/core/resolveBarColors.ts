@@ -70,3 +70,18 @@ export const resolveTimeshareVolumeColor = (
   if (price < base) return palette.downColor
   return palette.flatColor
 }
+
+/**
+ * 数值 vs 基准值三态颜色（纯函数，可单测；v1.7.1）：
+ *  > base → upColor（红）；< base → downColor（绿）；= base → flatColor（平盘中色）。
+ * 用于分时 pane1 左右刻度标签按值着色（基准 = 首根 preClose）。
+ */
+export const resolveVsBaseColor = (
+  value: number,
+  base: number,
+  palette: BarPalette,
+): string => {
+  if (value > base) return palette.upColor
+  if (value < base) return palette.downColor
+  return palette.flatColor
+}
