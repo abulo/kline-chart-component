@@ -6,17 +6,14 @@
  *  - runningMax/Min  ：滚动窗口最值（HHV/LLV，不足 N 根取全部）
  *  - tdxSum          ：前 N 根累加（SUM）
  *  - avedev          ：平均绝对偏差（CCI 使用）
- *  - toLines / closes：数组 → 指标线格式 / 收盘价序列
+ *  - toLines         ：数组 → 指标线格式
  *
  * 口径说明（与东财软件输出一致）：
  *  - SMA(X,N,M)：Y=(M*X+(N-M)*Y')/N，Y' 为前值，首值=X[0]；
  *  - EMA(X,N)：首值=X[0]，k=2/(N+1)；
  *  - LLV/HHV：从首根到当根窗口的最值（不足 N 根取全部）。
  */
-import type { IndicatorLine, K } from './types'
-
-/** 取收盘价序列（指标默认输入） */
-export const closes = (bars: K[]): number[] => bars.map((b) => b.close!)
+import type { IndicatorLine } from './types'
 
 /**
  * 通达信 SMA：Y=(M*X+(N-M)*Y')/N，首值=X[0]（RSI/KDJ 使用）。

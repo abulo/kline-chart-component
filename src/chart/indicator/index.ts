@@ -31,7 +31,7 @@ export type {
 export type { SarPoint, SarOptions } from './sar'
 
 // ---- 工具 ----
-export { tdxSMA, ema, runningMax, runningMin, tdxSum, avedev, toLines, closes } from './utils'
+export { tdxSMA, ema, runningMax, runningMin, tdxSum, avedev, toLines } from './utils'
 
 // ---- K 线主图五指标 ----
 export { calcMA } from './ma'

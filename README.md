@@ -199,8 +199,8 @@ tests/
   theme="dark"
   main-indicator="ma"
   sub-indicator="macd"
-  :data-count="120"
-  :period-whitelist="['day', 'week', 'month']"
+  :period="'day'"
+  format="YYYY-MM-DD"
   @period-change="onPeriodChange"
 />
 ```
@@ -222,6 +222,10 @@ tests/
 | `subIndicator` | `string` | `''` | 附图指标：`RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR`（`''` = 关指标层，互斥） |
 | `period` | `PeriodValue` | `'day'` | 当前周期（外部可控；变化时经 service 重新拉取该周期数据） |
 | `service` | `ChartDataService` | `MockChartDataService` 单例 | 数据服务实现（接入真实行情传 `HttpChartDataService` 实例，组件零改动） |
+| `data` | `ChartDataPoint[]` | `undefined` | 外部自定义数据（提供时优先渲染 data，跳过 service 拉取 / 分页 / 实时，v1.6.28） |
+| `format` | `string` | `''` | 时间格式模板（如 `'YYYY-MM-DD'` / `'YYYY-MM-DD HH:mm'`）；缺省按周期自动（v1.6.9） |
+
+> 已移除参数：`dataCount / total / size / pageSize`（每页条数，v1.6.27 改由 `new MockChartDataService({ fetchLimit })` 注入）、`periodWhitelist`（周期白名单，v1.6.34 删除，周期栏由父组件全量控制）。
 
 ### 5.3 事件
 
@@ -347,7 +351,7 @@ SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式
 分时周期（`1d` ~ `5d`）与 K 线周期共用同一组件与布局，渲染 / 交互差异如下：
 
 - **数据格式**：`pointType='timeshare'` 点 —— `time`（秒级时间戳，严格递增）/ `tradeDate`（'YYYY-MM-DD'）/ `preClose`（昨收）/ `price`（当前价）/ `avgPrice`（均价）/ `volume`（成交量）；
-- **mock 条数**：最近交易日完整 **241 条**（含 09:30 开盘点），较久远交易日 **240 条**（缺首分钟）；`1d`=241、`2d`=241+240、`3d`=241+2×240、`4d`=241+3×240、`5d`=241+4×240；
+- **mock 条数（情绪形态，v1.7.0）**：按"形态序列 × symbol 偏移"为每日分配分时形态（确定性覆盖 8 种）：半日（09:31~11:30 共 **120 条**）/ 厂字板（一字涨停开盘→开板回落→尾盘回封）/ 一字板涨停 / 一字板跌停 / 天地天（涨停→跌停→涨停）/ 地天地（跌停→涨停→跌停）/ 连板涨（高开→尾盘封涨停）/ 连板跌（高开→尾盘封跌停）；最新日完整 241 条 / 久远日 240 条（缺首分钟）；`fetchHistory` 按交易日分组取最近 N 日（`timesharePatternPath` 纯函数可单测）；
 - **pane1 分时双线**：`LineSeries` 价格线 + 均价线（深系 #FFFFFF / #F4AA0A，浅系 #33373E / #B8860B，`theme.timesharePriceColor` / `timeshareAvgColor`）；K 线周期双线清空不可见；
 - **无主图指标**：分时下主图指标栏隐藏（MA/EXPMA/BOLL/SAR/BBI 基于 OHLC，分时点无 OHLC）；
 - **成交量 pane3**：K 线周期为自绘红绿柱体 + VOL MA5/MA10 均量线；分时周期为自绘 **1px 细柱**且 **去掉均量线**（`rebuildVolumeData` 分时守卫，pane2 信息行仅显示成交量，v1.7.0）；**分时量柱红绿规则**：交易日首根对比昨收 preClose，其余对比上一分钟价（> 红 / < 绿 / = 平盘色，`resolveTimeshareVolumeColor` 纯函数）；
@@ -357,14 +361,14 @@ SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式
 - **交互**：分时下平移 / 缩放按钮隐藏，且 **图表平移交互整体禁用**（滚轮 / 按住拖拽 / 触摸，`setPeriod` 动态切换 `handleScroll`，缩放仍由工具栏按钮控制）；`hasMoreHistory=false`（分时数据完整，不触发左滑翻页）；pane0 / tooltip / 时间轴指示值时间格式 **YYYY-MM-DD HH:mm**（`formatAxisTime` 分时分支，v1.7.0 由 HH:mm 调整，跨多交易日分时区分日期）；
 - **pane0 信息行（分时）**：追加 价格 / **均价** / 涨跌 / 涨幅 / 成交量 / 成交额（价格 / 涨跌 / 涨幅 **数字**按 vs 昨收红涨绿跌平盘着色、label 用文字色；**均价数字 = 均价线同色**（timeshareAvgColor）；量额不着色，`buildInfoSegments` 分时分支 + `barTimeMap` O(1) 现取）；
 - **tooltip**：分时点显示 时间 / 价格（着色）/ **均价（均价线同色）** / 涨跌 / 涨幅 / 成交量 / 成交额（七行，涨跌基准 = 昨收）；
-- **文件**：`src/chart/periods.ts`（`isTimesharePeriod` / `timeshareGridVerticalCount` / `timeshareVerticalCount`）、`src/chart/core/kLineChartController.ts`（分时双线分支）、`src/chart/core/subIndicatorPaneManager.ts`（分时指标适配）、`src/services/chartDataService.ts`（分时 mock 241/240）。
+- **文件**：`src/chart/periods.ts`（`isTimesharePeriod` / `timeshareGridVerticalCount` / `timeshareVerticalCount`）、`src/chart/core/kLineChartController.ts`（分时双线分支）、`src/chart/core/subIndicatorPaneManager.ts`（分时指标适配）、`src/services/chartDataService.ts`（分时 mock：`timesharePatternPath` 8 形态 + `buildTsPool` 按日分配）。
 
 ## 六、运行
 
 ```bash
 npm install        # 固定版本：lightweight-charts 5.2.1 / vue 3.5.43
 npm run dev        # 开发（http://127.0.0.1:5210）
-npm run test       # vitest 单测（90 项）
+npm run test       # vitest 单测（175 项，18 files）
 npm run build      # vue-tsc 类型检查 + 构建
 ```
 
