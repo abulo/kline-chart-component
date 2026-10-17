@@ -31,8 +31,9 @@ export interface GridConfig {
   getColor: () => string
   /** 当前 Pane 的横向等分数（如 8 / 6 / 2），随指标开关动态变化 */
   getHorizontalCount: () => number
-  /** 竖向等分数（默认 4，全图统一） */
-  verticalCount?: number
+  /** 竖向等分数获取器（默认 4；分时周期按 timeshareGridVerticalCount 动态变化，
+   *  K 线恒为 4。改为函数以便 setPeriod 切换后 draw 时现取，无需重建 primitive） */
+  getVerticalCount?: () => number
 }
 
 export class GridPrimitive implements ISeriesPrimitive<Time> {

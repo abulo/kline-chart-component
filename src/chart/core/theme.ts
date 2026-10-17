@@ -75,6 +75,10 @@ export interface ChartThemeColors {
   volMa5: string
   /** 成交量 MA10 线颜色（pane3 VOL MA10，成交量副图惯例粉色） */
   volMa10: string
+  /** 分时价格线颜色（pane1 分时模式 price 线，深浅系区分保证可读性） */
+  timesharePriceColor: string
+  /** 分时均价线颜色（pane1 分时模式 avgPrice 线，东财惯例黄色系，浅系加深） */
+  timeshareAvgColor: string
 
   /* ===== 页面布局（App.vue） ===== */
   /** 页面整体背景（html 背景，跟随主题） */
@@ -126,6 +130,9 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     sarDown: '#008000',
      volMa5: '#FFD54F',
     volMa10: '#F06292',
+    // 分时双线：深系价格线白（醒目）、均价线亮黄
+    timesharePriceColor: '#FFFFFF',
+    timeshareAvgColor: '#F4AA0A',
 
     pageBackground: '#0B0E13',
     toolbarBackground: '#1E222D',
@@ -162,6 +169,9 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     sarDown: '#008000',
     volMa5: '#FFD54F',
     volMa10: '#F06292',
+    // 分时双线：浅系价格线深灰（白底清晰）、均价线深金黄（浅系下黄色需加深保证可读）
+    timesharePriceColor: '#33373E',
+    timeshareAvgColor: '#B8860B',
 
     pageBackground: '#EDEFF3',
     toolbarBackground: '#F3F4F6',

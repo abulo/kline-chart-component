@@ -41,7 +41,12 @@ class CrosshairAxisLabelRenderer implements IPrimitivePaneRenderer {
   draw = (target: CanvasRenderingTarget2D): void  => {
     const y = this.source.getCrosshairY()
     if (y === null) return
-    const price = this.source.config.series.coordinateToPrice(y)
+    // series 支持函数（动态取数：分时周期 pane1 用 price 线 / K 线周期用 klineSeries，v1.7.0）
+    const series =
+      typeof this.source.config.series === 'function'
+        ? this.source.config.series()
+        : this.source.config.series
+    const price = series.coordinateToPrice(y)
     if (price === null) return
     const text = this.source.config.format(price)
 

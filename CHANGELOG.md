@@ -2,6 +2,22 @@
 
 版本号遵循语义化版本（Semantic Versioning）：`主版本号.次版本号.修订号`
 
+## v1.7.0（2026-10-17）
+
+### 分时图功能（1d~5d 分时周期）
+
+- **分时数据格式**：`pointType='timeshare'` 点（`time` 秒级时间戳严格递增 / `tradeDate` / `preClose` / `price` / `avgPrice` / `volume`）；mock 生成最近交易日完整 **241 条**（含 09:30 开盘点）、较久远交易日 **240 条**（缺首分钟）；`1d`=241、`2d`=241+240、`5d`=241+4×240 条。
+- **pane1 分时双线**：`LineSeries` 价格线 + 均价线（深系 #FFFFFF/#F4AA0A，浅系 #33373E/#B8860B，`theme.timesharePriceColor / timeshareAvgColor`）；K 线周期双线 `setData([])` 不可见。
+- **分时无主图指标**：`indicatorManager.setMainIndicator` 分时守卫（pane1 为双线，MA/EXPMA/BOLL/SAR/BBI 基于 OHLC 无法计算）；App 主图指标栏整栏隐藏。
+- **成交量 pane3 抽取**：K 线周期保留自绘柱体（`volumeBarPaneView` 守卫 `pointType !== 'kline'` 跳过分时点）；分时周期 `Histogram` 直方图直接渲染，红绿按 `price vs preClose` 三态（v1.6.57 口径）。
+- **MACD 抽取**：K 线周期保留 `MacdBarPrimitive` 自绘红绿柱（锚点透明）；分时周期不挂自绘 primitive，`indicatorsBarSeries` 直方图渲染（值 ≥ 0 红 / < 0 绿）。
+- **附图指标分时适配**：指标数据源换算 K 口径（`close = price`，按价格序列计算）；分时无 CR（`TIMESHARE_DISABLED_SUB_INDICATORS`，App 按钮过滤 + 管理器兜底）。
+- **栅格竖线份数**：`timeshareGridVerticalCount`（1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5）；`GridPrimitive.verticalCount` 静态字段改 `getVerticalCount` 动态取数（分时按周期 / K 线恒 4）。
+- **交互差异**：分时下平移 / 缩放按钮隐藏（App `isTimeshare` computed）；分时 `hasMoreHistory=false` 不参与左滑翻页；`formatAxisTime` 分时分支输出 HH:mm。
+- **tooltip 分时适配**：分时点无 OHLC，显示 价格 / 均价（最高 / 最低 '—'），涨跌基准 = 昨收。
+- **服务层**：`isTimesharePeriod` 统一为公共版（`../chart/periods` import）。
+- **测试**：新增 `tests/timeshare.test.ts`（判定函数 + 241/240/1201 条数 + 字段 + 严格递增 + 交易日数）。
+
 ## v1.6.59（2026-10-17）
 
 ### tooltip 质量收尾：性能优化 / 死代码清理 / 拖动边界可测化

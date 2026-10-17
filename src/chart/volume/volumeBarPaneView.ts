@@ -72,6 +72,9 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
           for (let index = fromIndex; index <= toIndex; index++) {
             const bar = bars[index]
             if (!bar) continue
+            // 仅 K 线点自绘柱体（v1.7.0）：分时周期 bars 为 timeshare 点（无 OHLC），
+            // 分时量柱由 HistogramSeries 直方图渲染，此处跳过防止 NaN 绘制
+            if (bar.pointType !== 'kline') continue
             // 柱中心 = 同一逻辑索引坐标；按库 bitmap 取整对齐：
             // left = round(center×dpr) - floor(barWidthBitmap/2)，再转 CSS
             const centerX = timeScale.logicalToCoordinate(index as Logical)

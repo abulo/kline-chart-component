@@ -11,7 +11,7 @@
  *
  * 所有开关操作不得破坏整体布局尺寸，仅控制可见性 / 样式。
  */
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import KLineChart from './components/kLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
 import type { MainIndicatorName } from './chart/core/kLineChartController'
@@ -36,6 +36,9 @@ const onChartStatusChange = (status: string): void => {
 
 /** 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入） */
 const activePeriod = ref<PeriodValue>('day')
+
+/** 当前周期是否为分时（1d~5d，v1.7.0）：分时下隐藏平移 / 缩放按钮、主图指标栏、CR 附图指标 */
+const isTimeshare = computed(() => /^[1-5]d$/.test(activePeriod.value))
 
 /** 周期切换（点击即选中，周期保持必选其一） */
 const togglePeriod = (value: PeriodValue): void => {
@@ -149,7 +152,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
   <div class="page">
     <!-- 顶部工具栏：全部全局控制按钮 -->
     <div class="info">
-      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.6.59</span>
+      <span class="hint">附图指标互斥 + 分组 60/20/20 ⇄ 80/20 + K线 + 量 + RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR v1.7.0</span>
     </div>
 
     <div class="toolbar">
@@ -162,10 +165,11 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       <button class="btn" :class="{ active: showRightScale }" @click="toggleRightScale">
         右刻度{{ showRightScale ? '开' : '关' }}
       </button>
-      <button class="btn" @click="shiftLeft">左移</button>
-      <button class="btn" @click="shiftRight">右移</button>
-      <button class="btn" @click="zoomOut">缩小</button>
-      <button class="btn" @click="zoomIn">放大</button>
+      <!-- 平移 / 缩放（分时周期不可用：分时按时间轴自然滚动，无平移缩放语义，v1.7.0） -->
+      <button v-if="!isTimeshare" class="btn" @click="shiftLeft">左移</button>
+      <button v-if="!isTimeshare" class="btn" @click="shiftRight">右移</button>
+      <button v-if="!isTimeshare" class="btn" @click="zoomOut">缩小</button>
+      <button v-if="!isTimeshare" class="btn" @click="zoomIn">放大</button>
       <button class="btn" :class="{ active: theme === 'light' }" @click="toggleTheme">
         {{ theme === 'dark' ? '浅系' : '深系' }}
       </button>
@@ -190,8 +194,9 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       />
     </div>
 
-    <!-- 底部容器：主图指标（MA / EXPMA / BOLL / SAR / BBI，互斥开关，画在 pane1） -->
-    <div class="main-indicator-bar">
+    <!-- 底部容器：主图指标（MA / EXPMA / BOLL / SAR / BBI，互斥开关，画在 pane1）。
+         分时周期无主图指标（pane1 为分时双线，v1.7.0）→ 整栏隐藏 -->
+    <div v-if="!isTimeshare" class="main-indicator-bar">
       <span class="hint">主图指标</span>
       <button
         v-for="option in mainIndicatorOptions"
@@ -205,18 +210,20 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
     </div>
 
     <!-- 底部容器：附图指标（RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR，
-         互斥开关，画在 pane5；无选中时关闭指标层） -->
+         互斥开关，画在 pane5；无选中时关闭指标层）。
+         分时周期无 CR（CR 基于多日高低点累计，单日分时无意义，v1.7.0）→ 按钮过滤 -->
     <div class="sub-indicator-bar">
       <span class="hint">附图指标</span>
-      <button
-        v-for="option in subIndicatorOptions"
-        :key="option.name"
-        class="btn"
-        :class="{ active: activeSubIndicator === option.name }"
-        @click="toggleSubIndicator(option.name)"
-      >
-        {{ option.label }}
-      </button>
+      <template v-for="option in subIndicatorOptions" :key="option.name">
+        <button
+          v-if="!isTimeshare || option.name !== 'cr'"
+          class="btn"
+          :class="{ active: activeSubIndicator === option.name }"
+          @click="toggleSubIndicator(option.name)"
+        >
+          {{ option.label }}
+        </button>
+      </template>
     </div>
 
     <!-- 底部容器：周期（全量互斥单选） -->

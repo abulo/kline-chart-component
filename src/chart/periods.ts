@@ -48,3 +48,41 @@ export const periodMap: ReadonlyMap<PeriodValue, PeriodItem> = new Map(
 export const getPeriodLabel = (value: string): string =>
   periodMap.get(value as PeriodValue)?.label ?? value
 
+/* ============================== 分时栅格化（v1.7.0） ============================== */
+
+/**
+ * 分时周期 → 栅格化竖线等分数（v1.7.0，用户指定口径）：
+ *  - 1d（1 日分时）→ 竖线 4 等分（延续 K 线竖等分 4 份风格）；
+ *  - 2d / 3d / 4d / 5d（多日分时）→ 竖线分别 2 / 3 / 4 / 5 等分。
+ * 供分时渲染的 GridPrimitive.verticalCount 注入（K 线默认 4，见 grid/gridPrimitive.ts）。
+ */
+export const timeshareGridVerticalCount: Readonly<
+  Partial<Record<'1d' | '2d' | '3d' | '4d' | '5d', number>>
+> = {
+  '1d': 4,
+  '2d': 2,
+  '3d': 3,
+  '4d': 4,
+  '5d': 5,
+}
+
+/** 分时周期值集合（'1d' ~ '5d'，供 isTimesharePeriod 等判定复用） */
+export const TIMESHARE_PERIODS: ReadonlySet<string> = new Set(['1d', '2d', '3d', '4d', '5d'])
+
+/**
+ * 判断周期是否为分时（1日~5日分时）。
+ * 分时与 K 线渲染 / 交互差异（v1.7.0）：
+ *  - pane1 用 LineSeries 双线（价格 / 均价），无 K 线主图指标；
+ *  - pane3 成交量用直方图（Histogram），不用 K 线柱体自绘；
+ *  - 附图指标无 CR；竖线栅格份数按 timeshareGridVerticalCount；
+ *  - App 平移 / 缩放按钮隐藏。
+ */
+export const isTimesharePeriod = (period: string): boolean =>
+  TIMESHARE_PERIODS.has(period)
+
+/** 分时周期竖向栅格等分数（v1.7.0）：1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5，非分时回退 4。
+ *  统一收口 timeshareGridVerticalCount 的索引（period 为 PeriodValue 全联合，
+ *  直接索引 Partial<Record<timeshare>> 会触发 TS7053） */
+export const timeshareVerticalCount = (period: string): number =>
+  timeshareGridVerticalCount[period as keyof typeof timeshareGridVerticalCount] ?? 4
+

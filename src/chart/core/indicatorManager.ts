@@ -34,7 +34,7 @@ import {
 } from '../indicator'
 import { formatVolume, formatPrice, formatTimeByFmt, formatAxisTime } from '../util/format'
 import type { ChartThemeColors } from './theme'
-import type { PeriodValue } from '../periods'
+import { isTimesharePeriod, timeshareVerticalCount, type PeriodValue } from '../periods'
 import { type MainIndicatorName, type IndicatorLineSpec, type CrosshairPrimitiveRegistry, type IndicatorValueMap } from './types'
 import { SubIndicatorPaneManager } from './subIndicatorPaneManager'
 import type { TextSegment } from '../overlay/topPaneOverlayPrimitive'
@@ -126,6 +126,9 @@ export class IndicatorManager {
       getTheme: deps.getTheme,
       getOverlayTime: deps.getOverlayTime,
       crosshairRegistry: deps.crosshairRegistry,
+      // v1.7.0：分时模式判定 + 竖向栅格份数（分时按周期 / K 线恒 4）
+      getIsTimeshare: () => isTimesharePeriod(deps.getPeriod()),
+      getVerticalCount: () => timeshareVerticalCount(deps.getPeriod()),
     })
   }
 
@@ -158,6 +161,12 @@ export class IndicatorManager {
   setMainIndicator = (name: MainIndicatorName | null): void => {
     this.clearMainIndicatorSeries()
     if (name === null) {
+      this.mainIndicator = null
+      return
+    }
+    // 分时周期无主图指标（v1.7.0）：pane1 为分时双线，MA/EXPMA/BOLL/SAR/BBI
+    // 基于 OHLC 计算（分时点无 OHLC → NaN）；分时下清空缓存，切回 K 线周期恢复
+    if (isTimesharePeriod(this.getPeriod())) {
       this.mainIndicator = null
       return
     }

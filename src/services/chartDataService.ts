@@ -17,6 +17,7 @@
  *   形态自动跨周期携带且价格自洽。
  */
 import type { ChartDataPoint } from '../types/chart'
+import { isTimesharePeriod } from '../chart/periods'
 
 /* ============================== 接口定义 ============================== */
 
@@ -213,8 +214,7 @@ const TS_REALTIME_INTERVAL = 1200
 /** 分时每分钟刷新：每 N 次 tick 追加一根新分时分钟点（其余刷新最后一根） */
 const TS_NEW_MINUTE_EVERY = 6
 
-/** 判断是否为分时周期（1日~5日分时，多日分时） */
-const isTimesharePeriod = (period: string): boolean => /^[1-5]d$/.test(period)
+/** 判断是否为分时周期（1日~5日分时，多日分时）——公共判定见 ../chart/periods（v1.7.0 统一） */
 
 /**
  * 生成一天 241 个分时分钟点（升序，单位分钟，东财口径）：
@@ -565,11 +565,14 @@ export class MockChartDataService implements ChartDataService {
     const rand = createRandom(hashSeed(symbol + '|ts|' + days))
     // 最近 N 个交易日（kpool 升序）
     const lastDays = kpool.slice(-days)
-    const minutes = sessionMinutes()
+    const sessionMin = sessionMinutes()
     const out: ChartDataPoint[] = []
 
-    // 逐日生成：当日首分钟 price 从昨收出发，跨日 price 从前一日收盘出发（连续）
-    for (const day of lastDays) {
+    // 逐日生成：当日首分钟 price 从昨收出发，跨日 price 从前一日收盘出发（连续）。
+    // v1.7.0：最新交易日完整 241 条（09:30 集合竞价开盘点 + 09:31~15:00 每分钟）；
+    // 较久远交易日仅 240 条（缺少首分钟，模拟历史数据源获取不完整的场景）
+    for (const [dayIndex, day] of lastDays.entries()) {
+      const minutes = dayIndex === lastDays.length - 1 ? sessionMin : sessionMin.slice(1)
       const dayStart = day.preClose
       const dayT = new Date(day.time * 1000)
       let price = dayStart
@@ -781,11 +784,12 @@ export class MockChartDataService implements ChartDataService {
     if (isTimesharePeriod(query.period)) {
       const days = Number(query.period[0])
       const ts = this.ensureTsPool(query.symbol)
-      // 最近 N 日 = 从末尾往前 N×241 分钟（含 09:30 开盘点）
-      const end = ts.length
-      const start = Math.max(0, end - days * 241)
+      // 最近 N 日 = 从末尾往前 N 天：最新交易日 241 条（含 09:30 开盘点）+
+      // 较久远 (N-1) 日 × 240 条（v1.7.0：久远数据缺首分钟）
+      const total = 241 + (days - 1) * 240
+      const start = Math.max(0, ts.length - total)
       await new Promise((r) => setTimeout(r, NETWORK_DELAY))
-      return ts.slice(start, end).map(clone)
+      return ts.slice(start, ts.length).map(clone)
     }
 
     // —— K 线周期：分页拉取（before 语义：该时间戳之前的一页）——

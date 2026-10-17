@@ -2,7 +2,7 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.6.59（2026-10-17）**
+> **当前版本：v1.7.0（2026-10-17）**
 
 > 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
 > （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
@@ -341,6 +341,22 @@ SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式
 - 主图指标色 `mainIndicatorColors`、附图指标色 `subIndicatorColors`：深浅系共用，
   v1.4.92 起去白化（灰线 `#666666` / BOLL 中轨 `#33373E` / BBI `#607D8B`），浅系下清晰可见；
 - 页面 html 背景由 App.vue 随主题同步（`pageBackground`），图表内颜色全部走主题对象。
+
+### 5.7 分时图（1d~5d，v1.7.0）
+
+分时周期（`1d` ~ `5d`）与 K 线周期共用同一组件与布局，渲染 / 交互差异如下：
+
+- **数据格式**：`pointType='timeshare'` 点 —— `time`（秒级时间戳，严格递增）/ `tradeDate`（'YYYY-MM-DD'）/ `preClose`（昨收）/ `price`（当前价）/ `avgPrice`（均价）/ `volume`（成交量）；
+- **mock 条数**：最近交易日完整 **241 条**（含 09:30 开盘点），较久远交易日 **240 条**（缺首分钟）；`1d`=241、`2d`=241+240、`3d`=241+2×240、`4d`=241+3×240、`5d`=241+4×240；
+- **pane1 分时双线**：`LineSeries` 价格线 + 均价线（深系 #FFFFFF / #F4AA0A，浅系 #33373E / #B8860B，`theme.timesharePriceColor` / `timeshareAvgColor`）；K 线周期双线清空不可见；
+- **无主图指标**：分时下主图指标栏隐藏（MA/EXPMA/BOLL/SAR/BBI 基于 OHLC，分时点无 OHLC）；
+- **成交量 pane3**：K 线周期为自绘红绿柱体；分时周期为 `Histogram` 直方图（红绿按 `price vs preClose` 三态，与 K 线同一口径）；
+- **MACD pane5**：K 线周期为 `MacdBarPrimitive` 自绘红绿柱；分时周期为库直方图（值 ≥ 0 红 / < 0 绿）；
+- **附图指标**：分时下无 CR（`TIMESHARE_DISABLED_SUB_INDICATORS`，App 按钮过滤）；其余指标按价格序列计算（数据源换算 K 口径 `close = price`）；
+- **栅格竖线份数**：`timeshareGridVerticalCount` —— 1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5（`getVerticalCount` 动态取数，K 线恒 4）；
+- **交互**：分时下平移 / 缩放按钮隐藏；`hasMoreHistory=false`（分时数据完整，不触发左滑翻页）；pane0 / tooltip 时间格式 HH:mm（`formatAxisTime` 分时分支）；
+- **tooltip**：分时点无 OHLC，显示 价格 / 均价（最高 / 最低 '—'），涨跌基准 = 昨收；
+- **文件**：`src/chart/periods.ts`（`isTimesharePeriod` / `timeshareGridVerticalCount` / `timeshareVerticalCount`）、`src/chart/core/kLineChartController.ts`（分时双线分支）、`src/chart/core/subIndicatorPaneManager.ts`（分时指标适配）、`src/services/chartDataService.ts`（分时 mock 241/240）。
 
 ## 六、运行
 

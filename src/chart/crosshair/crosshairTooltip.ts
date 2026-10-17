@@ -59,9 +59,14 @@ export const buildTooltipRows = (
   timeText: string,
   colors: TooltipColors,
 ): TooltipRow[] => {
+  // 分时点（pointType='timeshare'，v1.7.0）：无 OHLC，价格 / 均价替代开盘 / 收盘，
+  // 最高 / 最低缺省显示 '—'；涨跌基准 = 昨收（preClose），颜色按 price vs preClose 三态
+  const isTimeshare = bar.pointType === 'timeshare'
   // 涨跌基准 = 昨收（preClose 缺失时回退开盘点，兜底不抛错）
   const preClose = bar.preClose ?? bar.open ?? 0
-  const change = (bar.close ?? 0) - preClose
+  const price = isTimeshare ? bar.price : bar.close
+  const open = isTimeshare ? bar.price : bar.open
+  const change = (price ?? 0) - preClose
   const changePct = preClose > 0 ? (change / preClose) * 100 : 0
   const sign = change > 0 ? '+' : change < 0 ? '-' : ''
   const changeColor = change > 0 ? colors.up : change < 0 ? colors.down : undefined
@@ -75,10 +80,10 @@ export const buildTooltipRows = (
   // 第一行时间直显（label 置空，show 时该行 label 列不占位，v1.6.44）
   return [
     { label: '', value: timeText },
-    { label: '开盘', value: formatPrice(bar.open), color: colorByPreClose(bar.open) },
-    { label: '收盘', value: formatPrice(bar.close), color: colorByPreClose(bar.close) },
-    { label: '最高', value: formatPrice(bar.high), color: colorByPreClose(bar.high) },
-    { label: '最低', value: formatPrice(bar.low), color: colorByPreClose(bar.low) },
+    { label: '开盘', value: formatPrice(open), color: colorByPreClose(open) },
+    { label: '收盘', value: formatPrice(price), color: colorByPreClose(price) },
+    { label: '最高', value: isTimeshare ? '—' : formatPrice(bar.high), color: colorByPreClose(bar.high) },
+    { label: '最低', value: isTimeshare ? '—' : formatPrice(bar.low), color: colorByPreClose(bar.low) },
     { label: '涨跌', value: `${sign}${formatPrice(Math.abs(change))}`, color: changeColor },
     { label: '涨幅', value: `${sign}${Math.abs(changePct).toFixed(2)}%`, color: changeColor },
     { label: '成交量', value: formatVolume(bar.volume) },

@@ -41,7 +41,13 @@ export class AxisLabelView {
     if (this.fixedValue !== undefined) {
       return this.primitive.config.format(this.fixedValue)
     }
-    const price = this.primitive.config.series.coordinateToPrice(this.coordinate)
+    // series 支持函数（动态取数：分时周期 pane1 切换 price 线 / K 线周期用 klineSeries，
+    // v1.7.0）——刻度永远以"当前有数据的 series"为坐标反算源
+    const series =
+      typeof this.primitive.config.series === 'function'
+        ? this.primitive.config.series()
+        : this.primitive.config.series
+    const price = series.coordinateToPrice(this.coordinate)
     if (price === null) return ''
     return this.primitive.config.format(price)
   }

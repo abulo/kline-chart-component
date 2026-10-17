@@ -33,8 +33,9 @@ import {
 import { CrosshairAxisLabelPaneView } from './crosshairAxisLabelPaneView'
 
 export interface CrosshairAxisLabelConfig {
-  /** 所属 series（坐标反算用：coordinateToPrice 取横线所在价格） */
-  series: ISeriesApi<SeriesType>
+  /** 所属 series（坐标反算用：coordinateToPrice 取横线所在价格）。
+   *  支持函数：分时周期 pane1 动态切换 price 线 / K 线周期用 klineSeries（v1.7.0） */
+  series: ISeriesApi<SeriesType> | (() => ISeriesApi<SeriesType>)
   /** Pane 索引（controller 注入时判断十字星命中的 pane） */
   getPaneIndex: () => number
   /** 标签文字颜色（主题 textColor） */

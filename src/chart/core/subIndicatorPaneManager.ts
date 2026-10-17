@@ -62,7 +62,8 @@ export const isZeroCenteredSubIndicator = (name: string): boolean =>
 export interface SubIndicatorPaneManagerDeps {
   /** chart 实例（addSeries / applyOptions / removePane / priceScale） */
   chart: ReturnType<typeof import('lightweight-charts').createChart>
-  /** K 线数据（ChartDataPoint[]，pointType='kline'；指标库 / 信息行共用） */
+  /** K 线数据（ChartDataPoint[]，K 线周期 pointType='kline'；分时周期为 timeshare 点。
+   *  指标库共用：分时下换算为 K 口径（close = price）再计算） */
   getBars: () => ChartDataPoint[]
   /** 当前主题名（深浅系切换时 updateThemeColors 使用） */
   getTheme: () => ChartThemeName
@@ -70,7 +71,34 @@ export interface SubIndicatorPaneManagerDeps {
   getOverlayTime: () => number | null
   /** 十字星指示值注册表（CrosshairManager；pane5 的注册 / 移除走这里） */
   crosshairRegistry: CrosshairPrimitiveRegistry
+  /** 当前周期是否为分时（v1.7.0）：MACD 红绿柱改库直方图 / 附图指标无 CR /
+   *  指标计算按价格序列（timeshare → K 口径） */
+  getIsTimeshare: () => boolean
+  /** 竖向栅格等分数（v1.7.0）：K 线 4 / 分时按周期份数，draw 时现取 */
+  getVerticalCount: () => number
 }
+
+/**
+ * 分时点 → K 线口径（v1.7.0）：附图指标库基于 OHLC（b.close!），分时点无 OHLC；
+ * 分时指标按价格序列计算（东财分时副图惯例），换算 close = price（OHLC 同价，
+ * 对 MA/EMA 类仅用 close 的指标无影响；对用 high/low 的 WR/KDJ 等退化为单值）。
+ */
+const toIndicatorBars = (bars: ChartDataPoint[]): ChartDataPoint[] =>
+  bars.map((bar) =>
+    bar.pointType === 'timeshare'
+      ? {
+          ...bar,
+          pointType: 'kline' as const,
+          open: bar.price,
+          high: bar.price,
+          low: bar.price,
+          close: bar.price,
+        }
+      : bar,
+  )
+
+/** 分时下不可用的附图指标（v1.7.0）：CR 基于多日高低点累计，分时单日无意义 → 禁用 */
+const TIMESHARE_DISABLED_SUB_INDICATORS: ReadonlySet<string> = new Set(['cr'])
 
 export class SubIndicatorPaneManager {
   /* ===== 依赖（构造注入，只读） ===== */
@@ -79,6 +107,10 @@ export class SubIndicatorPaneManager {
   private readonly getTheme: SubIndicatorPaneManagerDeps['getTheme']
   private readonly getOverlayTime: SubIndicatorPaneManagerDeps['getOverlayTime']
   private readonly crosshairRegistry: CrosshairPrimitiveRegistry
+  /** 当前周期是否为分时（v1.7.0，deps 注入） */
+  private readonly getIsTimeshare: SubIndicatorPaneManagerDeps['getIsTimeshare']
+  /** 竖向栅格等分数（v1.7.0，deps 注入） */
+  private readonly getVerticalCount: SubIndicatorPaneManagerDeps['getVerticalCount']
 
   /* ===== 附图指标状态 ===== */
   /** 当前激活的附图指标（null = 关闭指标层；互斥） */
@@ -120,6 +152,8 @@ export class SubIndicatorPaneManager {
     this.getTheme = deps.getTheme
     this.getOverlayTime = deps.getOverlayTime
     this.crosshairRegistry = deps.crosshairRegistry
+    this.getIsTimeshare = deps.getIsTimeshare
+    this.getVerticalCount = deps.getVerticalCount
   }
 
   /* ===================== 对外数据源（controller / primitive 注入） ===================== */
@@ -237,21 +271,27 @@ export class SubIndicatorPaneManager {
       },
       5,
     )
-    // MACD 红绿柱自绘（仅激活 MACD 时有数据；柱体 > 0 空心红 / < 0 绿实心）
-    this.macdBarPrimitive = new MacdBarPrimitive(
-      () => this.macdPoints,
-      () => themeColors(this.getTheme()),
-    )
-    this.indicatorsBarSeries.attachPrimitive(this.macdBarPrimitive)
+    // MACD 红绿柱自绘（仅激活 MACD 时有数据；柱体 > 0 空心红 / < 0 绿实心）。
+    // v1.7.0 抽取：分时周期 MACD 柱改由库直方图渲染（indicatorsBarSeries 直接可见），
+    // 不挂自绘 primitive，避免柱体重复叠加
+    this.macdBarPrimitive = null
+    if (!this.getIsTimeshare()) {
+      this.macdBarPrimitive = new MacdBarPrimitive(
+        () => this.macdPoints,
+        () => themeColors(this.getTheme()),
+      )
+      this.indicatorsBarSeries.attachPrimitive(this.macdBarPrimitive)
+    }
     // 内容 Pane 边框（pane5）：自绘 1px 矩形，颜色随主题（深浅系区分）
     this.indicatorsBarSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.getTheme()).paneBorder),
     )
-    // pane5 栅格：竖 4 等分；横向 2 等分（中间 1 条）
+    // pane5 栅格：竖 4 等分（分时按周期份数，getVerticalCount 动态）；横向 2 等分（中间 1 条）
     this.indicatorsBarSeries.attachPrimitive(
       new GridPrimitive({
         getColor: () => themeColors(this.getTheme()).grid,
         getHorizontalCount: () => 2,
+        getVerticalCount: this.getVerticalCount,
       }),
     )
     // pane5 左刻度标签：与栅格横线对齐（值 = 横线处指标值，大数缩写 / 自适应小数）。
@@ -343,8 +383,18 @@ export class SubIndicatorPaneManager {
     if (this.indicatorsBarSeries === null) return
     const name = this.activeSubIndicator
     if (name === null) return
+    // 分时禁用指标（CR）防御：分时下选中 CR 不渲染（App 已隐藏按钮，此处兜底）
+    if (this.getIsTimeshare() && TIMESHARE_DISABLED_SUB_INDICATORS.has(name)) {
+      this.subIndicatorLines = []
+      this.subIndicatorValueMaps = []
+      this.macdPoints = []
+      return
+    }
+    // 指标数据源：K 线周期直接用 bars；分时周期换算为 K 口径（close = price，
+    // 附图指标按价格序列计算，v1.7.0）
+    const sourceBars = this.getIsTimeshare() ? toIndicatorBars(this.getBars()) : this.getBars()
     // 东财指标库：calcSubIndicators 返回十指标全量 Record，取当前选中指标的分组线
-    const lines = calcSubIndicators(this.getBars())[name]
+    const lines = calcSubIndicators(sourceBars)[name]
     if (lines.length === 0 || lines[0].length === 0) return
     const colors = subIndicatorColors[name]
     // pane5 线缓存（IndicatorLinePrimitive 自绘现取；线色 = subIndicatorColors 对应下标）
@@ -393,7 +443,23 @@ export class SubIndicatorPaneManager {
       time: lines[0][lines[0].length - 1].time as UTCTimestamp,
       value: minValue,
     }
-    this.indicatorsBarSeries.setData(anchorPoints)
+    // pane5 柱数据写入：
+    //  - K 线周期：透明锚点（可见柱由 MacdBarPrimitive 自绘红绿柱）；
+    //  - 分时周期 MACD（v1.7.0 抽取）：库直方图直接渲染红绿柱（值 ≥ 0 红 / < 0 绿，
+    //    沿用 K 线 MACD 正负分界口径），不再透明锚点
+    if (this.getIsTimeshare() && name === 'macd') {
+      const histLine = lines[2]
+      const colors = themeColors(this.getTheme())
+      this.indicatorsBarSeries.setData(
+        histLine.map((point) => ({
+          time: point.time as UTCTimestamp,
+          value: point.value,
+          color: point.value >= 0 ? colors.upColor : colors.downColor,
+        })),
+      )
+    } else {
+      this.indicatorsBarSeries.setData(anchorPoints)
+    }
     // 刻度对称锚点 series：全部时间点交替 ±absMax（可视区任意窗口恒含正 / 负锚点，
     // scale 值域恒为 [-absMax, +absMax] → 0 值线固定；平移 / 切换指标均不漂移）
     if (this.indicatorScaleAnchorSeries !== null) {

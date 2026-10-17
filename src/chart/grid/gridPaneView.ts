@@ -38,8 +38,8 @@ export class GridPaneView implements IPrimitivePaneView {
           const config = this.source.config
           // 横向等分数（动态，随指标开关变化）
           const hCount = config.getHorizontalCount()
-          // 竖向等分数（默认 4，全图统一）
-          const vCount = config.verticalCount ?? 4
+          // 竖向等分数（动态：K 线默认 4，分时按周期份数；draw 时现取，周期切换无需重建）
+          const vCount = config.getVerticalCount?.() ?? 4
 
           context.lineWidth = 1
           context.strokeStyle = config.getColor()
