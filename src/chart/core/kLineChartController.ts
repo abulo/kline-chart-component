@@ -511,8 +511,12 @@ export class KLineChartController {
     // 背景色 / 文字色 / 字体**照搬左刻度指示值**（crosshairLabelText / crosshairLabelBackground /
     // chartFont），文字 = 与右刻度标签同格式的百分比（左显示值回算）；左对齐贴区左缘
     // （与右刻度标签同侧）；仅分时渲染（K 线周期右刻度区保持空白，原行为）。
+    // **反算 series 必须用 timesharePriceSeries（left scale 固定对称范围 [preClose±half]）**：
+    // right 轴承载 series 无 autoscaleInfoProvider，其范围是实际数据波动（不对称），
+    // coordinateToPrice 反算会与刻度序列错位 → 中间指示值 ≠ 0.00%（对不上根因，v1.7.1）。
+    // 挂载仍留在 right 轴承载 series（决定渲染到右刻度区），反算走 left 与刻度同源。
     const pane1RightCrosshairLabel = new CrosshairAxisLabelPrimitive({
-      series: () => this.timeshareRightAxisSeries!,
+      series: () => this.timesharePriceSeries!,
       getPaneIndex: () => 1,
       getEnabled: () => this.isTimeshare,
       align: 'left',
