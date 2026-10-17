@@ -2,11 +2,6 @@
 
 多 Pane K 线组件：一个 `chart` 内多 Pane（lightweight-charts v5 原生多 Pane），包含顶部信息行（名称 [代码] 时间 + 主图指标值）、K 线主图、成交量、附图指标层（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR 十指标互斥单选），指标层随选中指标动态开 / 关。
 
-> **当前版本：v1.7.1（2026-10-17）**
-
-> 十字光标时间：`localization.timeFormatter = (t) => formatTimeByFmt(t, this.timeFormat)`
-> （format 模板优先，缺省按周期自动；详见 CHANGELOG v1.6.11）。
-
 ---
 
 ## 一、布局结构
@@ -409,26 +404,3 @@ npm run build      # vue-tsc 类型检查 + 构建
 - **标签缓存**：刻度标签在 `updateAllViews`（图表更新）时重建，渲染 draw 只读取缓存集合，不重复计算；
 - **生命周期**：controller `destroy()` 移除十字星监听、断开 ResizeObserver、`detachPrimitive`（SAR 圆点 / 主图指标线 / 成交量均量线）、`chart.remove()`、清除容器标记；指标关闭时 series 先 `removePane` 再置 null；primitive `detached()` 清空引用；
 - **实例保护**：容器 `dataset.lwcMounted` 标记防止重复创建 chart 实例。
-
-## 八、固定依赖版本
-
-```json
-"dependencies": {
-  "lightweight-charts": "5.2.1",
-  "vue": "3.5.43"
-},
-"devDependencies": {
-  "@vitejs/plugin-vue": "6.0.9",
-  "typescript": "5.9.3",
-  "vite": "8.3.4",
-  "vitest": "^5.0.3",
-  "vue-tsc": "3.3.12"
-}
-```
-
-## 九、后续规划（用户逐步提出）
-
-- （已实现 v1.4.68）附图指标十项：RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR 互斥切换
-- K 线主图指标（MA / EXPMA / BOLL / SAR / BBI）
-- 分时线（1d~5d）与周期切换
-- 数据服务接入（HTTP / SSE / WebSocket，`types/chart.ts` 数据点结构已预留）
