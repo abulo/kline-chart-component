@@ -31,7 +31,7 @@ import { GridPrimitive } from '../grid/gridPrimitive'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import { CrosshairLineCapPrimitive } from '../crosshair/crosshairLineCapPrimitive'
-import { calcSubIndicators, type SubIndicatorType } from '../indicator'
+import { calcSubIndicator, type SubIndicatorType } from '../indicator'
 import { formatAxisSmart } from '../util/format'
 import { subIndicatorLabels } from './indicatorMeta'
 import type { CrosshairPrimitiveRegistry, IndicatorLineSpec, IndicatorValueMap } from './types'
@@ -391,8 +391,8 @@ export class SubIndicatorPaneManager {
     // 指标数据源：K 线周期直接用 bars；分时周期换算为 K 口径（close = price，
     // 附图指标按价格序列计算，v1.7.0）
     const sourceBars = this.getIsTimeshare() ? toIndicatorBars(this.getBars()) : this.getBars()
-    // 东财指标库：calcSubIndicators 返回十指标全量 Record，取当前选中指标的分组线
-    const lines = calcSubIndicators(sourceBars)[name]
+    // 东财指标库：按选中指标单算（v1.7.0 性能：避免十指标全量重算，长数据下计算量 1/10）
+    const lines = calcSubIndicator(name, sourceBars)
     if (lines.length === 0 || lines[0].length === 0) return
     const colors = subIndicatorColors[name]
     // pane5 线缓存（IndicatorLinePrimitive 自绘现取；线色 = subIndicatorColors 对应下标）

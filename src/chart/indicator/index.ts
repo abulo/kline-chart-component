@@ -26,7 +26,6 @@ export type {
   K,
   MainIndicators,
   SubIndicatorType,
-  SubIndicators,
 } from './types'
 export type { SarPoint, SarOptions } from './sar'
 
@@ -53,7 +52,7 @@ export { calcCCI } from './cci'
 export { calcROC } from './roc'
 export { calcCR } from './cr'
 
-import type { SubIndicators } from './types'
+import type { SubIndicatorType, IndicatorLine } from './types'
 import { calcRSI } from './rsi'
 import { calcKDJ } from './kdj'
 import { calcMACD } from './macd'
@@ -66,20 +65,26 @@ import { calcROC } from './roc'
 import { calcCR } from './cr'
 
 /**
- * 计算 K 线附图十指标（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR，东财算法）。
+ * 计算单个附图指标（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR，东财算法）。
+ * 按名分发到对应 calc 函数，避免全量计算十指标（v1.7.0 性能：数据变化 / 指标切换
+ * 时只重算当前选中指标，长数据（10000 根）下计算量降为 1/10）。
+ * @param name 指标名（SubIndicatorType 联合类型之一）
  * @param bars 升序 K 线点数组（pointType='kline'）
  */
-export const calcSubIndicators = (bars: ChartDataPoint[]): SubIndicators => {
-  return {
-    rsi: calcRSI(bars),
-    kdj: calcKDJ(bars),
-    macd: calcMACD(bars),
-    wr: calcWR(bars),
-    dmi: calcDMI(bars),
-    bias: calcBIAS(bars),
-    obv: calcOBV(bars),
-    cci: calcCCI(bars),
-    roc: calcROC(bars),
-    cr: calcCR(bars),
+export const calcSubIndicator = (
+  name: SubIndicatorType,
+  bars: ChartDataPoint[],
+): IndicatorLine[][] => {
+  switch (name) {
+    case 'rsi': return calcRSI(bars)
+    case 'kdj': return calcKDJ(bars)
+    case 'macd': return calcMACD(bars)
+    case 'wr': return calcWR(bars)
+    case 'dmi': return calcDMI(bars)
+    case 'bias': return calcBIAS(bars)
+    case 'obv': return calcOBV(bars)
+    case 'cci': return calcCCI(bars)
+    case 'roc': return calcROC(bars)
+    case 'cr': return calcCR(bars)
   }
 }

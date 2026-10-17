@@ -1238,5 +1238,8 @@ export class KLineChartController {
       );
     this.chart.remove();
     this.container.dataset.lwcMounted = "false";
+    // 数据引用显式清空（防 chart.remove 后仍持有大数组 / 索引，加快 GC，v1.7.0）
+    this.bars = [];
+    this.barIndex = new Map();
   };
 }
