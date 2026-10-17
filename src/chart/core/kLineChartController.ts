@@ -506,6 +506,23 @@ export class KLineChartController {
       format: (price) => formatPrice(price),
     });
     this.klineSeries.attachPrimitive(pane1CrosshairLabel);
+    // v1.7.1 分时右刻度区十字星指示值：库按 priceScaleId 过滤渲染（挂在 left 轴 series
+    // 上的指示值只画左刻度区）→ 在右刻度承载 series（挂 'right'）上再挂一个，
+    // 背景色 / 文字色 / 字体**照搬左刻度指示值**（crosshairLabelText / crosshairLabelBackground /
+    // chartFont），文字 = 与右刻度标签同格式的百分比（左显示值回算）；左对齐贴区左缘
+    // （与右刻度标签同侧）；仅分时渲染（K 线周期右刻度区保持空白，原行为）。
+    const pane1RightCrosshairLabel = new CrosshairAxisLabelPrimitive({
+      series: () => this.timeshareRightAxisSeries!,
+      getPaneIndex: () => 1,
+      getEnabled: () => this.isTimeshare,
+      align: 'left',
+      getColor: () => themeColors(this.theme).crosshairLabelText,
+      getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
+      getFont: () => chartFont,
+      format: (price) =>
+        formatPercent(Number(price.toFixed(2)), this.getTimesharePreClose()),
+    });
+    this.timeshareRightAxisSeries!.attachPrimitive(pane1RightCrosshairLabel);
     this.crosshairManager.registerPrimitive(pane1CrosshairLabel);
     // pane1 最高价 / 最低价标注：可视区域内 high 最大 / low 最小的 bar，
     // 最高价黄色标注在柱顶上方、最低价蓝色标注在柱底下方（各带同色实线

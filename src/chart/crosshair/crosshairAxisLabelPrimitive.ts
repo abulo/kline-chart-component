@@ -46,6 +46,11 @@ export interface CrosshairAxisLabelConfig {
   getFont: () => string
   /** 数值格式化（与对应 AxisLabelPrimitive 同一格式化函数） */
   format: (price: number) => string
+  /** 渲染开关（false 时不绘制；v1.7.1 右刻度区指示值：仅分时启用） */
+  getEnabled?: () => boolean
+  /** 文字对齐（v1.7.1）：'right' = 右对齐贴区右缘（默认，左刻度区）；
+   *  'left' = 左对齐贴区左缘（右刻度区，与右刻度标签同侧） */
+  align?: 'right' | 'left'
 }
 
 export class CrosshairAxisLabelPrimitive implements ISeriesPrimitive<Time> {

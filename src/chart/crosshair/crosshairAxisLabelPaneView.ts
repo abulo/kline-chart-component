@@ -39,6 +39,8 @@ class CrosshairAxisLabelRenderer implements IPrimitivePaneRenderer {
 
   /** 库在价格轴绘制时调用：绘制十字星指示值标签（target 为价格轴 canvas） */
   draw = (target: CanvasRenderingTarget2D): void  => {
+    // v1.7.1 渲染开关：分时右刻度区指示值仅在分时下绘制（K 线周期右刻度区保持空白）
+    if (this.source.config.getEnabled !== undefined && !this.source.config.getEnabled()) return
     const y = this.source.getCrosshairY()
     if (y === null) return
     // series 支持函数（动态取数：分时周期 pane1 用 price 线 / K 线周期用 klineSeries，v1.7.0）
@@ -57,6 +59,21 @@ class CrosshairAxisLabelRenderer implements IPrimitivePaneRenderer {
       const labelHalf = AXIS_LABEL_HEIGHT / 2
       if (mediaSize.height < AXIS_LABEL_HEIGHT) return // 高度不足时跳过（防异常）
       const yClamped = Math.min(Math.max(y, labelHalf), mediaSize.height - labelHalf)
+      // v1.7.1 对齐：'left' 左对齐贴区左缘（右刻度区，与右刻度标签同侧）；
+      // 默认 'right' 右对齐贴区右缘（左刻度区，与左刻度标签一致）
+      if (this.source.config.align === 'left') {
+        drawAxisLabel(
+          ctx,
+          text,
+          AXIS_LABEL_PAD_X,
+          yClamped,
+          this.source.config.getFont(),
+          this.source.config.getColor(),
+          this.source.config.getBackColor(),
+          'left',
+        )
+        return
+      }
       // 与刻度标签共用同一绘制规格（字体 / 对齐 / 内边距 / 高度完全一致）
       drawAxisLabel(
         ctx,
