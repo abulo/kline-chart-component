@@ -68,6 +68,7 @@ import {
   chartFont,
   type ChartThemeName,
 } from "./theme";
+import { resolveBarColors, type BarPalette } from "./resolveBarColors";
 import { mergeBars } from "./mergeBars";
 import type { ChartDataPoint } from "../../types/chart";
 import {
@@ -640,6 +641,9 @@ export class KLineChartController {
     const normalized = this.bars
       .map((bar) => ({ bar, time: normalizeChartTime(bar.time) }))
       .filter((entry) => entry.time !== null);
+    // K 线三态颜色（v1.6.57）：按 close vs preClose 红/绿/平盘，覆盖库默认 close>=open
+    // 判定（一字板 open===close 会被库画成上涨红）；主题切换时 applyTheme 会重设数据刷新
+    const barPalette = themeColors(this.theme)
     this.klineSeries.setData(
       normalized.map(({ bar, time }) => ({
         time: time as UTCTimestamp,
@@ -647,6 +651,7 @@ export class KLineChartController {
         high: bar.high!,
         low: bar.low!,
         close: bar.close!,
+        ...resolveBarColors(bar, barPalette),
       })),
     );
     // 成交量：Histogram 仅作 scale 锚点，颜色统一走 options.color（背景色，不可见），
@@ -783,6 +788,7 @@ export class KLineChartController {
       high: point.high!,
       low: point.low!,
       close: point.close!,
+      ...resolveBarColors(point, themeColors(this.theme)), // 三态色随实时数据更新（v1.6.57）
     });
     this.volumeSeries.update({
       time: time as UTCTimestamp,
@@ -922,7 +928,28 @@ export class KLineChartController {
     this.volumeSeries.applyOptions({ color: themeColorSet.background });
     // 指标相关颜色（MACD 锚点 / SAR 圆点 / 成交量均量线）由指标管理器统一同步
     this.indicatorManager.updateThemeColors(themeColorSet);
+    // K 线逐根三态色基于主题 palette（红/绿/平盘），主题切换后重设数据刷新（v1.6.57）
+    this.refreshKlineColors(themeColorSet);
     // 空 Pane 文字颜色在 draw 时动态取色，applyOptions 触发重绘即自动更新
+  };
+
+  /** 按当前主题重设 K 线逐根三态色（主题切换时调用，不动数据与指标） */
+  private refreshKlineColors = (palette: BarPalette): void => {
+    const points = this.bars
+      .map((bar) => {
+        const time = normalizeChartTime(bar.time)
+        if (time === null) return null
+        return {
+          time: time as UTCTimestamp,
+          open: bar.open!,
+          high: bar.high!,
+          low: bar.low!,
+          close: bar.close!,
+          ...resolveBarColors(bar, palette),
+        }
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null)
+    this.klineSeries.setData(points)
   };
 
   /** 放大（X 轴 barSpacing ×1.25，限幅） */

@@ -19,7 +19,7 @@ import {
 import type { VolumeBarPrimitive } from './volumeBarPrimitive'
 import { candlestickBarWidth } from '../core/candlestickWidth'
 
-/** 成交量主题颜色（与 K 线同源：background 用于空心填充，up/down 红绿） */
+/** 成交量主题颜色（与 K 线同源：background 用于空心填充，up/down 红绿，flat 平盘） */
 export interface VolumeThemeColors {
   /** 图表背景色（空心红柱的填充） */
   background: string
@@ -27,6 +27,8 @@ export interface VolumeThemeColors {
   upColor: string
   /** 下跌色（绿，实心填充） */
   downColor: string
+  /** 平盘色（close == preClose，深系白 / 浅系黑） */
+  flatColor: string
 }
 
 export class VolumeBarPaneView implements IPrimitivePaneView {
@@ -82,16 +84,23 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
             const barHeight = yBase - yTop
             if (barHeight <= 0) continue
 
-            if (bar.close! >= bar.open!) { // pointType='kline' 必含 OHLC
+            // 柱体三态色（v1.6.57）：按 close vs preClose 红涨绿跌平盘，
+            // 与 pane1 K 线同一判定基准（不再用 close>=open，一字板平盘也正确）
+            const preClose = bar.preClose ?? bar.open!
+            if (bar.close! > preClose) {
               // 上涨：空心红柱（背景填充 + 红色边框，同 pane1 上涨柱）
               context.fillStyle = colors.background
               context.fillRect(barX, yTop, barWidth, barHeight)
               context.strokeStyle = colors.upColor
               // +0.5 对齐 CSS 像素网格，避免 1px 边框模糊
               context.strokeRect(barX + 0.5, yTop + 0.5, barWidth - 1, barHeight - 1)
-            } else {
+            } else if (bar.close! < preClose) {
               // 下跌：绿色实心（同 pane1 下跌柱）
               context.fillStyle = colors.downColor
+              context.fillRect(barX, yTop, barWidth, barHeight)
+            } else {
+              // 平盘：中性色实心（深系白 / 浅系黑）
+              context.fillStyle = colors.flatColor
               context.fillRect(barX, yTop, barWidth, barHeight)
             }
           }

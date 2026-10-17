@@ -38,6 +38,8 @@ export interface ChartThemeColors {
   upColor: string
   /** 下跌颜色（K 线下跌 / 涨跌绿字） */
   downColor: string
+  /** 平盘颜色（close == preClose：K 线 / 成交量柱 / tooltip 平盘，深系白 / 浅系黑） */
+  flatColor: string
   /** 内容 Pane 边框色（pane1 / pane3 / pane5 自绘矩形边框，深浅系区分） */
   paneBorder: string
   /** 栅格线颜色（自绘等分栅格：竖 4 等分 / 横按 pane 配置，深浅系区分） */
@@ -106,6 +108,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     textColor: '#B2B5BE',
     upColor: '#FF0000',
     downColor: '#008000',
+    flatColor: '#FFFFFF', // 平盘：深系白
     paneBorder: '#2A2E39',
     grid: '#1E222D',
     crosshairLabelBackground: '#2A2E39',
@@ -141,6 +144,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     textColor: '#4A4A55',
     upColor: '#FF0000',
     downColor: '#008000',
+    flatColor: '#000000', // 平盘：浅系黑
     paneBorder: '#D4D8DE',
     grid: '#E6E8EC',
     crosshairLabelBackground: '#F0F2F5',

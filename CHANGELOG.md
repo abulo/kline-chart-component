@@ -2,6 +2,15 @@
 
 版本号遵循语义化版本（Semantic Versioning）：`主版本号.次版本号.修订号`
 
+## v1.6.57（2026-10-17）
+
+### K 线 / 成交量柱颜色：改按昨收（preClose）三态判定
+
+- **bug**：一字板下跌（open === close === 跌停价）显示为红色——lightweight-charts CandlestickSeries 内置红绿按 `close >= open` 判定，平盘被画成上涨红；成交量柱自绘同样用 `close >= open`。
+- **修复**：判定基准改为**昨收对比**：`close > preClose` 红（空心红柱）、`close < preClose` 绿（实心绿）、`close == preClose` 平盘中性色（深系白 / 浅系黑）；K 线逐根覆盖 `color / borderColor / wickColor` 三字段（新纯函数 `resolveBarColors`，`src/chart/core/resolveBarColors.ts`），成交量柱同规则三态（`volumeBarPaneView`）。
+- **新增**：主题 `ChartThemeColors.flatColor`（深系 `#FFFFFF` / 浅系 `#000000`）；主题切换时 `applyTheme` 重设 K 线逐根颜色刷新。
+- 验证：新增 `tests/barColor.test.ts`（6 条：一字涨停红 / 一字跌停绿 / 平盘中色 / 高开低走收红 / 低开走高收绿 / 昨收缺失兜底）；`vue-tsc --noEmit` 零输出；`vitest` 17 files / **139** tests 全绿。
+
 ## v1.6.56（2026-10-17）
 
 ### Mock 数据：A股情绪形态注入（仿东方财富）
