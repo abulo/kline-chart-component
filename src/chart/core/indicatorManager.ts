@@ -254,8 +254,19 @@ export class IndicatorManager {
   /* ===================== 成交量缓存（applyData 调用） ===================== */
 
   /** 重建成交量均量线（VOL MA5 / MA10）与 pane2 信息行缓存（数据变化时全量重建）。
-   *  东财指标库 calcVolMA（前 N-1 根跳过），与成交量柱同量纲。 */
+   *  东财指标库 calcVolMA（前 N-1 根跳过），与成交量柱同量纲。
+   *  分时周期（v1.7.0）去掉均量线：只显示 1px 量柱，不叠加 VOL MA5 / MA10。 */
   rebuildVolumeData = (): void => {
+    if (isTimesharePeriod(this.getPeriod())) {
+      this.volumeMaLines = []
+      this.volumeInfoMap = new Map(
+        this.getBars().map((bar) => [
+          bar.time,
+          { volume: bar.volume ?? 0, ma5: null, ma10: null },
+        ]),
+      )
+      return
+    }
     const bars = this.getBars()
     const theme = themeColors(this.getTheme())
     const volMa5Line = calcVolMA(bars, 5)

@@ -9,7 +9,7 @@
 - **分时数据格式**：`pointType='timeshare'` 点（`time` 秒级时间戳严格递增 / `tradeDate` / `preClose` / `price` / `avgPrice` / `volume`）；mock 生成最近交易日完整 **241 条**（含 09:30 开盘点）、较久远交易日 **240 条**（缺首分钟）；`1d`=241、`2d`=241+240、`5d`=241+4×240 条。
 - **pane1 分时双线**：`LineSeries` 价格线 + 均价线（深系 #FFFFFF/#F4AA0A，浅系 #33373E/#B8860B，`theme.timesharePriceColor / timeshareAvgColor`）；K 线周期双线 `setData([])` 不可见。
 - **分时无主图指标**：`indicatorManager.setMainIndicator` 分时守卫（pane1 为双线，MA/EXPMA/BOLL/SAR/BBI 基于 OHLC 无法计算）；App 主图指标栏整栏隐藏。
-- **成交量 pane3 抽取**：K 线周期保留自绘柱体（`volumeBarPaneView` 守卫 `pointType !== 'kline'` 跳过分时点）；分时周期自绘 **1px 细柱**（红绿按 `price vs preClose` 三态，v1.6.57 口径）。
+- **成交量 pane3 抽取**：K 线周期保留自绘柱体（`volumeBarPaneView` 守卫 `pointType !== 'kline'` 跳过分时点）+ VOL MA5/MA10 均量线；分时周期自绘 **1px 细柱**（红绿按 `price vs preClose` 三态，v1.6.57 口径）且 **去掉均量线**（`rebuildVolumeData` 分时守卫）。
 - **MACD 抽取**：K 线周期保留 `MacdBarPrimitive` 自绘红绿柱（锚点透明，正值空心红柱）；分时周期同用 `MacdBarPrimitive` 自绘但 **柱宽固定 1px 的实心细线**（`getIsTimeshare` 注入：正值实心红线 / 负值实心绿线，不做空心）。
 - **附图指标分时适配**：指标数据源换算 K 口径（`close = price`，按价格序列计算）；分时无 CR（`TIMESHARE_DISABLED_SUB_INDICATORS`，App 按钮过滤 + 管理器兜底）。
 - **栅格竖线份数**：`timeshareGridVerticalCount`（1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5）；`GridPrimitive.verticalCount` 静态字段改 `getVerticalCount` 动态取数（分时按周期 / K 线恒 4）。
