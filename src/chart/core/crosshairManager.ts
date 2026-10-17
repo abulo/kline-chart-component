@@ -15,7 +15,7 @@
  */
 import { type MouseEventParams } from 'lightweight-charts'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
-import { CrosshairTooltip } from '../crosshair/crosshairTooltip'
+import { CrosshairTooltip, type TooltipBounds } from '../crosshair/crosshairTooltip'
 import type { ChartDataPoint } from '../../types/chart'
 
 /** 十字星管理器构造依赖 */
@@ -26,12 +26,15 @@ export interface CrosshairManagerDeps {
   tooltip: CrosshairTooltip
   /** 命中 bar 数据源（按 time 取整根 K 线：OHLC + 量额 + 昨收） */
   getBarByTime: (time: number) => ChartDataPoint | undefined
-  /** 指定 pane 顶部 y（相对图表 canvas；tooltip 默认取 pane1 角落定位） */
+  /** 指定 pane 顶部 y（相对图表容器；tooltip 默认取 pane1 角落定位） */
   getPaneTop: (paneIndex: number) => number
   /** 时间文本（按 pane0 信息行同款格式：format 模板或按周期自动） */
   getTimeText: (time: number) => string
   /** 图表容器宽度（px；进入方向判定：鼠标 x < 宽/2 → 左进入，v1.6.36） */
   getWidth: () => number
+  /** pane1~pane5 可移动 / 可拖动区域（相对容器；默认位置与拖动 clamp 边界，
+   *  扣除左右刻度区宽，刻度开关变化时随每次 show 重新注入，v1.6.58） */
+  getTooltipBounds: () => TooltipBounds
 }
 
 export class CrosshairManager {
@@ -156,6 +159,8 @@ export class CrosshairManager {
           entrySide: this.entrySide,
           // 默认固定在 pane1（K 线主图）的角落，不随命中 pane 变化（v1.6.37）
           paneTop: this.deps.getPaneTop(1),
+          // 可移动 / 可拖动区域：pane1~pane5 数据区（左右刻度开关打开时自动收窄）
+          bounds: this.deps.getTooltipBounds(),
           bar,
           timeText: this.deps.getTimeText(hitTime),
         })

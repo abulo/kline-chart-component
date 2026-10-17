@@ -2,6 +2,17 @@
 
 版本号遵循语义化版本（Semantic Versioning）：`主版本号.次版本号.修订号`
 
+## v1.6.58（2026-10-17）
+
+### tooltip 可移动 / 可拖动区域限定 pane1~pane5（左右刻度开关感知）
+
+- **bug**：tooltip 默认角落定位与拖动边界以整个图表容器为基准，左右刻度区打开时浮层会越界到刻度区 / 图表外。
+- **修复**：新增 `TooltipBounds`（相对容器）：X 方向 pane1~pane5 数据区左右缘（左 / 右刻度开时扣除刻度区宽 `PRICE_SCALE_MIN_WIDTH`，关时为 0 / 容器宽）；Y 方向 pane1 顶部 → pane5 底部（信息行 pane2/4 在内）。
+  - 默认角落定位（`resolveTooltipPosition`）：左进入 → 数据区右上角、右进入 → 数据区左上角，均内缩 2px，不越刻度区；
+  - 拖动 clamp（`handleMouseMove`）：浮层位置限制在数据区内（X 不越左右刻度区，Y 不越 pane1 顶 / pane5 底）；
+  - 每次 `show` 由控制器重新注入边界（`crosshairManager.getTooltipBounds`），刻度开关切换后即时生效，无需重建浮层。
+- 验证：`resolveTooltipPosition` 单测扩展 3 条（左右刻度开 / 仅右刻度开 / 数据区 clamp），17 条全过；`vue-tsc --noEmit` 零输出；`vitest` 17 files / **142** tests 全绿。
+
 ## v1.6.57（2026-10-17）
 
 ### K 线 / 成交量柱颜色：改按昨收（preClose）三态判定

@@ -111,32 +111,62 @@ describe('buildTooltipRows', () => {
   })
 })
 
-describe('resolveTooltipPosition（v1.6.36 进入方向角落定位）', () => {
+describe('resolveTooltipPosition（v1.6.36 进入方向角落定位 / v1.6.58 限定 pane1~pane5 数据区）', () => {
+  // 刻度全关：数据区 = 容器全宽（paneLeft 0 ~ paneRight 1000）
   const base = {
     paneTop: 22,
     tooltipWidth: 180,
     tooltipHeight: 185,
-    containerWidth: 1000,
-    containerHeight: 600,
+    paneLeft: 0,
+    paneRight: 1000,
   }
 
-  it('左进入 → pane 右上角（右缘 2px、pane 顶部 2px，v1.6.43）', () => {
+  it('左进入 → pane 右上角（数据区右缘 2px、pane 顶部 2px，v1.6.43）', () => {
     const pos = resolveTooltipPosition({ ...base, entrySide: 'left' })
     expect(pos).toEqual({ left: 1000 - 180 - 2, top: 24 })
   })
 
-  it('右进入 → pane 左上角（距左缘 2px、pane 顶部 2px，v1.6.43）', () => {
+  it('右进入 → pane 左上角（数据区左缘 2px、pane 顶部 2px，v1.6.43）', () => {
     const pos = resolveTooltipPosition({ ...base, entrySide: 'right' })
     expect(pos).toEqual({ left: 2, top: 24 })
   })
 
-  it('左进入（右上角）但浮层过宽 → clamp 到容器左缘 2px（不越界）', () => {
+  it('左进入（右上角）但浮层过宽 → clamp 到数据区左缘 2px（不越界）', () => {
     const pos = resolveTooltipPosition({
       ...base,
       entrySide: 'left',
       tooltipWidth: 1200,
-      containerWidth: 1000,
     })
     expect(pos.left).toBe(2)
+  })
+
+  it('左右刻度打开：左进入 → 右上角在数据区右缘（不越右刻度区，v1.6.58）', () => {
+    const pos = resolveTooltipPosition({
+      ...base,
+      paneLeft: 72, // 左刻度区宽
+      paneRight: 1000 - 72, // 右刻度区宽 72
+      entrySide: 'left',
+    })
+    expect(pos).toEqual({ left: 1000 - 72 - 180 - 2, top: 24 })
+  })
+
+  it('左右刻度打开：右进入 → 左上角在数据区左缘（不越左刻度区，v1.6.58）', () => {
+    const pos = resolveTooltipPosition({
+      ...base,
+      paneLeft: 72,
+      paneRight: 1000 - 72,
+      entrySide: 'right',
+    })
+    expect(pos).toEqual({ left: 72 + 2, top: 24 })
+  })
+
+  it('仅右刻度打开：左进入 → 右上角按数据区右缘定位（v1.6.58）', () => {
+    const pos = resolveTooltipPosition({
+      ...base,
+      paneLeft: 0,
+      paneRight: 1000 - 72,
+      entrySide: 'left',
+    })
+    expect(pos).toEqual({ left: 1000 - 72 - 180 - 2, top: 24 })
   })
 })

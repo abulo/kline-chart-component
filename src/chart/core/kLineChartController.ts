@@ -95,7 +95,7 @@ import type { PeriodValue } from "../periods";
 import { AxisLabelPrimitive } from "../axis/axisLabelPrimitive";
 import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrimitive";
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
-import { CrosshairTooltip } from "../crosshair/crosshairTooltip";
+import { CrosshairTooltip, type TooltipBounds } from "../crosshair/crosshairTooltip";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
 import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH, VIEW_SHIFT_STEP } from "./constants";
@@ -305,6 +305,14 @@ export class KLineChartController {
       getPaneTop: this.getPaneTop,
       getTimeText: this.getTimeText,
       getWidth: () => this.container.clientWidth,
+      getTooltipBounds: (): TooltipBounds => ({
+        // X：pane1~pane5 数据区左右缘（扣除左 / 右刻度区宽，开关打开时收窄）
+        left: this.showLeftScale ? PRICE_SCALE_MIN_WIDTH : 0,
+        right: this.container.clientWidth - (this.showRightScale ? PRICE_SCALE_MIN_WIDTH : 0),
+        // Y：pane1 顶部 → pane5 底部（信息行 pane2/4 在内）
+        top: this.getPaneTop(1),
+        bottom: this.getPaneTop(5) + (this.paneHeights[5] ?? 0),
+      }),
     });
 
     /* ---------- 3. pane0：顶部空 Pane（无数据，自绘"名称 [代码] 时间 + 指标值"） ---------- */
