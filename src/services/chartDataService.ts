@@ -382,6 +382,160 @@ const PATTERN_SEQUENCE: LimitPattern[] = [
   'ground-sky-ground',
 ]
 
+/* ============================== 分时情绪形态（v1.7.0） ============================== */
+
+/** 分时情绪形态（日 K 情绪形态的分钟路径版，路径围绕昨收的涨停/跌停价自洽） */
+type TimesharePattern =
+  | 'half-day'          // 半日数据：仅上午 09:31~11:30 共 120 条（无 09:30 开盘点）
+  | 'factory-up'        // 厂字板：涨停一字开盘 → 盘中开板回落 → 尾盘回封涨停
+  | 'limit-up'          // 一字板涨停：全天封死涨停价
+  | 'limit-down'        // 一字板跌停：全天封死跌停价
+  | 'sky-ground-sky'    // 天地天：涨停开盘 → 砸至跌停 → 尾盘拉回涨停
+  | 'ground-sky-ground' // 地天地：跌停开盘 → 拉至涨停 → 尾盘砸回跌停
+  | 'streak-up'         // 连板涨：高开震荡上行 → 尾盘封涨停
+  | 'streak-down'       // 连板跌：高开震荡下行 → 尾盘封跌停
+
+/** 分时形态固定序列（确定性覆盖：不同 symbol 偏移分配不同形态，8 种齐全可测） */
+const TS_PATTERN_SEQUENCE: TimesharePattern[] = [
+  'half-day',
+  'factory-up',
+  'limit-up',
+  'limit-down',
+  'sky-ground-sky',
+  'ground-sky-ground',
+  'streak-up',
+  'streak-down',
+]
+
+/** 形态分钟放量系数（封板缩量 / 开板、天地震荡、尾盘拉升放量） */
+const timeshareVolumeK = (pattern: TimesharePattern, m: number): number => {
+  switch (pattern) {
+    case 'limit-up':
+    case 'limit-down':
+      return 0.4 // 一字封死缩量
+    case 'factory-up':
+      // 开板段（09:46~13:59）放量
+      return m >= 9 * 60 + 46 && m <= 13 * 60 + 59 ? 3 : 1
+    case 'sky-ground-sky':
+    case 'ground-sky-ground':
+      return 3 // 天地震荡全程放量
+    case 'streak-up':
+    case 'streak-down':
+      return m >= 14 * 60 + 30 ? 2.2 : 1 // 尾盘拉升 / 砸盘放量
+    case 'half-day':
+      return 1
+  }
+}
+
+/**
+ * 形态分时分钟路径（纯函数，可单测）：
+ *  - 围绕昨收的涨停价 / 跌停价构造阶段关键点（waypoints），逐分钟向目标点
+ *    线性逼近 + 小幅噪声（0.3%），命中节点精确对齐（末端无累计误差）；
+ *  - 分钟序列由调用方传入（最新日完整 / 久远日缺首分钟 / 半日 120 条）；
+ *  - 返回与 minutes 等长的 { minute, price, volume }[]（价格自洽、升序）。
+ */
+export const timesharePatternPath = (
+  pattern: TimesharePattern,
+  preClose: number,
+  minutes: number[],
+  rand: () => number,
+): { minute: number; price: number; volume: number }[] => {
+  const up = limitUp(preClose)
+  const down = limitDown(preClose)
+  // 一字板（封死形态）：全天恒为涨停 / 跌停价（无插值，价格精确对齐可断言）
+  if (pattern === 'limit-up' || pattern === 'limit-down') {
+    const px = pattern === 'limit-up' ? up : down
+    const out: { minute: number; price: number; volume: number }[] = []
+    for (const m of minutes) {
+      const volume = Math.round((20_000 + rand() * 280_000) * timeshareVolumeK(pattern, m))
+      out.push({ minute: m, price: px, volume })
+    }
+    return out
+  }
+  const node = (m: number, px: number): [number, number] => [m, px]
+  let waypoints: [number, number][]
+  switch (pattern) {
+    case 'factory-up': {
+      // 一字涨停开盘（09:30~09:45）→ 开板回落 2%~5% → 尾盘 14:00 后回封涨停
+      const dip = +Math.max(up * (1 - (0.02 + rand() * 0.03)), 0.01).toFixed(2)
+      waypoints = [
+        node(9 * 60 + 30, up), node(9 * 60 + 45, up), node(9 * 60 + 46, dip),
+        node(11 * 60 + 30, dip), node(14 * 60, dip), node(15 * 60, up),
+      ]
+      break
+    }
+    case 'sky-ground-sky':
+      // 涨停开盘 → 上午砸至跌停 → 尾盘拉回涨停
+      waypoints = [
+        node(9 * 60 + 30, up), node(10 * 60, up), node(11 * 60 + 30, down),
+        node(14 * 60, down), node(15 * 60, up),
+      ]
+      break
+    case 'ground-sky-ground':
+      // 跌停开盘 → 上午拉至涨停 → 尾盘砸回跌停
+      waypoints = [
+        node(9 * 60 + 30, down), node(10 * 60, down), node(11 * 60 + 30, up),
+        node(14 * 60, up), node(15 * 60, down),
+      ]
+      break
+    case 'streak-up': {
+      // 连板涨：高开 +3% → 震荡上行 → 尾盘封涨停
+      const open = +Math.max(preClose * 1.03, 0.01).toFixed(2)
+      const mid = +((open + up) / 2).toFixed(2)
+      waypoints = [
+        node(minutes[0], open), node(11 * 60 + 30, mid), node(14 * 60 + 30, mid), node(15 * 60, up),
+      ]
+      break
+    }
+    case 'streak-down': {
+      // 连板跌：高开 +1% → 震荡下行 → 尾盘封跌停
+      const open = +Math.max(preClose * 1.01, 0.01).toFixed(2)
+      const mid = +((open + down) / 2).toFixed(2)
+      waypoints = [
+        node(minutes[0], open), node(11 * 60 + 30, mid), node(14 * 60 + 30, mid), node(15 * 60, down),
+      ]
+      break
+    }
+    case 'half-day':
+      // 半日：上午小幅高开 → 11:30 收平 / 小涨（120 条）
+      waypoints = [
+        node(minutes[0], +Math.max(preClose * 1.002, 0.01).toFixed(2)),
+        node(minutes[minutes.length - 1], +Math.max(preClose * 1.004, 0.01).toFixed(2)),
+      ]
+      break
+  }
+  const out: { minute: number; price: number; volume: number }[] = []
+  let price = waypoints[0][1]
+  let wi = 0
+  for (const m of minutes) {
+    // 命中已过节点：推进至对应区间
+    while (wi < waypoints.length - 1 && m >= waypoints[wi + 1][0]) {
+      wi += 1
+    }
+    if (wi === waypoints.length - 1) {
+      // 已过最后一个节点：价格保持该节点价（回封 / 终点后剩余分钟恒定）
+      price = waypoints[wi][1]
+    } else {
+      const [startM, startP] = waypoints[wi]
+      const [endM, endP] = waypoints[wi + 1]
+      const span = endM - startM
+      const progress = span > 0 ? Math.min((m - startM) / span, 1) : 1
+      const target = startP + (endP - startP) * progress
+      // 区间起点 / 终点精确对齐节点价（转折点无噪声误差）；中间向目标逼近 40% + 噪声（0.3%）
+      if (m === startM) {
+        price = startP
+      } else if (m === endM) {
+        price = endP
+      } else {
+        price = price + (target - price) * 0.4 + (rand() - 0.5) * target * 0.003
+      }
+    }
+    const volume = Math.round((20_000 + rand() * 280_000) * timeshareVolumeK(pattern, m))
+    out.push({ minute: m, price: +Math.max(price, 0.01).toFixed(2), volume })
+  }
+  return out
+}
+
 /**
  * Mock 行情服务
  */
@@ -565,35 +719,30 @@ export class MockChartDataService implements ChartDataService {
     const rand = createRandom(hashSeed(symbol + '|ts|' + days))
     // 最近 N 个交易日（kpool 升序）
     const lastDays = kpool.slice(-days)
-    const sessionMin = sessionMinutes()
     const out: ChartDataPoint[] = []
 
-    // 逐日生成：当日首分钟 price 从昨收出发，跨日 price 从前一日收盘出发（连续）。
-    // v1.7.0：最新交易日完整 241 条（09:30 集合竞价开盘点 + 09:31~15:00 每分钟）；
-    // 较久远交易日仅 240 条（缺少首分钟，模拟历史数据源获取不完整的场景）
+    // v1.7.0：按形态序列为每个交易日分配分时形态（symbol 偏移，8 种形态确定性齐全覆盖）：
+    // 半日 / 厂字板 / 一字涨停 / 一字跌停 / 天地天 / 地天地 / 连板涨 / 连板跌；
+    // 最新交易日完整分钟（半日为 120 条），较久远交易日缺首分钟（模拟历史源不完整）。
+    const seedOffset = hashSeed(symbol) % TS_PATTERN_SEQUENCE.length
     for (const [dayIndex, day] of lastDays.entries()) {
-      const minutes = dayIndex === lastDays.length - 1 ? sessionMin : sessionMin.slice(1)
+      const pattern = TS_PATTERN_SEQUENCE[(seedOffset + dayIndex) % TS_PATTERN_SEQUENCE.length]
+      const fullMinutes = sessionMinutes()
+      const minutes = pattern === 'half-day'
+        ? fullMinutes.slice(1, 1 + 120) // 半日：09:31~11:30 共 120 条
+        : dayIndex === lastDays.length - 1
+          ? fullMinutes // 最新日完整 241 条
+          : fullMinutes.slice(1) // 久远日缺首分钟 240 条
+      const path = timesharePatternPath(pattern, day.preClose, minutes, rand)
       const dayStart = day.preClose
       const dayT = new Date(day.time * 1000)
-      let price = dayStart
       let volSum = 0
       let amtSum = 0
       let priceVolSum = 0
-      for (const m of minutes) {
-        // 分钟级随机游走（±0.2%），偶尔放大波动；并加入「均值回归」项：
-        // 向当前累计均价（VWAP）温和靠拢（5% 回归力），避免价格单边下行/上行
-        // 导致均价线长期高于/低于价格线（真实分时中价格线围绕均价线波动）。
-        // 注：首根（volSum=0）锚点为自身 price → 无回归，首根均价 = 首根价格。
-        const shock = rand() < 0.04 ? 3 : 1
-        const anchor = volSum === 0 ? price : priceVolSum / volSum
-        const regress = (anchor - price) * 0.05
-        price = Math.max(
-          price + regress + (rand() - 0.5) * 0.004 * price * shock,
-          0.01,
-        )
-        // 单分钟随机量（开盘/尾盘放量）
-        const volK = m === 9 * 60 + 30 || m === 15 * 60 ? 3 : 1
-        const volume = Math.round((20_000 + rand() * 300_000) * volK)
+      for (const step of path) {
+        const m = step.minute
+        const price = step.price
+        const volume = step.volume
         volSum += volume
         amtSum += Math.round(volume * price)
         priceVolSum += volume * price
@@ -607,8 +756,8 @@ export class MockChartDataService implements ChartDataService {
           tradeDate: day.tradeDate,
           preClose: dayStart,
           pointType: 'timeshare',
-          price: +price.toFixed(2),
-          avgPrice: volSum === 0 ? +price.toFixed(2) : +(priceVolSum / volSum).toFixed(2),
+          price,
+          avgPrice: volSum === 0 ? price : +(priceVolSum / volSum).toFixed(2),
           // 单分钟成交量（分时量柱 / OBV 口径），非累计
           volume,
           // 当日累计成交额（浮层展示口径）
@@ -784,10 +933,20 @@ export class MockChartDataService implements ChartDataService {
     if (isTimesharePeriod(query.period)) {
       const days = Number(query.period[0])
       const ts = this.ensureTsPool(query.symbol)
-      // 最近 N 日 = 从末尾往前 N 天：最新交易日 241 条（含 09:30 开盘点）+
-      // 较久远 (N-1) 日 × 240 条（v1.7.0：久远数据缺首分钟）
-      const total = 241 + (days - 1) * 240
-      const start = Math.max(0, ts.length - total)
+      // v1.7.0：按交易日分组取最近 N 日（每日条数随形态变化：半日 120 /
+      // 最新日完整 241 / 久远日 240，不再硬编码总数）
+      const byDay = new Map<string, ChartDataPoint[]>()
+      for (const point of ts) {
+        const list = byDay.get(point.tradeDate)
+        if (list) list.push(point)
+        else byDay.set(point.tradeDate, [point])
+      }
+      const dayKeys = [...byDay.keys()].slice(-days)
+      let start = 0
+      if (dayKeys.length > 0) {
+        const firstOfFirstDay = byDay.get(dayKeys[0])![0]
+        start = ts.findIndex((point) => point.time === firstOfFirstDay.time)
+      }
       await new Promise((r) => setTimeout(r, NETWORK_DELAY))
       return ts.slice(start, ts.length).map(clone)
     }
