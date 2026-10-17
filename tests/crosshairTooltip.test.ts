@@ -111,6 +111,48 @@ describe('buildTooltipRows', () => {
   })
 })
 
+describe('buildTooltipRows 分时点（v1.7.0）', () => {
+  const makeTs = (partial: Partial<ChartDataPoint>): ChartDataPoint => ({
+    time: 1728000000,
+    tradeDate: '2024-10-04',
+    preClose: 10,
+    price: 10.4,
+    avgPrice: 10.3,
+    volume: 12345678,
+    amount: 128000000,
+    pointType: 'timeshare',
+    ...partial,
+  })
+
+  it('七行齐全：时间 / 价格 / 均价 / 涨跌 / 涨幅 / 成交量 / 成交额', () => {
+    const rows = buildTooltipRows(makeTs({}), '2024-10-04 09:35', colors)
+    expect(rows.map((row) => row.label)).toEqual(['', '价格', '均价', '涨跌', '涨幅', '成交量', '成交额'])
+    expect(rows[1].value).toBe('10.40')
+    expect(rows[2].value).toBe('10.30')
+    expect(rows[3].value).toBe('+0.40')
+    expect(rows[4].value).toBe('+4.00%')
+  })
+
+  it('价格高于昨收红 / 低于昨收绿 / 平盘不着色', () => {
+    expect(buildTooltipRows(makeTs({ price: 10.5 }), 't', colors)[1].color).toBe('#FF0000')
+    expect(buildTooltipRows(makeTs({ price: 9.5 }), 't', colors)[1].color).toBe('#008000')
+    expect(buildTooltipRows(makeTs({ price: 10 }), 't', colors)[1].color).toBeUndefined()
+  })
+
+  it('均价不着色；涨跌 / 涨幅随价格着色', () => {
+    const rows = buildTooltipRows(makeTs({ price: 9.5 }), 't', colors)
+    expect(rows[2].color).toBeUndefined()
+    expect(rows[3].color).toBe('#008000')
+    expect(rows[4].color).toBe('#008000')
+  })
+
+  it('成交量 / 成交额格式与 K 线一致（万 / 亿）', () => {
+    const rows = buildTooltipRows(makeTs({}), 't', colors)
+    expect(rows[5].value).toBe('1234.57万')
+    expect(rows[6].value).toBe('1.28亿')
+  })
+})
+
 describe('resolveTooltipPosition（v1.6.36 进入方向角落定位 / v1.6.58 限定 pane1~pane5 数据区）', () => {
   // 刻度全关：数据区 = 容器全宽（paneLeft 0 ~ paneRight 1000）
   const base = {

@@ -53,19 +53,19 @@ export interface TooltipColors {
   down: string
 }
 
-/** 组装浮层九行（纯函数，可单测；时间文本外部按 pane0 格式传入） */
+/** 组装浮层行（纯函数，可单测；时间文本外部按 pane0 格式传入）：
+ *  - K 线点：时间 / 开盘 / 收盘 / 最高 / 最低 / 涨跌 / 涨幅 / 成交量 / 成交额（九行）；
+ *  - 分时点（v1.7.0）：时间 / 价格 / 均价 / 涨跌 / 涨幅 / 成交量 / 成交额
+ *    （分时无 OHLC，价格替代开收盘、均价替代最高最低位，涨跌基准 = 昨收 preClose）。 */
 export const buildTooltipRows = (
   bar: ChartDataPoint,
   timeText: string,
   colors: TooltipColors,
 ): TooltipRow[] => {
-  // 分时点（pointType='timeshare'，v1.7.0）：无 OHLC，价格 / 均价替代开盘 / 收盘，
-  // 最高 / 最低缺省显示 '—'；涨跌基准 = 昨收（preClose），颜色按 price vs preClose 三态
+  // 涨跌基准 = 昨收（preClose 缺失时回退开盘点 / 价格，兜底不抛错）
   const isTimeshare = bar.pointType === 'timeshare'
-  // 涨跌基准 = 昨收（preClose 缺失时回退开盘点，兜底不抛错）
-  const preClose = bar.preClose ?? bar.open ?? 0
+  const preClose = bar.preClose ?? bar.open ?? bar.price ?? 0
   const price = isTimeshare ? bar.price : bar.close
-  const open = isTimeshare ? bar.price : bar.open
   const change = (price ?? 0) - preClose
   const changePct = preClose > 0 ? (change / preClose) * 100 : 0
   const sign = change > 0 ? '+' : change < 0 ? '-' : ''
@@ -78,12 +78,24 @@ export const buildTooltipRows = (
     return undefined
   }
   // 第一行时间直显（label 置空，show 时该行 label 列不占位，v1.6.44）
+  if (isTimeshare) {
+    // 分时：价格（着色）+ 均价（不着色）+ 涨跌 / 涨幅（着色）+ 量额
+    return [
+      { label: '', value: timeText },
+      { label: '价格', value: formatPrice(bar.price), color: colorByPreClose(bar.price) },
+      { label: '均价', value: formatPrice(bar.avgPrice) },
+      { label: '涨跌', value: `${sign}${formatPrice(Math.abs(change))}`, color: changeColor },
+      { label: '涨幅', value: `${sign}${Math.abs(changePct).toFixed(2)}%`, color: changeColor },
+      { label: '成交量', value: formatVolume(bar.volume) },
+      { label: '成交额', value: formatVolume(bar.amount) },
+    ]
+  }
   return [
     { label: '', value: timeText },
-    { label: '开盘', value: formatPrice(open), color: colorByPreClose(open) },
-    { label: '收盘', value: formatPrice(price), color: colorByPreClose(price) },
-    { label: '最高', value: isTimeshare ? '—' : formatPrice(bar.high), color: colorByPreClose(bar.high) },
-    { label: '最低', value: isTimeshare ? '—' : formatPrice(bar.low), color: colorByPreClose(bar.low) },
+    { label: '开盘', value: formatPrice(bar.open), color: colorByPreClose(bar.open) },
+    { label: '收盘', value: formatPrice(bar.close), color: colorByPreClose(bar.close) },
+    { label: '最高', value: formatPrice(bar.high), color: colorByPreClose(bar.high) },
+    { label: '最低', value: formatPrice(bar.low), color: colorByPreClose(bar.low) },
     { label: '涨跌', value: `${sign}${formatPrice(Math.abs(change))}`, color: changeColor },
     { label: '涨幅', value: `${sign}${Math.abs(changePct).toFixed(2)}%`, color: changeColor },
     { label: '成交量', value: formatVolume(bar.volume) },
