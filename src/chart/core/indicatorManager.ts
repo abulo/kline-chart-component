@@ -355,8 +355,9 @@ export class IndicatorManager {
     const timeText = timeFormat ? formatTimeByFmt(time ?? 0, timeFormat) : formatAxisTime(time, this.getPeriod())
     const segments: TextSegment[] = [{ text: `${base} ${timeText}`, color: theme.textColor }]
     if (time === null) return segments
-    // 分时周期（v1.7.0）：pane0 追加 价格 / 涨跌 / 涨幅 / 成交量 / 成交额
-    // （价格按 vs 昨收红涨绿跌平盘着色，量额用主题文字色；数据 barTimeMap O(1) 现取）
+    // 分时周期（v1.7.0）：pane0 追加 价格 / 均价 / 涨跌 / 涨幅 / 成交量 / 成交额。
+    // 着色规则：价格 / 涨跌 / 涨幅 **数字**按 vs 昨收红涨绿跌平盘着色（label 用文字色），
+    // 均价 / 成交量 / 成交额不着色（label + 数字均文字色）；数据 barTimeMap O(1) 现取
     if (isTimesharePeriod(this.getPeriod())) {
       const tsBar = this.barTimeMap.get(time)
       if (tsBar !== undefined) {
@@ -366,12 +367,20 @@ export class IndicatorManager {
         const pct = preClose > 0 ? (diff / preClose) * 100 : 0
         const sign = diff > 0 ? '+' : diff < 0 ? '-' : ''
         const trendColor = diff > 0 ? theme.upColor : diff < 0 ? theme.downColor : theme.flatColor
+        const labelColor = theme.textColor
         segments.push(
-          { text: ` 价格: ${formatPrice(price)}`, color: trendColor },
-          { text: ` 涨跌: ${sign}${formatPrice(Math.abs(diff))}`, color: trendColor },
-          { text: ` 涨幅: ${sign}${Math.abs(pct).toFixed(2)}%`, color: trendColor },
-          { text: ` 成交量: ${formatVolume(tsBar.volume)}`, color: theme.textColor },
-          { text: ` 成交额: ${formatVolume(tsBar.amount)}`, color: theme.textColor },
+          { text: ' 价格: ', color: labelColor },
+          { text: formatPrice(price), color: trendColor },
+          { text: ' 均价: ', color: labelColor },
+          { text: formatPrice(tsBar.avgPrice ?? 0), color: labelColor },
+          { text: ' 涨跌: ', color: labelColor },
+          { text: `${sign}${formatPrice(Math.abs(diff))}`, color: trendColor },
+          { text: ' 涨幅: ', color: labelColor },
+          { text: `${sign}${Math.abs(pct).toFixed(2)}%`, color: trendColor },
+          { text: ' 成交量: ', color: labelColor },
+          { text: formatVolume(tsBar.volume), color: labelColor },
+          { text: ' 成交额: ', color: labelColor },
+          { text: formatVolume(tsBar.amount), color: labelColor },
         )
       }
       return segments
