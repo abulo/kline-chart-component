@@ -358,7 +358,7 @@ SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式
 - **MACD pane5**：K 线周期为 `MacdBarPrimitive` 自绘红绿柱（柱宽与 K 线一致，正值空心红柱）；分时周期同为自绘但 **柱宽固定 1px 的实心细线**（`getIsTimeshare` 注入：正值实心红线 / 负值实心绿线，不做空心）；
 - **附图指标**：分时下无 CR（`TIMESHARE_DISABLED_SUB_INDICATORS`，App 按钮过滤）；其余指标按价格序列计算（数据源换算 K 口径 `close = price`）；
 - **栅格竖线份数**：`timeshareGridVerticalCount` —— 1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5（`getVerticalCount` 动态取数，K 线恒 4）；
-- **交互**：分时下平移 / 缩放按钮隐藏，且 **图表平移交互整体禁用**（滚轮 / 按住拖拽 / 触摸，`setPeriod` 动态切换 `handleScroll`，缩放仍由工具栏按钮控制）；`hasMoreHistory=false`（分时数据完整，不触发左滑翻页）；pane0 / tooltip / 时间轴指示值时间格式 **YYYY-MM-DD HH:mm**（`formatAxisTime` 分时分支，v1.7.0 由 HH:mm 调整，跨多交易日分时区分日期）；
+- **交互**：分时下平移 / 缩放按钮隐藏，且 **图表平移交互整体禁用**（滚轮 / 按住拖拽 / 触摸，`setPeriod` 动态切换 `handleScroll`，缩放仍由工具栏按钮控制）；`hasMoreHistory=false`（分时数据完整，不触发左滑翻页）；pane0 / tooltip / 时间轴指示值时间格式 **YYYY-MM-DD HH:mm**（`formatAxisTime` 分时分支，v1.7.0 由 HH:mm 调整，跨多交易日分时区分日期）；**时间轴刻度标签**（`tickMarkFormatter`）：K 线状态 **YYYY-MM-DD** / 分时状态 **HH:mm**（不随 format 参数变化）；
 - **pane0 信息行（分时）**：追加 价格 / **均价** / 涨跌 / 涨幅 / 成交量 / 成交额（价格 / 涨跌 / 涨幅 **数字**按 vs 昨收红涨绿跌平盘着色、label 用文字色；**均价数字 = 均价线同色**（timeshareAvgColor）；量额不着色，`buildInfoSegments` 分时分支 + `barTimeMap` O(1) 现取）；
 - **tooltip**：分时点显示 时间 / 价格（着色）/ **均价（均价线同色）** / 涨跌 / 涨幅 / 成交量 / 成交额（七行，涨跌基准 = 昨收）；
 - **文件**：`src/chart/periods.ts`（`isTimesharePeriod` / `timeshareGridVerticalCount` / `timeshareVerticalCount`）、`src/chart/core/kLineChartController.ts`（分时双线分支）、`src/chart/core/subIndicatorPaneManager.ts`（分时指标适配）、`src/services/chartDataService.ts`（分时 mock：`timesharePatternPath` 8 形态 + `buildTsPool` 按日分配）。

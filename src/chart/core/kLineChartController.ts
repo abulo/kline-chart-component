@@ -90,7 +90,7 @@ import { VolumeBarPrimitive } from "../volume/volumeBarPrimitive";
 import { SarMarkerPrimitive } from "../indicator/sarMarkerPrimitive";
 import { PaneBorderPrimitive } from "../border/paneBorderPrimitive";
 import { GridPrimitive } from "../grid/gridPrimitive";
-import { formatVolume, formatPrice, normalizeChartTime, formatTimeByFmt, formatAxisTime } from "../util/format";
+import { formatVolume, formatPrice, normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock } from "../util/format";
 import {
   isTimesharePeriod,
   timeshareVerticalCount,
@@ -275,6 +275,12 @@ export class KLineChartController {
       timeScale: {
         borderVisible: false,
         allowBoldLabels: false,
+        // 时间轴刻度标签（v1.7.0）：K 线状态 → YYYY-MM-DD；分时状态 → HH:mm
+        // （不随 format 参数变化；十字光标时间格式仍走下方 localization.timeFormatter）
+        tickMarkFormatter: (t: Time) => {
+          const ts = t as number
+          return this.isTimeshare ? formatClock(ts) : formatDate(ts)
+        },
       },
       localization: {
         // 十字光标时间格式化：format 模板优先；缺省按周期自动
