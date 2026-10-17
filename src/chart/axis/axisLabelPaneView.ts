@@ -46,11 +46,26 @@ export const drawAxisLabel = (
   font: string,
   textColor: string,
   backColor: string,
+  align: 'right' | 'left' = 'right',
 ): void => {
   context.font = font
   context.textBaseline = 'middle'
-  context.textAlign = 'right'
   const textWidth = context.measureText(text).width
+  if (align === 'left') {
+    // 左对齐（右刻度区专用，v1.7.1）：文字左缘 = 刻度区左缘 + 6px，
+    // 与左刻度文字右缘距刻度区右缘 6px 对称（两区文字均"朝向数据区"）
+    context.textAlign = 'left'
+    const textLeft = AXIS_LABEL_PAD_X
+    const blockLeft = textLeft - AXIS_LABEL_PAD_X
+    const blockRight = textLeft + AXIS_LABEL_PAD_X + textWidth + AXIS_LABEL_PAD_X
+    const top = y - AXIS_LABEL_HEIGHT / 2
+    context.fillStyle = backColor
+    context.fillRect(blockLeft, top, blockRight - blockLeft, AXIS_LABEL_HEIGHT)
+    context.fillStyle = textColor
+    context.fillText(text, textLeft, y)
+    return
+  }
+  context.textAlign = 'right'
   // 背景块：包裹文字并留左右内边距，垂直居中在 y 处
   const blockLeft = textRight - AXIS_LABEL_PAD_X - textWidth - AXIS_LABEL_PAD_X
   const blockRight = textRight + AXIS_LABEL_PAD_X
@@ -87,7 +102,8 @@ class AxisLabelRenderer implements IPrimitivePaneRenderer {
         // 未配置 getValueColor 或返回 undefined 时使用默认单色 textColor
         const value = label.value()
         const color = (value === null ? undefined : this.source.config.getValueColor?.(value)) ?? textColor
-        drawAxisLabel(ctx, text, textRight, label.coordinate, font, color, backColor)
+        // v1.7.1：左右对齐（右刻度区文字左对齐贴左缘，与左刻度右对齐贴右缘对称）
+        drawAxisLabel(ctx, text, textRight, label.coordinate, font, color, backColor, this.source.config.align ?? 'right')
       }
     })
   }

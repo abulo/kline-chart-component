@@ -474,6 +474,7 @@ export class KLineChartController {
       new AxisLabelPrimitive({
         series: () => this.timeshareRightAxisSeries!,
         getEnabled: () => this.isTimeshare, // 仅分时显示；K 线周期右刻度区保持空白
+        align: 'left', // v1.7.1：右刻度文字左对齐贴右刻度区左缘，与左刻度右对齐对称
         getPaneIndex: () => 1,
         getHorizontalCount: () =>
           this.indicatorManager.getShowIndicator() ? 6 : 8,

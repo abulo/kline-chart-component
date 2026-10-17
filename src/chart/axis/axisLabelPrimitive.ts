@@ -47,6 +47,12 @@ export interface AxisLabelConfig {
    *  分时右刻度百分比，v1.7.1） */
   format: (price: number) => string
   /**
+   * 标签对齐方向（可选，v1.7.1）：'right' = 文字右对齐贴刻度区右缘（默认，左刻度）；
+   * 'left' = 文字左对齐贴刻度区左缘（右刻度区专用——与左刻度右对齐
+   * 形成对称：两区文字均"朝向数据区"，边距同为 AXIS_LABEL_PAD_X）。
+   */
+  align?: 'right' | 'left'
+  /**
    * 标签启用开关（可选，v1.7.1）：返回 false 时本次更新不生成任何标签
    * （updateAllViews 置空 labelViews，视图 draw 无输出）。
    * 右刻度专用：分时周期 true（百分比刻度），K 线周期 false（右刻度区保持空白）。
