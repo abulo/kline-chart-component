@@ -52,9 +52,6 @@
 
 import {
   createChart,
-  CandlestickSeries,
-  HistogramSeries,
-  LineSeries,
   ColorType,
   CrosshairMode,
   type ISeriesApi,
@@ -65,46 +62,26 @@ import {
 import {
   themeColors,
   chartFontFamily,
-  chartFont,
-  transparentColor,
   type ChartThemeName,
 } from "./theme";
-import { resolveBarColors, resolveVsBaseColor, type BarPalette } from "./resolveBarColors";
+import { resolveBarColors, type BarPalette } from "./resolveBarColors";
 import { mergeBars } from "./mergeBars";
 import type { ChartDataPoint } from "../../types/chart";
-import {
-  fixedPaneCount,
-  fixedPaneCountWithoutIndicator,
-  topPaneHeight,
-  groupRatios,
-  groupRatiosWithoutIndicator,
-  calcPaneHeights,
-} from "./layout";
-import { TopPaneOverlayPrimitive } from "../overlay/topPaneOverlayPrimitive";
-import { InfoLabelPrimitive } from "../overlay/infoLabelPrimitive";
-import {
-  IndicatorLinePrimitive,
-  type IndicatorLineSet,
-} from "../overlay/indicatorLinePrimitive";
-import { HighLowMarkerPrimitive } from "../highLow/highLowMarkerPrimitive";
-import { VolumeBarPrimitive } from "../volume/volumeBarPrimitive";
+
+import { IndicatorLinePrimitive } from "../overlay/indicatorLinePrimitive";
 import { SarMarkerPrimitive } from "../indicator/sarMarkerPrimitive";
-import { PaneBorderPrimitive } from "../border/paneBorderPrimitive";
-import { GridPrimitive } from "../grid/gridPrimitive";
-import { formatVolume, formatPrice, normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock, formatPercent } from "../util/format";
-import { symmetricExpandRange, buildTimeshareScaleValues } from "../util/timeshareScale";
-import {
-  isTimesharePeriod,
-  timeshareVerticalCount,
-  type PeriodValue,
-} from "../periods";
-import { AxisLabelPrimitive } from "../axis/axisLabelPrimitive";
+import { TimeshareManager } from "./timeshareManager";
+import { createPanes } from "./paneFactory";
+import { applyPaneStretchFactors, calcPaneTop } from "./paneLayout";
+import { zoomIn as viewportZoomIn, zoomOut as viewportZoomOut, shiftLeft as viewportShiftLeft, shiftRight as viewportShiftRight, applyPriceScaleVisible as viewportApplyPriceScaleVisible, refreshKlineColors as viewportRefreshKlineColors, exposeDebugApi as viewportExposeDebugApi } from "./viewport";
+import { normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock } from "../util/format";
+import { type PeriodValue } from "../periods";
 import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrimitive";
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
 import { CrosshairTooltip, type TooltipBounds } from "../crosshair/crosshairTooltip";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
-import { LIBRARY_TIME_AXIS_HEIGHT, PRICE_SCALE_MIN_WIDTH, VIEW_SHIFT_STEP } from "./constants";
+import { PRICE_SCALE_MIN_WIDTH } from "./constants";
 import type { KLineChartOptions, MainIndicatorName, ChartLoadStatus } from "./types";
 import type { ChartDataService } from "../../services/chartDataService";
 
@@ -167,7 +144,6 @@ export class KLineChartController {
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心） */
   private klineSeries: ISeriesApi<"Candlestick">;
   /** pane2 成交量信息行 series（InfoLabelPrimitive 挂载；竖线补齐 primitive 也挂这里） */
-  private pane2InfoSeries: ISeriesApi<"Line">;
   /** 成交量 series（pane3；Histogram 仅作 scale 锚点，可见柱体由 primitive 自绘） */
   private volumeSeries: ISeriesApi<"Histogram">;
 
@@ -185,6 +161,8 @@ export class KLineChartController {
   private readonly indicatorManager: IndicatorManager;
   /** 十字星管理器（十字星移动联动 + 左刻度指示值） */
   private readonly crosshairManager: CrosshairManager;
+  /** 分时（1d~5d）计算管理器（v1.7.1 拆分）：刻度 / 值域 / 等分计算 */
+  private readonly timeshareManager: TimeshareManager;
 
   /** pane1 SAR 圆点 primitive（构造创建并 attach，destroy 显式 detach） */
   private sarMarkerPrimitive: SarMarkerPrimitive | null = null;
@@ -284,7 +262,7 @@ export class KLineChartController {
         // （不随 format 参数变化；十字光标时间格式仍走下方 localization.timeFormatter）
         tickMarkFormatter: (t: Time) => {
           const ts = t as number
-          return this.isTimeshare ? formatClock(ts) : formatDate(ts)
+          return this.timeshareManager.isTimeshare ? formatClock(ts) : formatDate(ts)
         },
       },
       localization: {
@@ -316,6 +294,16 @@ export class KLineChartController {
       getTimeFormat: () => this.timeFormat,
       getPeriod: () => this.period,
     });
+    // 分时（1d~5d）计算管理器（v1.7.1 拆分）：刻度 / 值域 / 等分计算全部收敛于此，
+    // controller 只负责调用与数据写入；依赖 chart / bars / indicatorManager（惰性读取）
+    this.timeshareManager = new TimeshareManager({
+      chart: this.chart,
+      getPeriod: () => this.period,
+      getBars: () => this.bars,
+      getShowIndicator: () => this.indicatorManager.getShowIndicator(),
+      getTheme: () => this.theme,
+      getPriceSeries: () => this.timesharePriceSeries,
+    });
     // 十字星管理器：构造即订阅十字星移动（pane0 不触发 / 内容 Pane 注入左刻度指示值 /
     // 命中更新数据浮层 v1.6.35）
     this.crosshairManager = new CrosshairManager({
@@ -335,345 +323,29 @@ export class KLineChartController {
       }),
     });
 
-    /* ---------- 3. pane0：顶部空 Pane（无数据，自绘"名称 [代码] 时间 + 指标值"） ---------- */
-    // 调试暴露（仅开发用）：window.__klineChart —— 控制台实时查看数据与刻度
-    // （getter 每次访问取最新值：bars / preClose / 对称半幅 / 等差刻度序列等）
+    /* ---------- 3~6. Pane 构建：pane0~pane3 全部 series / primitive 由
+     * paneFactory.createPanes 统一创建装配（v1.7.1 拆分，职责解耦）——
+     * 信息行 pane0 / K 线主图 pane1（含分时双线 + 左右刻度 + 十字星指示值 +
+     * 高低价标注 + SAR + 指标线）/ 成交量信息行 pane2 / 成交量 pane3 ---------- */
     this.exposeDebugApi();
-    this.chart
-      .addSeries(
-        LineSeries,
-        {
-          priceScaleId: "left",
-          priceLineVisible: false,
-          lastValueVisible: false,
-          crosshairMarkerVisible: false,
-        },
-        0,
-      )
-      .attachPrimitive(
-        // pane0 顶层遮罩（topPaneViews）：背景填充 + 信息行分段文字，绘制在十字星之上，
-        // 借此遮住十字星竖线（实现"十字星不贯穿 pane0"）。
-        // 分段结构：首段"股票名称 [代码] 时间"（主题文字色）+ 各指标值段
-        // （MA/EXPMA/BOLL/BBI 用对应线色、SAR 随 trend 红/绿，见 IndicatorManager.buildInfoSegments）；
-        // 时间与指标值均随十字星 —— 命中时 = 命中 bar、未命中时 = 最新 bar
-        new TopPaneOverlayPrimitive(
-          () => this.indicatorManager.buildInfoSegments(),
-          () => themeColors(this.theme).background,
-        ),
-      );
-
-    /* ---------- 4. pane1：K 线主图（红涨绿跌；上涨柱体空心） ----------
-     * 空心实现：上涨（up）柱体填充色 = 图表背景色（视觉空心），
-     * 边框 / 影线保留红色；下跌（down）柱体绿色实心。
-     */
-    this.klineSeries = this.chart.addSeries(
-      CandlestickSeries,
-      {
-        priceScaleId: "left",
-        upColor: initialThemeColors.background, // 上涨柱体填充 = 背景色（空心）
-        downColor: initialThemeColors.downColor,
-        borderUpColor: initialThemeColors.upColor, // 上涨边框红色
-        borderDownColor: initialThemeColors.downColor,
-        wickUpColor: initialThemeColors.upColor, // 上涨影线红色
-        wickDownColor: initialThemeColors.downColor,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
-        priceFormat: {
-          type: "custom",
-          formatter: () => "",
-        },
-      },
-      1,
-    );
-    // 分时双线（v1.7.0）：pane1 分时周期渲染 price / avgPrice 两条 LineSeries
-    // （东财分时惯例：价格线 + 均价线），K 线周期 setData([]) 不可见。
-    // 颜色随深浅系（theme.timesharePriceColor / timeshareAvgColor），主题切换时 applyTheme 同步
-    const timeshareLineOptions = {
-      priceScaleId: "left",
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: false, // 十字星 marker 由库统一绘制，双线不重复出点
-      lineWidth: 1,
-      // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘
-      priceFormat: {
-        type: "custom",
-        formatter: () => "",
-      },
-    } as const;
-    this.timesharePriceSeries = this.chart.addSeries(
-      LineSeries,
-      {
-        ...timeshareLineOptions,
-        color: initialThemeColors.timesharePriceColor,
-      },
-      1,
-    );
-    this.timeshareAvgSeries = this.chart.addSeries(
-      LineSeries,
-      {
-        ...timeshareLineOptions,
-        color: initialThemeColors.timeshareAvgColor,
-      },
-      1,
-    );
-    // 分时右刻度承载 series（v1.7.1）：挂 pane1 right price scale（空数据透明锚点），
-    // 仅提供右刻度 canvas（右刻度区开关打开时占位 72px）；右刻度百分比标签由下方
-    // 右刻度 AxisLabelPrimitive 自绘（getPrice 复用左刻度 price scale 坐标反算 → 左右对齐）
-    this.timeshareRightAxisSeries = this.chart.addSeries(
-      LineSeries,
-      {
-        priceScaleId: "right",
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-        lineWidth: 1,
-        color: transparentColor,
-        priceFormat: {
-          type: "custom",
-          formatter: () => "",
-        },
-      },
-      1,
-    );
-    // 内容 Pane 边框（pane1）：自绘 1px 矩形，颜色随主题（深浅系区分）
-    this.klineSeries.attachPrimitive(
-      new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
-    );
-    // pane1 栅格：竖 4 等分（分时按周期份数：1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5）；
-    // 横向等分数随指标开关变化（关 8 / 开 6）
-    this.klineSeries.attachPrimitive(
-      new GridPrimitive({
-        getColor: () => themeColors(this.theme).grid,
-        getHorizontalCount: () =>
-          this.indicatorManager.getShowIndicator() ? 6 : 8,
-        getVerticalCount: () =>
-          this.isTimeshare ? timeshareVerticalCount(this.period) : 4,
-      }),
-    );
-    // pane1 左刻度标签：与栅格横线对齐（值 = 横线处价格，K 线价格 2 位小数）。
-    // series 动态取数（v1.7.0）：分时周期取 price 线（K 线空数据），K 线周期取 klineSeries；
-    // 分时按值着色（v1.7.1）：刻度值 vs 首根 preClose 三态 —— 上红 / 下绿 / 平盘中色
-    this.klineSeries.attachPrimitive(
-      new AxisLabelPrimitive({
-        series: () => (this.isTimeshare ? this.timesharePriceSeries! : this.klineSeries),
-        getPaneIndex: () => 1,
-        getHorizontalCount: () =>
-          this.indicatorManager.getShowIndicator() ? 6 : 8,
-        getColor: () => themeColors(this.theme).textColor,
-        getBackColor: () => themeColors(this.theme).background,
-        getFont: () => chartFont,
-        format: (price) => formatPrice(price),
-        getValueColor: this.getScaleValueColor,
-        // 分时：全序列固定等差刻度（中间 = 首根 preClose，上下 = preClose ± k×step，
-        // v1.7.1 等差数列需求；首尾同样参与等差，不随平移 / 缩放变化）。
-        // K 线周期返回 null → 回退坐标反算
-        getFixedValues: this.getTimeshareFixedValues,
-      }),
-    );
-    // pane1 右刻度标签（v1.7.1，分时专用）：挂右刻度承载 series，百分比刻度与
-    // 左刻度同一 y 坐标（getPrice 取左 price scale 反算 → 左右值严格对齐）；
-    // 中间 = 0%（= preClose），向上 +%（红）/ 向下 -%（绿）/ 平盘 0.00%（中色）。
-    // K 线周期右刻度区保持空白（原行为，不显示标签）。
-    this.timeshareRightAxisSeries!.attachPrimitive(
-      new AxisLabelPrimitive({
-        series: () => this.timeshareRightAxisSeries!,
-        getEnabled: () => this.isTimeshare, // 仅分时显示；K 线周期右刻度区保持空白
-        align: 'left', // v1.7.1：右刻度文字左对齐贴右刻度区左缘，与左刻度右对齐对称
-        getPaneIndex: () => 1,
-        getHorizontalCount: () =>
-          this.indicatorManager.getShowIndicator() ? 6 : 8,
-        getColor: () => themeColors(this.theme).textColor,
-        getBackColor: () => themeColors(this.theme).background,
-        getFont: () => chartFont,
-        // 百分比：由**左刻度显示的数值**（同序列值按 2 位小数显示精度）相对首根
-        // preClose 计算 —— 右刻度值 = (左刻度显示值 − preClose) / preClose × 100%，
-        // 与左刻度文字严格一一对应（如左 12.67 → 右 +26.70%）
-        format: (price) =>
-          formatPercent(Number(price.toFixed(2)), this.getTimesharePreClose()),
-        getValueColor: this.getScaleValueColor,
-        // 分时：与左刻度共用同一等差序列（价格等差 → 百分比等差，中间精确 0.00%）
-        getFixedValues: this.getTimeshareFixedValues,
-      }),
-    );
-    // pane1 十字星左刻度指示值：十字星横线所在价格（K 线价格 2 位小数）。
-    // series 动态取数（v1.7.0）：分时周期取 price 线，K 线周期取 klineSeries
-    const pane1CrosshairLabel = new CrosshairAxisLabelPrimitive({
-      series: () => (this.isTimeshare ? this.timesharePriceSeries! : this.klineSeries),
-      getPaneIndex: () => 1,
-      getColor: () => themeColors(this.theme).crosshairLabelText,
-      getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
-      getFont: () => chartFont,
-      format: (price) => formatPrice(price),
+    const panes = createPanes({
+      chart: this.chart,
+      getTheme: () => this.theme,
+      getBars: () => this.bars,
+      getPeriod: () => this.period,
+      indicatorManager: this.indicatorManager,
+      timeshareManager: this.timeshareManager,
+      crosshairManager: this.crosshairManager,
+      createCrosshairLineCap: this.createCrosshairLineCap,
     });
-    this.klineSeries.attachPrimitive(pane1CrosshairLabel);
-    // v1.7.1 分时右刻度区十字星指示值：库按 priceScaleId 过滤渲染（挂在 left 轴 series
-    // 上的指示值只画左刻度区）→ 在右刻度承载 series（挂 'right'）上再挂一个，
-    // 背景色 / 文字色 / 字体**照搬左刻度指示值**（crosshairLabelText / crosshairLabelBackground /
-    // chartFont），文字 = 与右刻度标签同格式的百分比（左显示值回算）；左对齐贴区左缘
-    // （与右刻度标签同侧）；仅分时渲染（K 线周期右刻度区保持空白，原行为）。
-    // **反算 series 必须用 timesharePriceSeries（left scale 固定对称范围 [preClose±half]）**：
-    // right 轴承载 series 无 autoscaleInfoProvider，其范围是实际数据波动（不对称），
-    // coordinateToPrice 反算会与刻度序列错位 → 中间指示值 ≠ 0.00%（对不上根因，v1.7.1）。
-    // 挂载仍留在 right 轴承载 series（决定渲染到右刻度区），反算走 left 与刻度同源。
-    const pane1RightCrosshairLabel = new CrosshairAxisLabelPrimitive({
-      series: () => this.timesharePriceSeries!,
-      getPaneIndex: () => 1,
-      getEnabled: () => this.isTimeshare,
-      align: 'left',
-      getColor: () => themeColors(this.theme).crosshairLabelText,
-      getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
-      getFont: () => chartFont,
-      format: (price) =>
-        formatPercent(Number(price.toFixed(2)), this.getTimesharePreClose()),
-    });
-    this.timeshareRightAxisSeries!.attachPrimitive(pane1RightCrosshairLabel);
-    // 注册进十字星管理器（move 回调按 paneIndex 注入横线 y；漏注册则 y 恒 null 不绘制，
-    // v1.7.1 右刻度区指示值不显示根因）
-    this.crosshairManager.registerPrimitive(pane1RightCrosshairLabel);
-    this.crosshairManager.registerPrimitive(pane1CrosshairLabel);
-    // pane1 最高价 / 最低价标注：可视区域内 high 最大 / low 最小的 bar，
-    // 最高价黄色标注在柱顶上方、最低价蓝色标注在柱底下方（各带同色实线
-    // 连接到柱体上 / 下边缘中间，随平移 / 缩放实时重算）
-    this.klineSeries.attachPrimitive(
-      new HighLowMarkerPrimitive({
-        series: this.klineSeries,
-        getBars: () => this.bars,
-        getHighColor: () => themeColors(this.theme).highMarkerColor,
-        getLowColor: () => themeColors(this.theme).lowMarkerColor,
-        getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
-      }),
-    );
-    // pane1 SAR 圆点：SarMarkerPrimitive 自绘（多头红 / 空头绿，zOrder normal 不遮十字星）；
-    // 初始隐藏，由主图指标按钮开启（setMainIndicator('sar') 时 setVisible(true) + 重算数据）；
-    // 数据源 = 指标管理器 SAR 缓存，显隐 / 换色由管理器统一控制（registerSarMarker）
-    this.sarMarkerPrimitive = new SarMarkerPrimitive(
-      this.chart,
-      this.klineSeries,
-      () => this.indicatorManager.getSarPoints(),
-      themeColors(this.theme),
-    );
-    this.sarMarkerPrimitive.setVisible(false);
-    this.klineSeries.attachPrimitive(this.sarMarkerPrimitive);
-    this.indicatorManager.registerSarMarker(this.sarMarkerPrimitive);
-    // pane1 主图指标线：IndicatorLinePrimitive 自绘（top canvas，十字星之上，
-    // 不被十字星横线遮挡）；数据由 IndicatorManager.setMainIndicator 写入缓存现取
-    this.indicatorLinePrimitive = new IndicatorLinePrimitive(
-      (): IndicatorLineSet => ({
-        lines: this.indicatorManager.getMainIndicatorLines(),
-        getTimeScale: () => this.chart.timeScale(),
-        anchorSeries: () => this.klineSeries,
-      }),
-    );
-    this.klineSeries.attachPrimitive(this.indicatorLinePrimitive);
-    // pane1 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-    this.klineSeries.attachPrimitive(this.createCrosshairLineCap());
-
-    /* ---------- 5. pane2：成交量信息行（自绘分段文字，设置与 pane0 一致） ----------
-     * 显示 "成交量: x  MA5: x  MA10: x"（数值随十字星命中 bar / 最新 bar）；
-     * 用 InfoLabelPrimitive（**不填背景**）—— 十字星竖线需贯穿 pane2，
-     * 不能像 pane0 那样用背景遮罩遮挡竖线。
-     */
-    this.pane2InfoSeries = this.chart.addSeries(
-      LineSeries,
-      {
-        priceScaleId: "left",
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      },
-      2,
-    );
-    this.pane2InfoSeries.attachPrimitive(
-      new InfoLabelPrimitive(() =>
-        this.indicatorManager.buildVolumeInfoSegments(),
-      ),
-    );
-    // pane2 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-    this.pane2InfoSeries.attachPrimitive(this.createCrosshairLineCap());
-
-    /* ---------- 6. pane3：成交量（自绘柱体，视觉与 pane1 完全一致） ----------
-     * HistogramSeries 仅作数据锚点：color = 背景色（不可见），
-     * 用于建立 Y 轴（volume 值域）的 scale 范围；
-     * 可见柱体由 VolumeBarPrimitive 自绘：
-     *   上涨（close >= open）：空心红柱（背景填充 + 红框，同 pane1 上涨柱）
-     *   下跌：绿色实心（同 pane1 下跌柱）
-     *   柱宽 = optimalCandlestickWidth(barSpacing, dpr)（与 pane1 同函数，
-     *   宽度 / 间隔绝对一致）
-     */
-    this.volumeSeries = this.chart.addSeries(
-      HistogramSeries,
-      {
-        priceScaleId: "left",
-        base: 0,
-        color: initialThemeColors.background, // 不可见（仅建 scale）
-        priceLineVisible: false,
-        lastValueVisible: false,
-        // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
-        priceFormat: {
-          type: "custom",
-          formatter: () => "",
-        },
-      },
-      3,
-    );
-    this.volumeSeries.attachPrimitive(
-      new VolumeBarPrimitive(
-        () => this.bars,
-        () => themeColors(this.theme),
-      ),
-    );
-    // 内容 Pane 边框（pane3）：自绘 1px 矩形，颜色随主题（深浅系区分）
-    this.volumeSeries.attachPrimitive(
-      new PaneBorderPrimitive(() => themeColors(this.theme).paneBorder),
-    );
-    // pane3 栅格：竖 4 等分（分时按周期份数）；横向 2 等分（中间 1 条）
-    this.volumeSeries.attachPrimitive(
-      new GridPrimitive({
-        getColor: () => themeColors(this.theme).grid,
-        getHorizontalCount: () => 2,
-        getVerticalCount: () =>
-          this.isTimeshare ? timeshareVerticalCount(this.period) : 4,
-      }),
-    );
-    // pane3 左刻度标签：与栅格横线对齐（值 = 横线处成交量，万 / 亿格式化）
-    this.volumeSeries.attachPrimitive(
-      new AxisLabelPrimitive({
-        series: this.volumeSeries,
-        getPaneIndex: () => 3,
-        getHorizontalCount: () => 2,
-        getColor: () => themeColors(this.theme).textColor,
-        getBackColor: () => themeColors(this.theme).background,
-        getFont: () => chartFont,
-        format: (volume) => formatVolume(Math.max(0, volume)),
-      }),
-    );
-    // pane3 十字星左刻度指示值：十字星横线所在成交量（万 / 亿格式化，不小于 0）
-    const pane3CrosshairLabel = new CrosshairAxisLabelPrimitive({
-      series: this.volumeSeries,
-      getPaneIndex: () => 3,
-      getColor: () => themeColors(this.theme).crosshairLabelText,
-      getBackColor: () => themeColors(this.theme).crosshairLabelBackground,
-      getFont: () => chartFont,
-      format: (volume) => formatVolume(Math.max(0, volume)),
-    });
-    this.volumeSeries.attachPrimitive(pane3CrosshairLabel);
-    this.crosshairManager.registerPrimitive(pane3CrosshairLabel);
-
-    /* 成交量均量线 VOL MA5 / MA10（东财成交量副图默认）：
-     * 与成交量柱同 priceScaleId 'left'（同一量刻度）；
-     * 用 IndicatorLinePrimitive 自绘（top canvas，十字星之上，不被横线遮挡）——
-     * 数据由 IndicatorManager.rebuildVolumeData 写入缓存现取；颜色 = theme.volMa5 / volMa10 */
-    this.volumeMaPrimitive = new IndicatorLinePrimitive(
-      (): IndicatorLineSet => ({
-        lines: this.indicatorManager.getVolumeMaLines(),
-        getTimeScale: () => this.chart.timeScale(),
-        anchorSeries: () => this.volumeSeries,
-      }),
-    );
-    this.volumeSeries.attachPrimitive(this.volumeMaPrimitive);
-    // pane3 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-    this.volumeSeries.attachPrimitive(this.createCrosshairLineCap());
+    this.klineSeries = panes.klineSeries;
+    this.timesharePriceSeries = panes.timesharePriceSeries;
+    this.timeshareAvgSeries = panes.timeshareAvgSeries;
+    this.timeshareRightAxisSeries = panes.timeshareRightAxisSeries;
+    this.volumeSeries = panes.volumeSeries;
+    this.sarMarkerPrimitive = panes.sarMarkerPrimitive;
+    this.indicatorLinePrimitive = panes.indicatorLinePrimitive;
+    this.volumeMaPrimitive = panes.volumeMaPrimitive;
 
     /* ---------- 7. pane4 / pane5：指标组（初始关闭） ----------
      * 指标层初始关闭（4 Pane：pane0..pane3，main : volume = 80 : 20）；
@@ -741,191 +413,36 @@ export class KLineChartController {
    * 高度分配：固定空 Pane（pane0 / pane2 / pane4）设同一像素因子 topPaneHeight
    * （绝对相等），内容 Pane 按组比例分配剩余高度（指标开 60:20:20 / 关 80:20）。
    */
+  /** 高度分配：委托 paneLayout.applyPaneStretchFactors（v1.7.1 拆分） */
   private applyStretchFactors = (): void => {
-    const panes = this.chart.panes();
-    if (panes.length < 2) return;
-    // 库实际可用高度 = 容器高度 - 时间轴高度（显隐按库当前状态）。
-    // Pane 之间无间隔：库分隔线高度已通过 patch（node_modules dist
-    // SeparatorConstants.SeparatorHeight: 1 → 0）置零，pane 紧贴、无 1px 预留。
-    const timeAxisHeight = this.chart.timeScale().options().visible
-      ? LIBRARY_TIME_AXIS_HEIGHT
-      : 0;
-    const usableHeight = this.container.clientHeight - timeAxisHeight;
-    // 指标开启：3 个固定空 Pane、60:20:20；指标关闭：2 个固定空 Pane、80:20
-    const fixedCount = this.indicatorManager.getShowIndicator()
-      ? fixedPaneCount
-      : fixedPaneCountWithoutIndicator;
-    const ratios = this.indicatorManager.getShowIndicator()
-      ? groupRatios
-      : groupRatiosWithoutIndicator;
-    const paneHeights = calcPaneHeights(
-      usableHeight,
-      topPaneHeight,
-      fixedCount,
-      ratios,
-    );
-    panes.forEach((pane, index) => pane.setStretchFactor(paneHeights[index]));
-    // v1.6.35：记录各 Pane 像素高度（十字星 tooltip 定位：paneTop = 前序 Pane 高度累加）
-    this.paneHeights = paneHeights;
-  };
-
-  /** 所在 pane 顶部 y（相对图表 canvas）：前序 Pane 像素高度累加（v1.6.35 tooltip 定位） */
-  private getPaneTop = (paneIndex: number): number => {
-    let top = 0
-    for (let i = 0; i < paneIndex; i++) top += this.paneHeights[i] ?? 0
-    return top
-  };
-
-  /** 当前周期是否为分时（1d~5d，v1.7.0）：
-   *  pane1 双线（price/avgPrice）/ 成交量直方图 / 栅格份数 / 指标过滤（无 CR） /
-   *  无主图指标 / App 平移缩放按钮隐藏 —— 全部由该判定统一驱动 */
-  private get isTimeshare(): boolean {
-    return isTimesharePeriod(this.period)
-  }
-
-  /** 分时昨收基准（v1.7.1）：**永远取第一根 bar 的 preClose**（1d~5d 统一）——
-   *  栅格中间横线 = 左刻度中间值 = 右刻度 0%。
-   *  多日分时（2d~5d）同样以最早交易日第一根的 preClose 为基准
-   *  （用户指定口径：中间横线永远是第一根的 preClose，不随交易日变化）。 */
-  private getTimesharePreClose = (): number => {
-    return this.bars.length > 0 ? (this.bars[0].preClose ?? 0) : 0
-  }
-
-  /**
-   * 调试数据暴露（仅开发用）：挂 window.__klineChart，控制台实时查看
-   * 当前数据与分时刻度计算（getter 每次访问取最新值，无缓存开销）：
-   *  - bars：原始数据（分时点含 preClose / price / avgPrice / volume）
-   *  - preClose：首根 bar 的昨收（中间值基准）
-   *  - timeshareHalf：对称半幅 expandDistance = max(上偏, 下偏)
-   *  - scaleValues：当前等差刻度序列（首尾 = newMax / newMin，中间 = preClose）
-   *  - getMaxMin()：遍历全部 bar 返回最高 / 最低价（price / avgPrice 极值）
-   */
-  private exposeDebugApi = (): void => {
-    const win = window as unknown as { __klineChart?: Record<string, unknown> }
-    const debug: Record<string, unknown> = {}
-    // 静态字段（构造时固定）
-    debug.symbol = this.symbol
-    debug.name = this.name
-    debug.period = this.period
-    debug.isTimeshare = this.isTimeshare
-    debug.theme = this.theme
-    // 动态字段（getter 实时取最新值，随数据更新自动刷新）
-    const define = (key: string, get: () => unknown): void => {
-      Object.defineProperty(debug, key, {
-        get,
-        enumerable: true,
-        configurable: true,
-      })
-    }
-    define('bars', () => this.bars)
-    define('barCount', () => this.bars.length)
-    define('preClose', () => this.getTimesharePreClose())
-    define('timeshareHalf', () => this.timeshareHalf)
-    define('scaleValues', () => this.getTimeshareFixedValues())
-    define('horizontalCount', () => this.getTimeshareHorizontalCount())
-    // 遍历全部 bar 返回最高 / 最低价（price / avgPrice 极值）
-    debug.getMaxMin = (): { maxPrice: number; minPrice: number } => {
-      let maxPrice = Number.NEGATIVE_INFINITY
-      let minPrice = Number.POSITIVE_INFINITY
-      for (const bar of this.bars) {
-        const price = bar.price ?? 0
-        const avgPrice = bar.avgPrice ?? 0
-        if (price > maxPrice) maxPrice = price
-        if (avgPrice > maxPrice) maxPrice = avgPrice
-        if (price < minPrice) minPrice = price
-        if (avgPrice < minPrice) minPrice = avgPrice
-      }
-      return { maxPrice, minPrice }
-    }
-    win.__klineChart = debug
-  }
-
-  /** 分时左右刻度按值着色（v1.7.1）：刻度值 vs 首根 preClose 三态 ——
-   *  大于红（upColor）/ 小于绿（downColor）/ 等于平盘中色（flatColor，深白浅黑）。
-   *  K 线周期返回 undefined（左刻度保持主题单色，不按值着色） */
-  private getScaleValueColor = (value: number): string | undefined => {
-    if (!this.isTimeshare) return undefined
-    const preClose = this.getTimesharePreClose()
-    if (preClose <= 0) return undefined
-    return resolveVsBaseColor(value, preClose, themeColors(this.theme))
-  }
-
-  /** 分时对称半幅（v1.7.1 用户定版）：expandDistance = max(上偏, 下偏)（symmetricExpandRange），
-   *  applyTimesharePriceRange 计算缓存；getTimeshareFixedValues / 价格范围共用
-   * （同一基准 → 刻度首尾恰好 = newMax / newMin，中间 = preClose） */
-  private timeshareHalf = 0
-
-  /** 分时横向等分数：指标关 8 / 指标开 6（与栅格 / 刻度标签同一配置，固定） */
-  private getTimeshareHorizontalCount = (): number =>
-    this.indicatorManager.getShowIndicator() ? 6 : 8
-
-  /**
-   * 分时 pane1 全序列固定等差刻度（v1.7.1 用户定版）：
-   * 区间对称扩展（symmetricExpandRange）：半幅 = max(上偏, 下偏)，中间值不变；
-   * 刻度在 [newMin, newMax] 内**等分**（固定 6/8 等分 → 严格等差，首尾恰好 =
-   * newMax / newMin，中间 = 首根 preClose），不随平移 / 缩放变化。
-   * 右刻度 format 为百分比（价格等差 → 百分比等差，中间精确 0.00%）。
-   * K 线周期返回 null（回退坐标反算，保持原行为）。
-   */
-  private getTimeshareFixedValues = (): (number | undefined)[] | null => {
-    if (!this.isTimeshare || this.timeshareHalf <= 0) return null
-    const preClose = this.getTimesharePreClose()
-    if (preClose <= 0) return null
-    const hCount = this.getTimeshareHorizontalCount()
-    // 等分序列（用户定版）：值 = mid + half × (1 − 2i / hCount)（严格等差，
-    // 首尾 = newMax / newMin，中间 = mid）
-    return buildTimeshareScaleValues(preClose, this.timeshareHalf, hCount)
-  }
-
-  /** 分时 pane1 价格范围（v1.7.1 用户定版）：区间对称扩展 symmetricExpandRange——
-   *  半幅 expandDistance = max(上偏, 下偏)，中间 = 首根 preClose 不变；
-   *  范围 [mid−half, mid+half] 恰好包住最高 / 最低价（首尾刻度 = newMax / newMin），
-   *  等分像素 ↔ 刻度值严格线性对应。
-   *  实现：timesharePriceSeries 的 autoscaleInfoProvider 固定返回对称范围
-   *  （lightweight-charts v5 无 PriceScaleOptions.minValue/maxValue）；
-   *  provider 闭包实时读数据 → 数据加载 / 实时推送后重设即可。
-   *  K 线周期 provider 返回 null（不覆盖库默认 autoscale，空 series 无贡献）。
-   *  分时禁平移、缩放不改价格范围 → 固定范围下刻度标签稳定。 */
-  private applyTimesharePriceRange = (): void => {
-    if (!this.isTimeshare || !this.timesharePriceSeries) return
-    const preClose = this.getTimesharePreClose()
-    if (preClose <= 0) return
-    let maxPrice = preClose
-    let minPrice = preClose
-    for (const bar of this.bars) {
-      const high = Math.max(bar.price ?? 0, bar.avgPrice ?? 0)
-      const low = Math.min(bar.price ?? 0, bar.avgPrice ?? 0)
-      if (high > maxPrice) maxPrice = high
-      if (low < minPrice) minPrice = low
-    }
-    // 区间对称扩展（用户定版 symmetricExpandRange）：半幅 = max(上偏, 下偏)，
-    // 中间值不变 → newMax = mid + dist / newMin = mid − dist（恰好包住最高 / 最低价）
-    const range = symmetricExpandRange(maxPrice, preClose, minPrice)
-    const half = Math.max(range.expandDistance, 0.001)
-    this.timeshareHalf = half
-    // v1.7.1 修复：库默认 scaleMargins 不对称（top 0.2 / bottom 0.1）→ 数据中间值
-    // 映射在 0.55H 而非像素中间 H/2，导致十字星横线指示值（coordinateToPrice 反算）
-    // 与刻度标签（像素等分固定值）在同一 y 显示不一致（如刻度中间 10、指示值 9.43）。
-    // 分时下设置**对称 0 margins**：坐标中间 ↔ 像素中间严格对齐（十字星指示值 = 刻度值），
-    // 且一字板涨停（max = preClose+half）价格线贴 pane1 上边框、一字板跌停贴下边框。
-    this.chart.priceScale("left", 1).applyOptions({
-      scaleMargins: { top: 0, bottom: 0 },
-    })
-    this.chart.priceScale("right", 1).applyOptions({
-      scaleMargins: { top: 0, bottom: 0 },
-    })
-    this.timesharePriceSeries.applyOptions({
-      autoscaleInfoProvider: () => {
-        // K 线周期 / 数据清空：返回 null 不覆盖库默认 autoscale（空 series 无贡献，
-        // 避免分时对称范围污染 K 线价格轴）
-        if (!this.isTimeshare || this.bars.length === 0) return null
-        return {
-          priceRange: {
-            minValue: preClose - half,
-            maxValue: preClose + half,
-          },
-        }
+    applyPaneStretchFactors({
+      chart: this.chart,
+      container: this.container,
+      getShowIndicator: () => this.indicatorManager.getShowIndicator(),
+      onHeights: (heights) => {
+        this.paneHeights = heights
       },
+    })
+  };
+
+  /** 所在 pane 顶部 y（相对图表 canvas）：委托 paneLayout.calcPaneTop（v1.7.1 拆分） */
+  private getPaneTop = (paneIndex: number): number =>
+    calcPaneTop(this.paneHeights, paneIndex);
+
+  /** 调试数据暴露（仅开发用）：委托 viewport.exposeDebugApi（v1.7.1 拆分），
+   *  挂 window.__klineChart，getter 惰性读取 → 数据 / 周期实时变化生效 */
+  private exposeDebugApi = (): void => {
+    viewportExposeDebugApi({
+      symbol: this.symbol,
+      name: this.name,
+      period: this.period,
+      isTimeshare: this.timeshareManager.isTimeshare,
+      theme: this.theme,
+      getBars: () => this.bars,
+      getPreClose: () => this.timeshareManager.preClose,
+      getTimeshareHalf: () => this.timeshareManager.half,
+      getScaleValues: () => this.timeshareManager.fixedValues,
+      getHorizontalCount: () => this.timeshareManager.horizontalCount,
     })
   }
 
@@ -939,7 +456,7 @@ export class KLineChartController {
       .filter((entry) => entry.time !== null);
 
     // —— 分时周期（v1.7.0）：pane1 双线 + pane3 直方图 ——
-    if (this.isTimeshare) {
+    if (this.timeshareManager.isTimeshare) {
       // K 线 series 清空（分时无 OHLC 蜡烛），避免残留旧周期图形
       this.klineSeries.setData([]);
       this.timesharePriceSeries?.setData(
@@ -978,7 +495,7 @@ export class KLineChartController {
       this.indicatorManager.rebuildIndicatorData();
       this.indicatorManager.refreshMainIndicatorData();
       // 分时 pane1 价格范围：以首根 preClose 为对称中心（v1.7.1，左右刻度中间对齐）
-      this.applyTimesharePriceRange();
+      this.timeshareManager.applyPriceRange();
       return;
     }
 
@@ -1126,12 +643,12 @@ export class KLineChartController {
    */
   setKlineData = (points: ChartDataPoint[]): void => {
     this.bars = points.filter((point) =>
-      this.isTimeshare ? point.pointType === "timeshare" : point.pointType === "kline",
+      this.timeshareManager.isTimeshare ? point.pointType === "timeshare" : point.pointType === "kline",
     );
     this.rebuildBarIndex();
     this.applyData();
     // 分时数据为完整 N 个交易日（无更早分页），不触发左滑边缘加载
-    if (this.isTimeshare) {
+    if (this.timeshareManager.isTimeshare) {
       this.hasMoreHistory = false;
     } else {
       this.hasMoreHistory = points.length >= (this.service?.fetchLimit ?? 0);
@@ -1147,7 +664,7 @@ export class KLineChartController {
    * 分时周期收 'timeshare'（update 价格 / 均价线 / 成交量直方图）。指标缓存增量重建。
    */
   updateLastBar = (point: ChartDataPoint): void => {
-    const expected = this.isTimeshare ? "timeshare" : "kline";
+    const expected = this.timeshareManager.isTimeshare ? "timeshare" : "kline";
     if (point.pointType !== expected) return;
     // v1.6.10：time 统一归一化为数字秒（防 BusinessDay 对象 → series.update 报错）
     const time = normalizeChartTime(point.time);
@@ -1156,7 +673,7 @@ export class KLineChartController {
     // 避免 lightweight-charts "Cannot update oldest data, last time=[object Object]"
     const last = this.bars[this.bars.length - 1];
     if (last && time < normalizeChartTime(last.time)!) return;
-    if (this.isTimeshare) {
+    if (this.timeshareManager.isTimeshare) {
       // 分时：更新价格 / 均价线 + 成交量锚点（1px 细柱由 VolumeBarPrimitive 自绘，
       // 红绿按 price vs preClose 三态，v1.7.0）
       this.timesharePriceSeries?.update({
@@ -1209,7 +726,7 @@ export class KLineChartController {
     this.indicatorManager.refreshMainIndicatorData();
     this.indicatorManager.rebuildIndicatorData();
     // 分时实时推送：价格范围随最新数据重新对称（v1.7.1）
-    this.applyTimesharePriceRange();
+    this.timeshareManager.applyPriceRange();
   };
 
   /**
@@ -1221,7 +738,7 @@ export class KLineChartController {
   prependHistory = (points: ChartDataPoint[]): number => {
     // 按当前周期过滤（分时周期 hasMoreHistory=false 不会触发翻页，此处统一防御）
     const incoming = points.filter((point) =>
-      this.isTimeshare ? point.pointType === "timeshare" : point.pointType === "kline",
+      this.timeshareManager.isTimeshare ? point.pointType === "timeshare" : point.pointType === "kline",
     );
     if (!incoming.length) return 0;
     const { bars, added } = mergeBars(this.bars, incoming);
@@ -1289,7 +806,7 @@ export class KLineChartController {
     // 触摸平移全部关闭（缩放仍由工具栏按钮控制，handleScale 全局已禁滚轮）；
     // 切回 K 线周期恢复默认平移交互
     this.chart.applyOptions({
-      handleScroll: this.isTimeshare
+      handleScroll: this.timeshareManager.isTimeshare
         ? {
             mouseWheel: false,
             pressedMouseMove: false,
@@ -1355,69 +872,35 @@ export class KLineChartController {
     this.indicatorManager.updateThemeColors(themeColorSet);
     // K 线逐根三态色基于主题 palette（红/绿/平盘），主题切换后重设数据刷新（v1.6.57）；
     // 分时周期无 K 线数据（bars 为 timeshare 点），跳过防 NaN（v1.7.0）
-    if (!this.isTimeshare) this.refreshKlineColors(themeColorSet);
+    if (!this.timeshareManager.isTimeshare) this.refreshKlineColors(themeColorSet);
     // 空 Pane 文字颜色在 draw 时动态取色，applyOptions 触发重绘即自动更新
   };
 
   /** 按当前主题重设 K 线逐根三态色（主题切换时调用，不动数据与指标） */
+  /** K 线逐根三态配色重设：委托 viewport.refreshKlineColors（v1.7.1 拆分） */
   private refreshKlineColors = (palette: BarPalette): void => {
-    const points = this.bars
-      .map((bar) => {
-        const time = normalizeChartTime(bar.time)
-        if (time === null) return null
-        return {
-          time: time as UTCTimestamp,
-          open: bar.open!,
-          high: bar.high!,
-          low: bar.low!,
-          close: bar.close!,
-          ...resolveBarColors(bar, palette),
-        }
-      })
-      .filter((p): p is NonNullable<typeof p> => p !== null)
-    this.klineSeries.setData(points)
+    viewportRefreshKlineColors(this.bars, this.klineSeries, palette)
   };
 
   /** 放大（X 轴 barSpacing ×1.25，限幅） */
-  zoomIn = (): void => {
-    const timeScaleApi = this.chart.timeScale();
-    const barSpacing = timeScaleApi.options().barSpacing;
-    timeScaleApi.applyOptions({ barSpacing: Math.min(barSpacing * 1.25, 80) });
-  };
+  /** 放大（X 轴 barSpacing ×1.25，限幅 80）：委托 viewport.zoomIn */
+  zoomIn = (): void => viewportZoomIn(this.chart);
 
   /** 缩小（X 轴 barSpacing ÷1.25，限幅） */
-  zoomOut = (): void => {
-    const timeScaleApi = this.chart.timeScale();
-    const barSpacing = timeScaleApi.options().barSpacing;
-    // 下限 0.5 = 库 timeScale 最小 barSpacing：可一路缩到全部数据可见（极致缩小）
-    timeScaleApi.applyOptions({ barSpacing: Math.max(barSpacing / 1.25, 0.5) });
-  };
+  /** 缩小（X 轴 barSpacing ÷1.25，下限 0.5）：委托 viewport.zoomOut */
+  zoomOut = (): void => viewportZoomOut(this.chart);
 
   /**
    * 左移（视口向左平移 50 根K线，看更早数据）。
    * 用逻辑范围平移替代 scrollToPosition（后者距右边缘不足一屏时减幅变负被 clamp，
    * 直接跳到最新数据末尾）；逻辑范围平移到达最左自然停止，无跳变。
    */
-  shiftLeft = (): void => {
-    const timeScaleApi = this.chart.timeScale();
-    const range = timeScaleApi.getVisibleLogicalRange();
-    if (!range) return;
-    timeScaleApi.setVisibleLogicalRange({
-      from: range.from - VIEW_SHIFT_STEP,
-      to: range.to - VIEW_SHIFT_STEP,
-    });
-  };
+  /** 左移（视口向左平移 50 根K线）：委托 viewport.shiftLeft */
+  shiftLeft = (): void => viewportShiftLeft(this.chart);
 
   /** 右移（视口向右平移 50 根K线，看更晚数据；到达最右自然停止，不跳变） */
-  shiftRight = (): void => {
-    const timeScaleApi = this.chart.timeScale();
-    const range = timeScaleApi.getVisibleLogicalRange();
-    if (!range) return;
-    timeScaleApi.setVisibleLogicalRange({
-      from: range.from + VIEW_SHIFT_STEP,
-      to: range.to + VIEW_SHIFT_STEP,
-    });
-  };
+  /** 右移（视口向右平移 50 根K线）：委托 viewport.shiftRight */
+  shiftRight = (): void => viewportShiftRight(this.chart);
 
   /** 设置主图指标（互斥单选；转发至指标管理器，null = 关闭） */
   setMainIndicator = (name: MainIndicatorName | null): void => {
@@ -1454,22 +937,13 @@ export class KLineChartController {
   /** 刻度区统一应用（左右宽度一致）：逐个 Pane 设置 price scale 显隐与最小宽度。
    *  切换前后**保持当前可见时间范围不变**——刻度区开关只改变数据区宽度，
    *  不改变视图内的数据（不再 fitContent 重置视口）。 */
+  /** 刻度区统一应用（左右宽度一致，切换前后保持可见时间范围不变）：
+   *  委托 viewport.applyPriceScaleVisible（v1.7.1 拆分） */
   private applyPriceScaleVisible = (
     side: "left" | "right",
     visible: boolean,
   ): void => {
-    // 保存当前可见时间范围（秒级 {from, to}），宽度变化后恢复（视图内数据不变）
-    const visibleRange = this.chart.timeScale().getVisibleRange();
-    const panes = this.chart.panes();
-    panes.forEach((_, paneIndex) => {
-      this.chart.priceScale(side, paneIndex).applyOptions({
-        visible,
-        borderVisible: false, // 刻度区无边框
-        minimumWidth: visible ? PRICE_SCALE_MIN_WIDTH : 0, // 关闭时不占位；打开时左右宽度一致
-      });
-    });
-    // 恢复原可见时间范围（刻度区开关仅改变数据区宽度，不改变视图内的数据）
-    if (visibleRange) this.chart.timeScale().setVisibleRange(visibleRange);
+    viewportApplyPriceScaleVisible(this.chart, side, visible)
   };
 
   /** 销毁：移除监听 / primitive / chart / 清除实例标记（防内存泄漏） */

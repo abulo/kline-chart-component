@@ -114,15 +114,21 @@ src/
 ├── chart/                     # 按功能分组的图表源码
 │   ├── periods.ts            # 周期配置（PERIODS 13 项：分时 1~5 日 + 日/周/月 K + 60~1 分 K；periodMap O(1) 查询 + getPeriodLabel，v1.4.94）
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
-│   │   ├── KLineChartController.ts # 控制器（v1.4.73 功能拆分版）：Pane 创建 / 布局 / 主题 / 数据 / 缩放平移 / 刻度开关 / 生命周期，职责委托给下方管理器
+│   │   ├── KLineChartController.ts # 控制器（v1.7.1 拆分版，<1000 行）：数据 / 生命周期 / 对外 API，Pane 构建与分时计算等职责委托给下方模块
 │   │   ├── indicatorManager.ts # 指标管理器（主图五指标 + 成交量均量线 + pane0/pane2 信息行；setMainIndicator / setSubIndicator 转发附图指标层）
 │   │   ├── subIndicatorPaneManager.ts # 附图指标 Pane 管理器（pane4 指标信息行 + pane5 指标图：创建/销毁/数据/信息行/主题；v1.4.89 拆分）
 │   │   ├── crosshairManager.ts # 十字星管理器（十字星移动联动 + overlayTime + 左刻度指示值注册表）
-│   │   ├── constants.ts        # 共享常量（LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH）
+│   │   ├── timeshareManager.ts # 分时计算管理器（v1.7.1 拆分：isTimeshare / preClose / 对称半幅 / 等差刻度 / 三态着色 / 固定价格范围）
+│   │   ├── paneFactory.ts      # Pane 构建工厂（v1.7.1 拆分：pane0~pane3 全部 series / primitive 创建装配）
+│   │   ├── paneLayout.ts       # Pane 高度分配工具（v1.7.1 拆分：固定空 Pane 等高等分 + 组比例；paneTop 累加定位）
+│   │   ├── viewport.ts         # 视口 / 刻度 / 配色工具（v1.7.1 拆分：缩放平移 / 刻度区显隐 / K 线换色 / 调试对象）
+│   │   ├── constants.ts        # 共享常量（LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH / VIEW_SHIFT_STEP）
 │   │   ├── types.ts            # 公共类型（KLineChartOptions / MainIndicatorName / IndicatorLineSpec）
 │   │   ├── indicatorMeta.ts    # 附图指标线名元信息（subIndicatorLabels）
 │   │   ├── layout.ts          # 布局常量与高度计算（60/20/20 ⇄ 80/20）
 │   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）+ 主图 / 附图指标配色
+│   │   ├── resolveBarColors.ts# K 线逐根三态配色（close vs preClose 红 / 绿 / 平盘）
+│   │   ├── mergeBars.ts        # 新旧数据合并（实时推送 / 分页衔接去重）
 │   │   ├── mock.ts            # mock 数据（日 K，纯函数可单测）
 │   │   └── candlestickWidth.ts# 蜡烛 / 柱体宽度（库原版 optimalCandlestickWidth）
 │   ├── axis/                  # 左刻度标签（与栅格横线对齐，文字与指示值一致）
@@ -266,6 +272,8 @@ chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 
 
 组件数据层统一走 `ChartDataService` 接口（`src/services/chartDataService.ts`）：
 历史分页 `fetchHistory` + 实时订阅 `subscribeRealtime`，组件 / 控制器零依赖具体实现。
+v1.7.1 拆分：纯数据生成层（日 K 池 / 分时形态 / 分钟聚合 / 周月聚合）抽至
+`src/services/mockDataGenerator.ts`（35 个顶层导出，可单测），服务层只保留编排与缓存。
 
 - **默认**：`MockChartDataService` 单例（内置约 3 年日 K 池 + 分时 / 分钟 K / 周 / 月聚合 +
   模拟实时推送；同 symbol 同周期缓存复用，内存友好）。

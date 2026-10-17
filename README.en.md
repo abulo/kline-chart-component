@@ -96,15 +96,21 @@ src/
 ├── chart/                     # Chart source, grouped by feature
 │   ├── periods.ts            # Period config (PERIODS 13 items: 1~5 day intraday + daily/weekly/monthly K + 60~1 min K; periodMap O(1) lookup + getPeriodLabel, v1.4.94)
 │   ├── core/                  # Core: controller / layout / theme / mock / candlestick width
-│   │   ├── KLineChartController.ts # Controller (feature-split version, v1.4.73): pane creation / layout / theme / data / zoom-pan / axis toggles / lifecycle, delegating duties to the managers below
+│   │   ├── KLineChartController.ts # Controller (v1.7.1 split version, <1000 lines): data / lifecycle / public API; pane building & intraday math delegated to the modules below
 │   │   ├── indicatorManager.ts # Indicator manager (five main indicators + volume average lines + pane0/pane2 info rows; setMainIndicator / setSubIndicator forwards to the sub-indicator pane)
 │   │   ├── subIndicatorPaneManager.ts # Sub-indicator pane manager (pane4 info row + pane5 indicator chart: create/destroy/data/info-row/theme; split out in v1.4.89)
 │   │   ├── crosshairManager.ts # Crosshair manager (crosshair move link + overlayTime + left-axis indicator registry)
-│   │   ├── constants.ts        # Shared constants (LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH)
+│   │   ├── timeshareManager.ts # Intraday (1d~5d) math manager (v1.7.1 split: isTimeshare / preClose / symmetric half-range / arithmetic scale values / three-state coloring / fixed price range)
+│   │   ├── paneFactory.ts      # Pane building factory (v1.7.1 split: creates & wires all pane0~pane3 series / primitives)
+│   │   ├── paneLayout.ts       # Pane height allocation utilities (v1.7.1 split: equal fixed panes + group ratios; paneTop accumulation)
+│   │   ├── viewport.ts         # Viewport / axis / palette utilities (v1.7.1 split: zoom-pan / axis visibility / K-line recolor / debug object)
+│   │   ├── constants.ts        # Shared constants (LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH / VIEW_SHIFT_STEP)
 │   │   ├── types.ts            # Shared types (KLineChartOptions / MainIndicatorName / IndicatorLineSpec)
 │   │   ├── indicatorMeta.ts    # Sub-indicator line-name metadata (subIndicatorLabels)
 │   │   ├── layout.ts          # Layout constants & height computation (60/20/20 ⇄ 80/20)
 │   │   ├── theme.ts           # Dark / light themes (all colors centralized) + main / sub indicator palettes
+│   │   ├── resolveBarColors.ts# Per-bar three-state colors (close vs preClose: up / down / flat)
+│   │   ├── mergeBars.ts        # New/old data merge (realtime push / pagination dedup)
 │   │   ├── mock.ts            # Mock data (daily K, pure functions, unit-testable)
 │   │   └── candlestickWidth.ts# Candlestick / bar width (library original optimalCandlestickWidth)
 │   ├── axis/                  # Left-axis labels (aligned with grid lines, text identical to indicator values)
@@ -245,7 +251,7 @@ chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 
 
 ### 5.5 Data Integration (src/services)
 
-The component data layer uniformly goes through the `ChartDataService` interface (`src/services/chartDataService.ts`): history pagination `fetchHistory` + realtime subscription `subscribeRealtime`; the component / controller have zero dependency on a concrete implementation.
+The component data layer uniformly goes through the `ChartDataService` interface (`src/services/chartDataService.ts`): history pagination `fetchHistory` + realtime subscription `subscribeRealtime`; the component / controller have zero dependency on a concrete implementation. v1.7.1 split: the pure data-generation layer (daily-K pool / intraday patterns / minute aggregation / week-month aggregation) moved to `src/services/mockDataGenerator.ts` (35 top-level exports, unit-testable); the service layer keeps orchestration & caching only.
 
 - **Default**: `MockChartDataService` singleton (built-in ~3-year daily K pool + intraday / minute K / weekly / monthly aggregation + simulated realtime push; same symbol + period cache reused, memory-friendly).
   Per-page fetch count (v1.6.27) is a **required per-instance config**:
@@ -317,7 +323,7 @@ Intraday periods (`1d` ~ `5d`) share the same component and layout as K-line per
 - **Interaction**: on intraday the pan / zoom buttons are hidden and **chart panning interaction is fully disabled** (wheel / press-drag / touch, `setPeriod` dynamically toggles `handleScroll`; zoom remains controlled by toolbar buttons); `hasMoreHistory=false` (intraday data is complete, no left-edge pagination); pane0 / tooltip / time-axis indicator time format **YYYY-MM-DD HH:mm** (`formatAxisTime` intraday branch, adjusted from HH:mm in v1.7.0 to distinguish dates across multi-day intraday); **time-axis tick labels** (`tickMarkFormatter`): K-line state **YYYY-MM-DD** / intraday state **HH:mm** (not affected by the format param);
 - **pane0 info row (intraday)**: appends price / **average price** / change / change% / volume / amount (price / change / change% **numbers** colored red-up / green-down / flat vs previous close, labels use the text color; **average price number = average-line color** (timeshareAvgColor); volume/amount uncolored, `buildInfoSegments` intraday branch + `barTimeMap` O(1) lookup);
 - **tooltip**: intraday points show time / price (colored) / **average price (average-line color)** / change / change% / volume / amount (seven rows, change baseline = previous close);
-- **Files**: `src/chart/periods.ts` (`isTimesharePeriod` / `timeshareGridVerticalCount` / `timeshareVerticalCount`), `src/chart/core/kLineChartController.ts` (intraday twin-line branch), `src/chart/core/subIndicatorPaneManager.ts` (intraday indicator adaptation), `src/services/chartDataService.ts` (intraday mock: `timesharePatternPath` 8 patterns + `buildTsPool` per-day allocation).
+- **Files**: `src/chart/periods.ts` (`isTimesharePeriod` / `timeshareGridVerticalCount` / `timeshareVerticalCount`), `src/chart/core/kLineChartController.ts` (intraday twin-line branch), `src/chart/core/subIndicatorPaneManager.ts` (intraday indicator adaptation), `src/services/chartDataService.ts` (intraday mock: `timesharePatternPath` 8 patterns + `buildTsPool` per-day allocation), `src/services/mockDataGenerator.ts` (pure data-generation layer, v1.7.1), `src/chart/core/timeshareManager.ts` / `paneFactory.ts` / `paneLayout.ts` / `viewport.ts` (v1.7.1 split modules).
 
 #### 5.7.1 Intraday pane1 Left/Right Axis (v1.7.1)
 
