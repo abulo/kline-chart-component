@@ -49,3 +49,24 @@ export const resolveBarColors = (bar: ChartDataPoint, palette: BarPalette): BarC
   // 平盘：中性色（深系白 / 浅系黑）
   return { color: palette.flatColor, borderColor: palette.flatColor, wickColor: palette.flatColor }
 }
+
+/**
+ * 分时分钟成交量柱颜色（纯函数，可单测；v1.7.0）：
+ *  - 每个交易日首根（prevBar 为 undefined 或与当前 tradeDate 不同）：
+ *    本分钟价格 VS 昨日收盘 preClose（> 红 / < 绿 / = 平盘色）；
+ *  - 其余分钟：本分钟价格 VS 上一分钟价格（> 红 / < 绿 / = 平盘色）。
+ * 返回单色（1px 实心细柱），平盘 = 主题 flatColor（深系白 / 浅系黑）。
+ */
+export const resolveTimeshareVolumeColor = (
+  bar: ChartDataPoint,
+  prevBar: ChartDataPoint | undefined,
+  palette: BarPalette,
+): string => {
+  const price = bar.price ?? 0
+  // 每日首根基准 = 昨收 preClose（分时点必含）；其余 = 上一分钟价
+  const isFirstOfDay = prevBar === undefined || prevBar.tradeDate !== bar.tradeDate
+  const base = isFirstOfDay ? (bar.preClose ?? bar.price ?? 0) : (prevBar?.price ?? bar.price ?? 0)
+  if (price > base) return palette.upColor
+  if (price < base) return palette.downColor
+  return palette.flatColor
+}

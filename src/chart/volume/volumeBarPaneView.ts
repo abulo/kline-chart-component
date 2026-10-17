@@ -18,6 +18,7 @@ import {
 } from 'lightweight-charts'
 import type { VolumeBarPrimitive } from './volumeBarPrimitive'
 import { candlestickBarWidth } from '../core/candlestickWidth'
+import { resolveTimeshareVolumeColor } from '../core/resolveBarColors'
 
 /** 成交量主题颜色（与 K 线同源：background 用于空心填充，up/down 红绿，flat 平盘） */
 export interface VolumeThemeColors {
@@ -91,16 +92,15 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
             if (barHeight <= 0) continue
 
             if (bar.pointType === 'timeshare') {
-              // 分时量柱（v1.7.0）：实心 1px 细柱，红绿按 price vs preClose 三态
-              // （与 K 线柱同一判定基准；平盘中性色）
-              const preClose = bar.preClose ?? bar.price ?? 0
-              if ((bar.price ?? 0) > preClose) {
-                context.fillStyle = colors.upColor
-              } else if ((bar.price ?? 0) < preClose) {
-                context.fillStyle = colors.downColor
-              } else {
-                context.fillStyle = colors.flatColor
-              }
+              // 分时量柱（v1.7.0）：实心 1px 细柱，红绿判断规则——
+              // 1. 每个交易日首根（前一根 tradeDate 不同 / 数组首根）：本分钟价格
+              //    VS 昨日收盘 preClose（> 红 / < 绿 / = 平盘色）；
+              // 2. 其余分钟：本分钟价 VS 上一分钟价（> 红 / < 绿 / = 平盘色）
+              context.fillStyle = resolveTimeshareVolumeColor(
+                bar,
+                bars[index - 1],
+                colors,
+              )
               context.fillRect(barX, yTop, barWidth, barHeight)
               continue
             }
