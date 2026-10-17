@@ -325,7 +325,13 @@ export class CrosshairTooltip {
     })
     this.rowNodes.forEach((node, index) => {
       const row = rows[index]
-      if (!row) return
+      // 分时（7 行）比 K 线（9 行）少：多余节点清空，避免残留上一周期文本（v1.7.0）
+      if (!row) {
+        node.label.textContent = ''
+        node.label.style.display = 'none'
+        node.value.textContent = ''
+        return
+      }
       node.label.textContent = row.label
       // 第一行时间顶格直显（label 列不占位），其余行保留 label + value 两列
       node.label.style.display = index === 0 ? 'none' : ''
