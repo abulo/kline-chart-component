@@ -103,6 +103,9 @@ export class IndicatorManager {
   private volumeMaLines: IndicatorLineSpec[] = []
   /** pane2 成交量信息行缓存（time → 成交量 + MA5/MA10 值；MA 前 N-1 根为 null，O(1) 现取） */
   private volumeInfoMap: Map<number, { volume: number; ma5: number | null; ma10: number | null }> = new Map()
+  /** bar 按 time 索引（v1.7.0 分时 pane0 信息行取 价格/涨跌/涨幅/量额；数据变化时随
+   *  rebuildVolumeData 重建，O(1) 现取，避免 draw 每帧线性查找） */
+  private barTimeMap: Map<number, ChartDataPoint> = new Map()
 
   /* ===== 附图指标（pane4 / pane5 全部逻辑在 SubIndicatorPaneManager） ===== */
   /** pane4 指标信息行 + pane5 指标图管理器（创建 / 销毁 / 数据 / 信息行） */
@@ -258,9 +261,12 @@ export class IndicatorManager {
    *  分时周期（v1.7.0）去掉均量线：只显示 1px 量柱，不叠加 VOL MA5 / MA10。 */
   rebuildVolumeData = (): void => {
     if (isTimesharePeriod(this.getPeriod())) {
+      const tsBars = this.getBars()
+      // barTimeMap：分时 pane0 信息行 价格/涨跌/涨幅/量额 现取（O(1)，v1.7.0）
+      this.barTimeMap = new Map(tsBars.map((bar) => [bar.time, bar]))
       this.volumeMaLines = []
       this.volumeInfoMap = new Map(
-        this.getBars().map((bar) => [
+        tsBars.map((bar) => [
           bar.time,
           { volume: bar.volume ?? 0, ma5: null, ma10: null },
         ]),
@@ -268,6 +274,8 @@ export class IndicatorManager {
       return
     }
     const bars = this.getBars()
+    // barTimeMap：分时 pane0 信息行数据源（K 线周期未使用，仍同步重建保持统一）
+    this.barTimeMap = new Map(bars.map((bar) => [bar.time, bar]))
     const theme = themeColors(this.getTheme())
     const volMa5Line = calcVolMA(bars, 5)
     const volMa10Line = calcVolMA(bars, 10)
@@ -342,11 +350,32 @@ export class IndicatorManager {
     const base = symbol ? `${name} [${symbol}]` : name || '测试'
     const bars = this.getBars()
     const time = this.getOverlayTime() ?? bars[bars.length - 1]?.time ?? null
-    // v1.6.9：format 模板优先；缺省按周期自动（日/周/月 → YYYY-MM-DD；分时 → HH:mm；分钟 K → YYYY-MM-DD HH:mm）
+    // v1.6.9：format 模板优先；缺省按周期自动（日/周/月 → YYYY-MM-DD；分时 → YYYY-MM-DD HH:mm；分钟 K → YYYY-MM-DD HH:mm）
     const timeFormat = this.getTimeFormat()
     const timeText = timeFormat ? formatTimeByFmt(time ?? 0, timeFormat) : formatAxisTime(time, this.getPeriod())
     const segments: TextSegment[] = [{ text: `${base} ${timeText}`, color: theme.textColor }]
     if (time === null) return segments
+    // 分时周期（v1.7.0）：pane0 追加 价格 / 涨跌 / 涨幅 / 成交量 / 成交额
+    // （价格按 vs 昨收红涨绿跌平盘着色，量额用主题文字色；数据 barTimeMap O(1) 现取）
+    if (isTimesharePeriod(this.getPeriod())) {
+      const tsBar = this.barTimeMap.get(time)
+      if (tsBar !== undefined) {
+        const price = tsBar.price ?? 0
+        const preClose = tsBar.preClose ?? price
+        const diff = price - preClose
+        const pct = preClose > 0 ? (diff / preClose) * 100 : 0
+        const sign = diff > 0 ? '+' : diff < 0 ? '-' : ''
+        const trendColor = diff > 0 ? theme.upColor : diff < 0 ? theme.downColor : theme.flatColor
+        segments.push(
+          { text: ` 价格: ${formatPrice(price)}`, color: trendColor },
+          { text: ` 涨跌: ${sign}${formatPrice(Math.abs(diff))}`, color: trendColor },
+          { text: ` 涨幅: ${sign}${Math.abs(pct).toFixed(2)}%`, color: trendColor },
+          { text: ` 成交量: ${formatVolume(tsBar.volume)}`, color: theme.textColor },
+          { text: ` 成交额: ${formatVolume(tsBar.amount)}`, color: theme.textColor },
+        )
+      }
+      return segments
+    }
     // 指标值段：线型指标（MA/EXPMA/BOLL/BBI）按线色，SAR 按 trend 色
     for (const line of this.mainIndicatorValueMaps) {
       const value = line.values.get(time)
@@ -394,5 +423,6 @@ export class IndicatorManager {
     this.sarMarkerPrimitive = null
     this.volumeMaLines = []
     this.volumeInfoMap = new Map()
+    this.barTimeMap = new Map()
   }
 }
