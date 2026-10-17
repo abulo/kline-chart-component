@@ -351,7 +351,7 @@ SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式
 - **pane1 分时双线**：`LineSeries` 价格线 + 均价线（深系 #FFFFFF / #F4AA0A，浅系 #33373E / #B8860B，`theme.timesharePriceColor` / `timeshareAvgColor`）；K 线周期双线清空不可见；
 - **无主图指标**：分时下主图指标栏隐藏（MA/EXPMA/BOLL/SAR/BBI 基于 OHLC，分时点无 OHLC）；
 - **成交量 pane3**：K 线周期为自绘红绿柱体；分时周期为自绘 **1px 细柱**（红绿按 `price vs preClose` 三态，与 K 线同一口径，`volumeBarPaneView` 分时分支）；
-- **MACD pane5**：K 线周期为 `MacdBarPrimitive` 自绘红绿柱（柱宽与 K 线一致）；分时周期同为自绘红绿柱但 **柱宽固定 1px**（`getIsTimeshare` 注入，值 ≥ 0 红 / < 0 绿）；
+- **MACD pane5**：K 线周期为 `MacdBarPrimitive` 自绘红绿柱（柱宽与 K 线一致，正值空心红柱）；分时周期同为自绘但 **柱宽固定 1px 的实心细线**（`getIsTimeshare` 注入：正值实心红线 / 负值实心绿线，不做空心）；
 - **附图指标**：分时下无 CR（`TIMESHARE_DISABLED_SUB_INDICATORS`，App 按钮过滤）；其余指标按价格序列计算（数据源换算 K 口径 `close = price`）；
 - **栅格竖线份数**：`timeshareGridVerticalCount` —— 1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5（`getVerticalCount` 动态取数，K 线恒 4）；
 - **交互**：分时下平移 / 缩放按钮隐藏，且 **图表平移交互整体禁用**（滚轮 / 按住拖拽 / 触摸，`setPeriod` 动态切换 `handleScroll`，缩放仍由工具栏按钮控制）；`hasMoreHistory=false`（分时数据完整，不触发左滑翻页）；pane0 / tooltip 时间格式 HH:mm（`formatAxisTime` 分时分支）；

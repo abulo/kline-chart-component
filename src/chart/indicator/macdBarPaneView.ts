@@ -99,15 +99,21 @@ export class MacdBarPaneView implements IPrimitivePaneView {
             if (barHeight <= 0) continue
 
             if (point.macd >= 0) {
-              // 柱 > 0：空心红柱（背景填充 + 红色边框，同 pane1 上涨柱）
+              // 柱 > 0：K 线周期 = 空心红柱（背景填充 + 红色边框，同 pane1 上涨柱）；
+              // 分时周期 = 1px 实心红线（不做空心，细线视觉，v1.7.0）
               const top = yBase - barHeight
-              context.fillStyle = colors.background
-              context.fillRect(barX, top, barWidth, barHeight)
-              context.strokeStyle = colors.upColor
-              // +0.5 对齐 CSS 像素网格，避免 1px 边框模糊
-              context.strokeRect(barX + 0.5, top + 0.5, barWidth - 1, barHeight - 1)
+              if (isTimeshare) {
+                context.fillStyle = colors.upColor
+                context.fillRect(barX, top, barWidth, barHeight)
+              } else {
+                context.fillStyle = colors.background
+                context.fillRect(barX, top, barWidth, barHeight)
+                context.strokeStyle = colors.upColor
+                // +0.5 对齐 CSS 像素网格，避免 1px 边框模糊
+                context.strokeRect(barX + 0.5, top + 0.5, barWidth - 1, barHeight - 1)
+              }
             } else {
-              // 柱 < 0：绿色实心（同 pane1 下跌柱），从中间向下延伸
+              // 柱 < 0：绿色实心（同 pane1 下跌柱；分时 1px 同），从中间向下延伸
               context.fillStyle = colors.downColor
               context.fillRect(barX, yBase, barWidth, barHeight)
             }
