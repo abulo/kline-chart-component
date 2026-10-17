@@ -881,12 +881,13 @@ export class KLineChartController {
     // v1.7.1 修复：库默认 scaleMargins 不对称（top 0.2 / bottom 0.1）→ 数据中间值
     // 映射在 0.55H 而非像素中间 H/2，导致十字星横线指示值（coordinateToPrice 反算）
     // 与刻度标签（像素等分固定值）在同一 y 显示不一致（如刻度中间 10、指示值 9.43）。
-    // 分时下设置对称 margins（top = bottom = 0.1）→ 坐标中间 ↔ 像素中间严格对齐。
+    // 分时下设置**对称 0 margins**：坐标中间 ↔ 像素中间严格对齐（十字星指示值 = 刻度值），
+    // 且一字板涨停（max = preClose+half）价格线贴 pane1 上边框、一字板跌停贴下边框。
     this.chart.priceScale("left", 1).applyOptions({
-      scaleMargins: { top: 0.1, bottom: 0.1 },
+      scaleMargins: { top: 0, bottom: 0 },
     })
     this.chart.priceScale("right", 1).applyOptions({
-      scaleMargins: { top: 0.1, bottom: 0.1 },
+      scaleMargins: { top: 0, bottom: 0 },
     })
     this.timesharePriceSeries.applyOptions({
       autoscaleInfoProvider: () => {

@@ -10,6 +10,7 @@
 - **基础设施**：AxisLabelPrimitive 扩展 `getEnabled` / `getValueColor` / `getPrice`（value() 统一求值，渲染层按值着色）；+7 单测（tests/axisLabel.test.ts，20 files / 186 tests）。
 - **中间刻度固定（修复）**：左刻度中间值 = preClose（`getFixedMiddleValue` 确定性显示，如 preClose=5 → 中间显示 5.00）、右刻度中间 = 0.00%（formatPercent 转换）——不再依赖坐标反算的像素级对称（价格范围仍保持 preClose 对称，视觉中间横线 = 昨收）。
 - **分时基准定版（v1.7.1）**：中间横线值 **永远是第一根 bar 的 preClose**（1d~5d 统一，用户指定口径）；2d~5d 多日分时同样以最早交易日第一根的 preClose 为基准；价格范围对称 / 中间固定 / 三态着色全部跟随首根基准。
+- **分时 0 margins：一字板贴边框（v1.7.1）**——对称 margins 由 0.1 改为 **0（top = bottom = 0）**：一字板涨停价格线紧贴 pane1 上边框、一字板跌停贴下边框；中间值仍精确对齐像素中间（十字星指示值 = 刻度值不回归）。
 - **修复：分时十字星横线指示值 ≠ 刻度值（v1.7.1）**——根因：库默认 scaleMargins 不对称（top 0.2 / bottom 0.1）→ 数据中间值映射在 0.55H 而非像素中间 H/2；刻度标签按像素等分固定显示（中间=10 画在 H/2），十字星指示值用 coordinateToPrice 反算（同一 y → 9.43）。修复：分时下 pane1 左 / 右刻度设为**对称 margins（top = bottom = 0.1）** → 坐标中间 ↔ 像素中间严格对齐，十字星在中间横线处指示值 = 10；K 线周期恢复库默认 margins。
 - **右刻度值由左刻度显示值计算（v1.7.1）**：右刻度百分比 = (左刻度显示值 − preClose) / preClose × 100% —— 序列值先按左刻度 2 位小数精度回算，与左刻度文字严格一一对应（左 12.67 → 右 +26.70%）。
 - **调试暴露 window.__klineChart（v1.7.1）**：控制台实时查看数据与分时刻度计算——`bars`（原始数据，分时点含 preClose/price/avgPrice/volume）、`barCount`、`preClose`（首根昨收）、`timeshareHalf`（对称半幅 expandDistance）、`scaleValues`（当前等差刻度序列）、`horizontalCount`（等分数）、`getMaxMin()`（全部 bar 最高/最低价）。getter 实时取最新值，随数据更新自动刷新（仅开发用）。
