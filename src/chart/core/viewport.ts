@@ -7,8 +7,7 @@
  *  - K 线逐根三态配色重设（refreshKlineColors，主题切换时调用）
  *  - 调试数据暴露（exposeDebugApi，挂 window.__klineChart 控制台实时查看）
  */
-import type { ISeriesApi } from 'lightweight-charts'
-import { UTCTimestamp } from 'lightweight-charts'
+import type { ISeriesApi, UTCTimestamp } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
 import type { PeriodValue } from '../periods'
 import type { ChartThemeName } from './theme'

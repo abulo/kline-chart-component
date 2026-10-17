@@ -380,7 +380,7 @@ SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式
 ```bash
 npm install        # 固定版本：lightweight-charts 5.2.1 / vue 3.5.43
 npm run dev        # 开发（http://127.0.0.1:5210）
-npm run test       # vitest 单测（194 项，20 files）
+npm run test       # vitest 单测（202 项，21 files；含拆分模块 splitModules.test.ts）
 npm run build      # vue-tsc 类型检查 + 构建
 ```
 

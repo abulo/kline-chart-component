@@ -339,7 +339,7 @@ Intraday periods (`1d` ~ `5d`) share the same component and layout as K-line per
 ```bash
 npm install        # pinned versions: lightweight-charts 5.2.1 / vue 3.5.43
 npm run dev        # development (http://127.0.0.1:5210)
-npm run test       # vitest unit tests (194 tests, 20 files)
+npm run test       # vitest unit tests (202 tests, 21 files; incl. split-module tests splitModules.test.ts)
 npm run build      # vue-tsc type check + build
 ```
 
