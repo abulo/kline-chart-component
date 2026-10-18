@@ -27,7 +27,8 @@
  * 本控制器只保留：图表创建 / Pane 构建 / 数据写入 / 布局 / 主题 / 缩放平移 /
  * 刻度开关 / 生命周期，并把职责委托给以下模块：
  *  - constants.ts：共享常量（LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH）；
- *  - types.ts：公共类型（KLineChartOptions / MainIndicatorName / IndicatorLineSpec）；
+ *  - types.ts：公共类型（KLineChartOptions / IndicatorLineSpec；主图指标类型
+ *    在 ../indicator/types.ts，见 MainIndicatorType）；
  *  - indicatorMeta.ts：附图指标线名元信息（subIndicatorLabels）；
  *  - indicatorManager.ts：指标管理器（主图五指标 + 附图十指标 + 成交量均量线 +
  *    信息行分段构建，全部指标元素 top 层自绘，setMainIndicator / setSubIndicator）；
@@ -82,11 +83,14 @@ import { CrosshairTooltip, type TooltipBounds } from "../crosshair/crosshairTool
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
 import { PRICE_SCALE_MIN_WIDTH } from "./constants";
-import type { KLineChartOptions, MainIndicatorName, ChartLoadStatus } from "./types";
+import type { KLineChartOptions, ChartLoadStatus } from "./types";
+import type { MainIndicatorType } from "../indicator";
 import type { ChartDataService } from "../../services/chartDataService";
 
-/** 公共类型 re-export（App.vue 等外部使用者继续从本文件导入，保持接口稳定） */
-export type { MainIndicatorName, KLineChartOptions } from "./types";
+/** 公共类型 re-export（App.vue 等外部使用者继续从本文件导入，保持接口稳定；
+ *  主图指标类型已统一迁移至 ../indicator —— 指标公共类型单一来源） */
+export type { MainIndicatorType } from "../indicator";
+export type { KLineChartOptions } from "./types";
 
 /** 控制器构造选项（re-export，见 types.ts） */
 // （上方 export type 已统一转发）
@@ -903,7 +907,7 @@ export class KLineChartController {
   shiftRight = (): void => viewportShiftRight(this.chart);
 
   /** 设置主图指标（互斥单选；转发至指标管理器，null = 关闭） */
-  setMainIndicator = (name: MainIndicatorName | null): void => {
+  setMainIndicator = (name: MainIndicatorType | null): void => {
     this.indicatorManager.setMainIndicator(name);
   };
 

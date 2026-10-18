@@ -24,6 +24,7 @@ import type { ChartDataPoint } from '../../types/chart'
 export type {
   IndicatorLine,
   K,
+  MainIndicatorType,
   MainIndicators,
   SubIndicatorType,
 } from './types'

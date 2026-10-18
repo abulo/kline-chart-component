@@ -35,7 +35,8 @@ import {
 import { formatVolume, formatPrice, formatTimeByFmt, formatAxisTime } from '../util/format'
 import type { ChartThemeColors } from './theme'
 import { isTimesharePeriod, timeshareVerticalCount, type PeriodValue } from '../periods'
-import { type MainIndicatorName, type IndicatorLineSpec, type CrosshairPrimitiveRegistry, type IndicatorValueMap } from './types'
+import { type IndicatorLineSpec, type CrosshairPrimitiveRegistry, type IndicatorValueMap } from './types'
+import { type MainIndicatorType } from '../indicator'
 import { SubIndicatorPaneManager } from './subIndicatorPaneManager'
 import type { TextSegment } from '../overlay/topPaneOverlayPrimitive'
 
@@ -86,7 +87,7 @@ export class IndicatorManager {
 
   /* ===== 主图指标状态 ===== */
   /** 当前激活的主图指标（null = 关闭；互斥） */
-  private mainIndicator: MainIndicatorName | null = null
+  private mainIndicator: MainIndicatorType | null = null
   /** pane1 主图指标线缓存（{ 线色, 数据点 }[]；IndicatorLinePrimitive 自绘现取） */
   private mainIndicatorLines: IndicatorLineSpec[] = []
   /** 主图线型指标值缓存（pane0 信息行分段着色现取，O(1)） */
@@ -161,7 +162,7 @@ export class IndicatorManager {
    *  - name = null：清空全部指标线并隐藏 SAR；
    *  - name = 指标：清空旧线后按指标计算并写入缓存（top 层自绘，无 LineSeries）。
    */
-  setMainIndicator = (name: MainIndicatorName | null): void => {
+  setMainIndicator = (name: MainIndicatorType | null): void => {
     this.clearMainIndicatorSeries()
     if (name === null) {
       this.mainIndicator = null

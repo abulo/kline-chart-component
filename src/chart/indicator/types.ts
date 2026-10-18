@@ -2,10 +2,18 @@
  * types.ts —— 技术指标公共类型定义（K 线 + 分时共用）
  *
  * 供 indicators/ 目录下全部指标文件共享；统一在此定义
- * 指标线输出格式、主图/附图汇总结构、附图指标类型枚举（K 线 10 个含 CR、
- * 分时 9 个无 CR），避免各指标文件重复声明、保持类型单一来源。
+ * 指标线输出格式、主图/附图汇总结构、主图/附图指标类型枚举
+ * （主图 5 个：MA/EXPMA/BOLL/SAR/BBI；附图 K 线 10 个含 CR、分时 9 个无 CR），
+ * 避免各指标文件重复声明、保持类型单一来源。
  */
 import type { ChartDataPoint } from '../../types/chart'
+
+/**
+ * 主图指标类型（pane1 叠加线；互斥，同一时刻仅一个）：
+ *  MA / EXPMA / BOLL / SAR / BBI，null = 关闭
+ */
+export type MainIndicatorType = 'ma' | 'expma' | 'boll' | 'sar' | 'bbi'
+
 
 /**
  * 指标线数据格式（lightweight-charts LineSeries 直接可用的 data）。

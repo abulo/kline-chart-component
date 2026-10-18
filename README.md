@@ -123,7 +123,7 @@ src/
 │   │   ├── paneLayout.ts       # Pane 高度分配工具（v1.7.1 拆分：固定空 Pane 等高等分 + 组比例；paneTop 累加定位）
 │   │   ├── viewport.ts         # 视口 / 刻度 / 配色工具（v1.7.1 拆分：缩放平移 / 刻度区显隐 / K 线换色 / 调试对象）
 │   │   ├── constants.ts        # 共享常量（LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH / VIEW_SHIFT_STEP）
-│   │   ├── types.ts            # 公共类型（KLineChartOptions / MainIndicatorName / IndicatorLineSpec）
+│   │   ├── types.ts            # 核心公共类型（KLineChartOptions / IndicatorLineSpec；主图/附图指标类型见 indicator/types.ts）
 │   │   ├── indicatorMeta.ts    # 附图指标线名元信息（subIndicatorLabels）
 │   │   ├── layout.ts          # 布局常量与高度计算（60/20/20 ⇄ 80/20）
 │   │   ├── theme.ts           # 深系 / 浅系主题（所有颜色集中）+ 主图 / 附图指标配色

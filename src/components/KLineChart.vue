@@ -24,13 +24,10 @@
  *  - 数据加载竞态由 controller 内部 loadSeq 守卫（快速切换周期 / 标的丢弃过期响应）。
  */
 import { onBeforeUnmount, onMounted, ref, watch, computed } from "vue";
-import {
-  KLineChartController,
-  type MainIndicatorName,
-} from "../chart/core/kLineChartController";
+import { KLineChartController } from "../chart/core/kLineChartController";
 import type { ChartThemeName } from "../chart/core/theme";
 import  { themeColors } from "../chart/core/theme";
-import type { SubIndicatorType } from "../chart/indicator";
+import type { MainIndicatorType, SubIndicatorType } from "../chart/indicator";
 import type { PeriodValue } from "../chart/periods";
 import type { ChartDataService } from "../services/chartDataService";
 import type { ChartDataPoint } from "../types/chart";
@@ -130,7 +127,7 @@ onMounted(() => {
   controller.value.setLeftScaleVisible(props.leftScale);
   controller.value.setRightScaleVisible(props.rightScale);
   controller.value.setMainIndicator(
-    props.mainIndicator ? (props.mainIndicator as MainIndicatorName) : null,
+    props.mainIndicator ? (props.mainIndicator as MainIndicatorType) : null,
   );
   controller.value.setSubIndicator(
     props.subIndicator ? (props.subIndicator as SubIndicatorType) : null,
@@ -172,7 +169,7 @@ watch(
   () => props.mainIndicator,
   (value) =>
     controller.value?.setMainIndicator(
-      value ? (value as MainIndicatorName) : null,
+      value ? (value as MainIndicatorType) : null,
     ),
 );
 /** 附图指标（'' → null = 关闭指标层） */

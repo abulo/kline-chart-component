@@ -105,7 +105,7 @@ src/
 │   │   ├── paneLayout.ts       # Pane height allocation utilities (v1.7.1 split: equal fixed panes + group ratios; paneTop accumulation)
 │   │   ├── viewport.ts         # Viewport / axis / palette utilities (v1.7.1 split: zoom-pan / axis visibility / K-line recolor / debug object)
 │   │   ├── constants.ts        # Shared constants (LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH / VIEW_SHIFT_STEP)
-│   │   ├── types.ts            # Shared types (KLineChartOptions / MainIndicatorName / IndicatorLineSpec)
+│   │   ├── types.ts            # Core shared types (KLineChartOptions / IndicatorLineSpec; main/sub indicator types live in indicator/types.ts)
 │   │   ├── indicatorMeta.ts    # Sub-indicator line-name metadata (subIndicatorLabels)
 │   │   ├── layout.ts          # Layout constants & height computation (60/20/20 ⇄ 80/20)
 │   │   ├── theme.ts           # Dark / light themes (all colors centralized) + main / sub indicator palettes

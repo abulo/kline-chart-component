@@ -14,8 +14,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
-import type { MainIndicatorName } from './chart/core/kLineChartController'
-import type { SubIndicatorType } from './chart/indicator'
+import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
 import { Periods, type PeriodValue } from './chart/periods'
 import { MockChartDataService } from './services/chartDataService'
 
@@ -62,10 +61,10 @@ const showLeftScale = ref(false)
 /** 右刻度区开关（默认关） */
 const showRightScale = ref(false)
 /** 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关） */
-const activeMainIndicator = ref<MainIndicatorName | null>("ma")
+const activeMainIndicator = ref<MainIndicatorType | null>("ma")
 
 /** 主图指标按钮配置（名称 + 标签；互斥） */
-const mainIndicatorOptions: ReadonlyArray<{ name: MainIndicatorName; label: string }> = [
+const mainIndicatorOptions: ReadonlyArray<{ name: MainIndicatorType; label: string }> = [
   { name: 'ma', label: 'MA' },
   { name: 'expma', label: 'EXPMA' },
   { name: 'boll', label: 'BOLL' },
@@ -75,7 +74,7 @@ const mainIndicatorOptions: ReadonlyArray<{ name: MainIndicatorName; label: stri
 
 /** 主图指标开关（互斥）：点击已激活指标 = 关闭；否则切换。
  * 仅维护状态，图表由 KLineChart.vue 的 mainIndicator Props watch 驱动 */
-const toggleMainIndicator = (name: MainIndicatorName): void => {
+const toggleMainIndicator = (name: MainIndicatorType): void => {
   const next = activeMainIndicator.value === name ? null : name
   activeMainIndicator.value = next
 }

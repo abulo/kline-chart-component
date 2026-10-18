@@ -3,11 +3,12 @@
  *
  * 集中定义控制器 / 管理器共享的选项与数据结构：
  *  - KLineChartOptions：控制器构造选项；
- *  - MainIndicatorName：主图指标互斥名称；
  *  - IndicatorLineSpec：指标线规格（颜色 + 升序数据点，top 层自绘数据源）；
  *  - CrosshairPrimitiveRegistry：十字星指示值 primitive 注册表接口
  *    （CrosshairManager 提供，pane1 / pane3 由控制器注册、pane5 由附图指标管理器注册）；
  *  - IndicatorValueMap：信息行指标值缓存项（label + 线色 + time→value Map）。
+ * 注：主图/附图指标类型（MainIndicatorType / SubIndicatorType）统一在
+ *  ../indicator/types.ts 定义（指标公共类型单一来源）。
  */
 import type { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import type { ChartDataPoint } from '../../types/chart'
@@ -38,12 +39,6 @@ export interface KLineChartOptions {
 /** 加载状态（controller 统一管理：init 拉最新页 → 'loading'；左滑分页 → 'loading-older'；
  *  两者成功均 → 'ready'，失败 → 'error'） */
 export type ChartLoadStatus = 'idle' | 'loading' | 'loading-older' | 'ready' | 'error'
-
-/**
- * 主图指标名称（pane1 叠加线；互斥，同一时刻仅一个）：
- *  MA / EXPMA / BOLL / SAR / BBI，null = 关闭
- */
-export type MainIndicatorName = 'ma' | 'expma' | 'boll' | 'sar' | 'bbi'
 
 /**
  * 指标线规格（颜色 + 升序数据点）。
