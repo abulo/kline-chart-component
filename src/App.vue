@@ -12,7 +12,7 @@
  * 所有开关操作不得破坏整体布局尺寸，仅控制可见性 / 样式。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import KLineChart from './components/kLineChart.vue'
+import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
 import type { MainIndicatorName } from './chart/core/kLineChartController'
 import type { SubIndicatorType } from './chart/indicator'
