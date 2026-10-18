@@ -14,7 +14,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
-import { mainIndicatorOptions, subIndicatorOptions } from './chart/indicator/options'
+import { MainIndicatorOptions, SubIndicatorOptions } from './chart/indicator/options'
 import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
 import { Periods, type PeriodValue } from './chart/periods'
 import { MockChartDataService } from './services/chartDataService'
@@ -176,7 +176,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
     <div v-if="!isTimeshare" class="main-indicator-bar">
       <span class="hint">主图指标</span>
       <button
-        v-for="option in mainIndicatorOptions"
+        v-for="option in MainIndicatorOptions"
         :key="option.name"
         class="btn"
         :class="{ active: activeMainIndicator === option.name }"
@@ -191,7 +191,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
          分时周期无 CR（CR 基于多日高低点累计，单日分时无意义，v1.7.0）→ 按钮过滤 -->
     <div class="sub-indicator-bar">
       <span class="hint">附图指标</span>
-      <template v-for="option in subIndicatorOptions" :key="option.name">
+      <template v-for="option in SubIndicatorOptions" :key="option.name">
         <button
           v-if="!isTimeshare || option.name !== 'cr'"
           class="btn"

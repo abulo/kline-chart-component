@@ -31,7 +31,7 @@ export type {
 export type { SarPoint, SarOptions } from './sar'
 
 // ---- 指标按钮配置（App 工具栏渲染用） ----
-export { mainIndicatorOptions, subIndicatorOptions } from './options'
+export { MainIndicatorOptions, SubIndicatorOptions } from './options'
 export type { IndicatorOption } from './options'
 
 // ---- 工具 ----

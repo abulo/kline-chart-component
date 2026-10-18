@@ -14,7 +14,7 @@ export interface IndicatorOption<T extends string> {
 }
 
 /** 主图指标按钮配置（五个，互斥；同一时刻仅一个激活，点击已激活项 = 关闭） */
-export const mainIndicatorOptions: ReadonlyArray<IndicatorOption<MainIndicatorType>> = [
+export const MainIndicatorOptions: ReadonlyArray<IndicatorOption<MainIndicatorType>> = [
   { name: 'ma', label: 'MA' },
   { name: 'expma', label: 'EXPMA' },
   { name: 'boll', label: 'BOLL' },
@@ -23,7 +23,7 @@ export const mainIndicatorOptions: ReadonlyArray<IndicatorOption<MainIndicatorTy
 ]
 
 /** 附图指标按钮配置（十个，互斥；无选中 = 指标层关闭） */
-export const subIndicatorOptions: ReadonlyArray<IndicatorOption<SubIndicatorType>> = [
+export const SubIndicatorOptions: ReadonlyArray<IndicatorOption<SubIndicatorType>> = [
   { name: 'rsi', label: 'RSI' },
   { name: 'kdj', label: 'KDJ' },
   { name: 'macd', label: 'MACD' },

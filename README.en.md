@@ -140,7 +140,7 @@ src/
 │   │   ├── index.ts           # Unified export (main calcMA/EXPMA/BOLL/SAR/BBI + sub calcSubIndicator by name, v1.7.0)
 │   │   ├── types.ts           # Shared types (IndicatorLine / K / MainIndicators / SarPoint;
 │   │   │                       #   main MainIndicatorType + sub SubIndicatorType enums)
-│   │   ├── options.ts         # Main/sub indicator button options (mainIndicatorOptions / subIndicatorOptions, moved from App.vue)
+│   │   ├── options.ts         # Main/sub indicator button options (MainIndicatorOptions / SubIndicatorOptions, moved from App.vue)
 │   │   ├── utils.ts           # Shared utils (tdxSMA / ema / runningMax / toLines)
 │   │   ├── macd.ts            # MACD (calcMACD, Eastmoney convention, pure function)
 │   │   ├── macdBarPrimitive.ts

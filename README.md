@@ -158,7 +158,7 @@ src/
 │   │   ├── index.ts           # 统一出口（主图 calcMA/EXPMA/BOLL/SAR/BBI + 附图 calcSubIndicator 按名单算，v1.7.0）
 │   │   ├── types.ts           # 公共类型（IndicatorLine / K / MainIndicators / SarPoint；
 │   │   │                       #   主图 MainIndicatorType + 附图 SubIndicatorType 类型枚举）
-│   │   ├── options.ts         # 主图/附图指标按钮配置（mainIndicatorOptions / subIndicatorOptions，自 App.vue 迁入）
+│   │   ├── options.ts         # 主图/附图指标按钮配置（MainIndicatorOptions / SubIndicatorOptions，自 App.vue 迁入）
 │   │   ├── utils.ts           # 共享工具（tdxSMA / ema / runningMax / toLines）
 │   │   ├── macd.ts            # MACD（calcMACD，东财口径，纯函数）
 │   │   ├── macdBarPrimitive.ts
