@@ -14,6 +14,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
+import { mainIndicatorOptions, subIndicatorOptions } from './chart/indicator/options'
 import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
 import { Periods, type PeriodValue } from './chart/periods'
 import { MockChartDataService } from './services/chartDataService'
@@ -63,15 +64,6 @@ const showRightScale = ref(false)
 /** 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关） */
 const activeMainIndicator = ref<MainIndicatorType | null>("ma")
 
-/** 主图指标按钮配置（名称 + 标签；互斥） */
-const mainIndicatorOptions: ReadonlyArray<{ name: MainIndicatorType; label: string }> = [
-  { name: 'ma', label: 'MA' },
-  { name: 'expma', label: 'EXPMA' },
-  { name: 'boll', label: 'BOLL' },
-  { name: 'sar', label: 'SAR' },
-  { name: 'bbi', label: 'BBI' },
-]
-
 /** 主图指标开关（互斥）：点击已激活指标 = 关闭；否则切换。
  * 仅维护状态，图表由 KLineChart.vue 的 mainIndicator Props watch 驱动 */
 const toggleMainIndicator = (name: MainIndicatorType): void => {
@@ -95,20 +87,6 @@ watch(theme, (name) => {
 const toggleTimeAxis = (): void => {
   showTimeAxis.value = !showTimeAxis.value
 }
-
-/** 附图指标按钮配置（十个指标，互斥；无选中时关闭指标层） */
-const subIndicatorOptions: ReadonlyArray<{ name: SubIndicatorType; label: string }> = [
-  { name: 'rsi', label: 'RSI' },
-  { name: 'kdj', label: 'KDJ' },
-  { name: 'macd', label: 'MACD' },
-  { name: 'wr', label: 'WR' },
-  { name: 'dmi', label: 'DMI' },
-  { name: 'bias', label: 'BIAS' },
-  { name: 'obv', label: 'OBV' },
-  { name: 'cci', label: 'CCI' },
-  { name: 'roc', label: 'ROC' },
-  { name: 'cr', label: 'CR' },
-]
 
 /** 附图指标开关（互斥）：点击已选中指标 = 关闭（null → 指标层关闭）；否则切换。
  * 仅维护状态，图表由 KLineChart.vue 的 subIndicator Props watch 驱动 */

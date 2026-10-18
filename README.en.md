@@ -138,7 +138,9 @@ src/
 │   ├── indicator/             # Eastmoney-style indicator library (unified export index.ts):
 │   │   │                       #   K-line main: MA/EXPMA/BOLL/SAR/BBI + 10 sub indicators + 9 intraday indicators
 │   │   ├── index.ts           # Unified export (main calcMA/EXPMA/BOLL/SAR/BBI + sub calcSubIndicator by name, v1.7.0)
-│   │   ├── types.ts           # Shared types (IndicatorLine / K / MainIndicators / SarPoint)
+│   │   ├── types.ts           # Shared types (IndicatorLine / K / MainIndicators / SarPoint;
+│   │   │                       #   main MainIndicatorType + sub SubIndicatorType enums)
+│   │   ├── options.ts         # Main/sub indicator button options (mainIndicatorOptions / subIndicatorOptions, moved from App.vue)
 │   │   ├── utils.ts           # Shared utils (tdxSMA / ema / runningMax / toLines)
 │   │   ├── macd.ts            # MACD (calcMACD, Eastmoney convention, pure function)
 │   │   ├── macdBarPrimitive.ts

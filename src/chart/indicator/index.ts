@@ -30,6 +30,10 @@ export type {
 } from './types'
 export type { SarPoint, SarOptions } from './sar'
 
+// ---- 指标按钮配置（App 工具栏渲染用） ----
+export { mainIndicatorOptions, subIndicatorOptions } from './options'
+export type { IndicatorOption } from './options'
+
 // ---- 工具 ----
 export { tdxSMA, ema, runningMax, runningMin, tdxSum, avedev, toLines } from './utils'
 
