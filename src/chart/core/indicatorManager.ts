@@ -102,8 +102,8 @@ export class IndicatorManager {
   /* ===== 成交量缓存 ===== */
   /** pane3 成交量均量线（VOL MA5 / MA10）数据缓存：top 层 primitive 自绘（十字星之上） */
   private volumeMaLines: IndicatorLineSpec[] = []
-  /** pane2 成交量信息行缓存（time → 成交量 + MA5/MA10 值；MA 前 N-1 根为 null，O(1) 现取） */
-  private volumeInfoMap: Map<number, { volume: number; ma5: number | null; ma10: number | null }> = new Map()
+  /** pane2 成交量信息行缓存（time → 成交量 + 成交额 + MA5/MA10 值；MA 前 N-1 根为 null，O(1) 现取） */
+  private volumeInfoMap: Map<number, { volume: number; amount: number; ma5: number | null; ma10: number | null }> = new Map()
   /** bar 按 time 索引（v1.7.0 分时 pane0 信息行取 价格/涨跌/涨幅/量额；数据变化时随
    *  rebuildVolumeData 重建，O(1) 现取，避免 draw 每帧线性查找） */
   private barTimeMap: Map<number, ChartDataPoint> = new Map()
@@ -269,7 +269,7 @@ export class IndicatorManager {
       this.volumeInfoMap = new Map(
         tsBars.map((bar) => [
           bar.time,
-          { volume: bar.volume ?? 0, ma5: null, ma10: null },
+          { volume: bar.volume ?? 0, amount: bar.amount ?? 0, ma5: null, ma10: null },
         ]),
       )
       return
@@ -291,6 +291,7 @@ export class IndicatorManager {
         bar.time,
         {
           volume: bar.volume!, // pointType='kline' 必含 volume
+          amount: bar.amount ?? 0,
           ma5: volMa5Map.get(bar.time) ?? null,
           ma10: volMa10Map.get(bar.time) ?? null,
         },
@@ -402,8 +403,8 @@ export class IndicatorManager {
   }
 
   /**
-   * 构建 pane2 成交量信息行分段文字（"成交量: x  MA5: x  MA10: x"，逐段着色）：
-   *  - 成交量本体 = 主题文字色；MA5 / MA10 = theme.volMa5（黄）/ volMa10（粉）；
+   * 构建 pane2 成交量信息行分段文字（"成交量: x  成交额: x  MA5: x  MA10: x"，逐段着色）：
+   *  - 成交量 / 成交额本体 = 主题文字色；MA5 / MA10 = theme.volMa5（黄）/ volMa10（粉）；
    *  - 数值同源（overlayTime ?? 最新 bar），十字星命中显示命中 bar 的成交量与均量；
    *  - MA 前 N-1 根无值（null）自动跳过；数据来自 rebuildVolumeData 构建的 volumeInfoMap（O(1)）。
    */
@@ -416,6 +417,7 @@ export class IndicatorManager {
     if (info === undefined) return []
     const segments: TextSegment[] = [
       { text: `成交量: ${formatVolume(info.volume)}`, color: theme.textColor },
+      { text: ` 成交额: ${formatVolume(info.amount)}`, color: theme.textColor },
     ]
     if (info.ma5 !== null) segments.push({ text: ` MA5: ${formatVolume(info.ma5)}`, color: theme.volMa5 })
     if (info.ma10 !== null) segments.push({ text: ` MA10: ${formatVolume(info.ma10)}`, color: theme.volMa10 })

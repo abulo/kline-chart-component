@@ -48,6 +48,8 @@ export const genMockBars = (barCount: number): ChartDataPoint[] => {
       close,
       // 成交量：基数 8000 上下波动（最高可达 2 万级，显示层次丰富）
       volume: Math.round(8000 + Math.random() * 12000),
+      // 成交额：成交量 × 收盘价（近似金额，pane2 信息行成交额展示）
+      amount: Math.round((8000 + Math.random() * 12000) * close),
     })
     dateCursor.setDate(dateCursor.getDate() + 1)
   }
