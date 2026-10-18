@@ -364,7 +364,9 @@ export class HttpChartDataService implements ChartDataService {
     }
 
     void tick() // 立即拉一次（不等首个间隔）
-    const timer = setInterval(tick, this.opts.pollIntervalMs)
+    // 包装箭头函数显式忽略 Promise：tick 为 async，直接传 setInterval 触发
+    // no-misused-promises（Promise returned in function argument where a void return was expected）
+    const timer = setInterval(() => { void tick() }, this.opts.pollIntervalMs)
     return () => {
       stopped = true
       clearInterval(timer)
