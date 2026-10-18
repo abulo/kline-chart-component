@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * crosshairTooltip.test.ts —— 十字星数据浮层测试（v1.6.35）
  *
@@ -5,7 +6,7 @@
  * 红涨绿跌着色、涨跌基准（昨收）、缺失昨收兜底、量额格式化。
  */
 import { describe, expect, it } from 'vitest'
-import { buildTooltipRows, resolveTooltipPosition, clampTooltipPosition } from '../src/chart/crosshair/crosshairTooltip'
+import { buildTooltipRows, resolveTooltipPosition, clampTooltipPosition, CrosshairTooltip } from '../src/chart/crosshair/crosshairTooltip'
 import type { ChartDataPoint } from '../src/types/chart'
 
 const colors = { up: '#FF0000', down: '#008000', avg: '#F4AA0A' }
@@ -257,5 +258,45 @@ describe('clampTooltipPosition（v1.6.59 拖动边界纯函数）', () => {
     })
     expect(pos.left).toBe(2) // max(minLeft=2, maxLeft=-202) → 2
     expect(pos.top).toBe(2)
+  })
+})
+
+describe('CrosshairTooltip 滚动跟随（v1.7.1 修复滚动越界）', () => {
+  it('页面滚动后浮层随图表容器平移（不脱离 pane 区域）', () => {
+    // 容器 mock：视口坐标原点 (100, 200)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    let rect = { left: 100, top: 200, right: 1100, bottom: 900, width: 1000, height: 700 }
+    container.getBoundingClientRect = () => rect as DOMRect
+
+    const tooltip = new CrosshairTooltip(
+      container,
+      { upColor: '#FF0000', downColor: '#008000', timeshareAvgColor: '#F4AA0A' } as unknown as Parameters<typeof CrosshairTooltip.prototype.setTheme>[0],
+    )
+    try {
+      tooltip.show({
+        entrySide: 'right', // 右进入 → 左上角
+        paneTop: 20,
+        bounds: { left: 72, right: 928, top: 20, bottom: 600 },
+        bar: makeBar({}),
+        timeText: '2024-10-04',
+      })
+      const leftBefore = parseFloat(tooltip['root'].style.left)
+      const topBefore = parseFloat(tooltip['root'].style.top)
+      expect(leftBefore).toBe(174) // 100(容器) + 72(paneLeft) + 2
+      expect(topBefore).toBe(222) // 200(容器) + 20(paneTop) + 2
+
+      // 模拟浏览器滚动：容器视口坐标左移 20、上移 50
+      rect = { left: 80, top: 150, right: 1080, bottom: 850, width: 1000, height: 700 }
+      window.dispatchEvent(new Event('scroll'))
+
+      const leftAfter = parseFloat(tooltip['root'].style.left)
+      const topAfter = parseFloat(tooltip['root'].style.top)
+      expect(leftAfter).toBe(leftBefore - 20) // 跟随容器左移 20
+      expect(topAfter).toBe(topBefore - 50) // 跟随容器上移 50
+    } finally {
+      tooltip.destroy()
+      document.body.removeChild(container)
+    }
   })
 })

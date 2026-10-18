@@ -262,6 +262,9 @@ export class CrosshairTooltip {
   private fixedPos: { left: number; top: number } | null = null
   /** pane1~pane5 可移动 / 可拖动区域（相对容器；每次 show 注入，默认定位 + 拖动 clamp 用） */
   private bounds: TooltipBounds | null = null
+  /** 最近一次容器视口坐标原点（滚动跟随基准，v1.7.1：页面 / 容器滚动、resize 时
+   *  对比求 delta → 浮层平移，避免浏览器有滚动条时 tooltip 脱离 pane 区域"越界"） */
+  private lastContainerRect: { left: number; top: number } | null = null
 
   constructor(container: HTMLElement, theme: ChartThemeColors) {
     this.theme = theme
@@ -306,6 +309,10 @@ export class CrosshairTooltip {
     // 悬停态监听（v1.6.48）：进入/离开浮层更新 hovered，未命中分支据此保持浮层
     root.addEventListener('mouseenter', this.handleMouseEnter)
     root.addEventListener('mouseleave', this.handleMouseLeave)
+    // 滚动跟随（v1.7.1）：页面 / 容器滚动、窗口 resize 时浮层随图表容器平移
+    //（capture 捕获文档内所有滚动事件，含页面滚动条与容器自身滚动）
+    window.addEventListener('scroll', this.handleScroll, true)
+    window.addEventListener('resize', this.handleScroll)
     this.applyTheme(theme)
   }
 
@@ -377,6 +384,8 @@ export class CrosshairTooltip {
     this.root.removeEventListener('mouseleave', this.handleMouseLeave)
     window.removeEventListener('mousemove', this.handleMouseMove)
     window.removeEventListener('mouseup', this.handleMouseUp)
+    window.removeEventListener('scroll', this.handleScroll, true)
+    window.removeEventListener('resize', this.handleScroll)
     this.root.remove()
   }
 
@@ -408,6 +417,33 @@ export class CrosshairTooltip {
   /** 鼠标离开浮层：清除悬停态（之后按正常未命中逻辑处理） */
   private handleMouseLeave = (): void => {
     this.hovered = false
+  }
+
+  /**
+   * 页面 / 容器滚动、窗口 resize（v1.7.1 修复"滚动越界"）：
+   * 浮层挂 body（position: fixed，left/top 为视口坐标），显示时按容器 rect 一次性
+   * 写入——浏览器有滚动条时，滚动后图表容器移动而浮层仍钉在旧视口位置，脱离 pane
+   * 区域。此处对比容器 rect 前后差值（delta），把浮层整体平移相同位移，让 tooltip
+   * 始终锚定图表；拖动中同步刷新拖动边界基准（dragRect），clamp 跟随滚动后容器。
+   */
+  private handleScroll = (): void => {
+    if (!this.visible) return
+    const rect = this.container.getBoundingClientRect()
+    if (this.lastContainerRect) {
+      const dx = rect.left - this.lastContainerRect.left
+      const dy = rect.top - this.lastContainerRect.top
+      if (dx !== 0 || dy !== 0) {
+        const left = parseFloat(this.root.style.left)
+        const top = parseFloat(this.root.style.top)
+        this.root.style.left = `${left + dx}px`
+        this.root.style.top = `${top + dy}px`
+        // 拖动中：边界基准跟随滚动（clamp 用新容器原点，避免越界）
+        if (this.dragging && this.dragRect) {
+          this.dragRect = { left: rect.left, top: rect.top }
+        }
+      }
+    }
+    this.lastContainerRect = { left: rect.left, top: rect.top }
   }
 
   private handleMouseDown = (event: MouseEvent): void => {
@@ -503,5 +539,7 @@ export class CrosshairTooltip {
     })
     this.root.style.left = `${rect.left + pos.left}px`
     this.root.style.top = `${rect.top + pos.top}px`
+    // 滚动跟随基准：记录当前容器视口坐标（handleScroll 对比平移，v1.7.1）
+    this.lastContainerRect = { left: rect.left, top: rect.top }
   }
 }
