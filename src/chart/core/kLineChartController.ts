@@ -82,7 +82,7 @@ import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitiv
 import { CrosshairTooltip, type TooltipBounds } from "../crosshair/crosshairTooltip";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
-import { PRICE_SCALE_MIN_WIDTH } from "./constants";
+import { PRICE_SCALE_MIN_WIDTH, VISIBLE_BAR_COUNT } from "./constants";
 import type { KLineChartOptions, ChartLoadStatus } from "./types";
 import type { MainIndicatorType } from "../indicator";
 import type { ChartDataService } from "../../services/chartDataService";
@@ -642,8 +642,10 @@ export class KLineChartController {
   /**
    * 外部数据整体写入（ChartDataService 拉取历史后调用）：
    * 按当前周期过滤数据点（K 线周期取 pointType='kline'，分时周期取 'timeshare'）→
-   * 重建 series / 指标缓存并 fitContent（周期切换、首次加载统一入口）。
-   * 分时周期为全量 N 日数据（1d~5d），不参与左滑翻页（hasMoreHistory=false）。
+   * 重建 series / 指标缓存并设置初始视口（周期切换、首次加载统一入口）。
+   *  - K 线：视口仅展示最近 VISIBLE_BAR_COUNT（120）根，右边缘对齐（用户需求 v1.7.1；
+   *    数据不足 120 根时全部展示）；左滑边缘仍可翻更早历史。
+   *  - 分时：全量 N 日数据（1d~5d）fitContent，不参与左滑翻页（hasMoreHistory=false）。
    */
   setKlineData = (points: ChartDataPoint[]): void => {
     this.bars = points.filter((point) =>
@@ -654,10 +656,18 @@ export class KLineChartController {
     // 分时数据为完整 N 个交易日（无更早分页），不触发左滑边缘加载
     if (this.timeshareManager.isTimeshare) {
       this.hasMoreHistory = false;
-    } else {
-      this.hasMoreHistory = points.length >= (this.service?.fetchLimit ?? 0);
+      this.chart.timeScale().fitContent();
+      return;
     }
-    this.chart.timeScale().fitContent();
+    this.hasMoreHistory = points.length >= (this.service?.fetchLimit ?? 0);
+    // K 线初始视口：仅展示最近 VISIBLE_BAR_COUNT 根（右边缘对齐，from 不为负）
+    const total = this.bars.length;
+    if (total > 0) {
+      this.chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(total - VISIBLE_BAR_COUNT, 0),
+        to: total - 1,
+      });
+    }
   };
 
   /**
@@ -895,15 +905,15 @@ export class KLineChartController {
   zoomOut = (): void => viewportZoomOut(this.chart);
 
   /**
-   * 左移（视口向左平移 50 根K线，看更早数据）。
+   * 左移（视口向左平移 30 根K线，看更早数据）。
    * 用逻辑范围平移替代 scrollToPosition（后者距右边缘不足一屏时减幅变负被 clamp，
    * 直接跳到最新数据末尾）；逻辑范围平移到达最左自然停止，无跳变。
    */
-  /** 左移（视口向左平移 50 根K线）：委托 viewport.shiftLeft */
+  /** 左移（视口向左平移 30 根K线）：委托 viewport.shiftLeft */
   shiftLeft = (): void => viewportShiftLeft(this.chart);
 
-  /** 右移（视口向右平移 50 根K线，看更晚数据；到达最右自然停止，不跳变） */
-  /** 右移（视口向右平移 50 根K线）：委托 viewport.shiftRight */
+  /** 右移（视口向右平移 30 根K线，看更晚数据；到达最右自然停止，不跳变） */
+  /** 右移（视口向右平移 30 根K线）：委托 viewport.shiftRight */
   shiftRight = (): void => viewportShiftRight(this.chart);
 
   /** 设置主图指标（互斥单选；转发至指标管理器，null = 关闭） */

@@ -26,3 +26,6 @@ coverage
 *.njsproj
 *.sln
 *.sw?
+
+# 发版压缩包不进 git（v1.7.1：交付走本地路径 / present_files，不入库）
+*.zip

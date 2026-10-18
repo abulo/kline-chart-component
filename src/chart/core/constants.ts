@@ -13,8 +13,12 @@
  */
 export const LIBRARY_TIME_AXIS_HEIGHT = 28
 
-/** 左移 / 右移每次平移的 K 线条数（v1.6.33，固定 50 条） */
-export const VIEW_SHIFT_STEP = 50
+/** 左移 / 右移每次平移的 K 线条数（v1.7.1，固定 30 条） */
+export const VIEW_SHIFT_STEP = 30
+
+/** K 线状态初始可视 K 线条数（v1.7.1：加载后视口仅展示最近 120 根，右边缘对齐；
+ *  分时周期为整日全量展示，不使用本常量） */
+export const VISIBLE_BAR_COUNT = 120
 
 /** 左右刻度区最小宽度（打开时固定宽度，左右一致；单位 px） */
 export const PRICE_SCALE_MIN_WIDTH = 72

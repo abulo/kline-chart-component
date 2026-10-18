@@ -34,7 +34,7 @@ export const zoomOut = (
 }
 
 /**
- * 左移（视口向左平移 50 根K线，看更早数据）。
+ * 左移（视口向左平移 30 根K线，看更早数据）。
  * 用逻辑范围平移替代 scrollToPosition（后者距右边缘不足一屏时减幅变负被 clamp，
  * 直接跳到最新数据末尾）；逻辑范围平移到达最左自然停止，无跳变。
  */
@@ -50,7 +50,7 @@ export const shiftLeft = (
   })
 }
 
-/** 右移（视口向右平移 50 根K线，看更晚数据；到达最右自然停止，不跳变） */
+/** 右移（视口向右平移 30 根K线，看更晚数据；到达最右自然停止，不跳变） */
 export const shiftRight = (
   chart: ReturnType<typeof import('lightweight-charts').createChart>,
 ): void => {
