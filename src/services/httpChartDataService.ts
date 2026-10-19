@@ -52,8 +52,6 @@ export interface HttpChartDataServiceOptions {
   pollUrl?: string
   /** HTTP 轮询频率 ms（realtimeTransport='poll' 时生效），默认 3000 */
   pollIntervalMs?: number
-  /** 每次轮询拉取的最新根数（pollLimit），默认 1（增量过滤后回调，同根刷新也回调） */
-  pollLimit?: number
   /** fetch 超时 ms，默认 8000 */
   timeoutMs?: number
   /**
@@ -115,8 +113,8 @@ interface CacheEntry {
  *  - subscribeRealtime：三种实时模式（realtimeTransport 切换）：
  *      'ws'  ：WebSocket {wsUrl}?symbol=&period=（返回 () => ws.close() 清理函数）；
  *      'poll'：HTTP 轮询（默认 3000ms 一次，独立实时接口 {pollUrl}（必填完整地址）
- *              拉最新 pollLimit 根；增量过滤 + 同根刷新回调；防重入；
- *              返回 () => clearInterval 清理函数）；
+ *              拉最新数据（不附加 limit，**后端返回多少就回调多少**）；增量过滤 +
+ *              同根刷新回调；防重入；返回 () => clearInterval 清理函数）；
  *      'sse' ：Server-Sent Events {sseUrl}?symbol=&period=（v1.6.31 起基于
  *              @microsoft/fetch-event-source，可注入 headers/cookies；默认监听 message
  *              事件，断线自动重连；返回 () => ctrl.abort() 清理函数）；
@@ -135,7 +133,6 @@ export class HttpChartDataService implements ChartDataService {
     realtimeTransport: 'ws' | 'poll' | 'sse'
     pollUrl?: string
     pollIntervalMs: number
-    pollLimit: number
     timeoutMs: number
     /** 外部附加请求头（注入所有 HTTP fetch 与 SSE（v1.6.31）；WS 无法注入，见接口注释） */
     headers?: Record<string, string>
@@ -171,7 +168,6 @@ export class HttpChartDataService implements ChartDataService {
       realtimeTransport: options.realtimeTransport ?? 'ws',
       pollUrl: options.pollUrl,
       pollIntervalMs: options.pollIntervalMs ?? 3000,
-      pollLimit: options.pollLimit ?? 1,
       timeoutMs: options.timeoutMs ?? 8000,
       headers: options.headers,
       cookies: options.cookies,
@@ -321,7 +317,7 @@ export class HttpChartDataService implements ChartDataService {
    * 行为约定：
    *  - 频率：注册后立即拉取一次，之后每 pollIntervalMs 拉取一次（setInterval）；
    *  - 数据源：独立实时接口 fetchLatest（**不复用 history 历史接口**），
-   *    GET {pollUrl}?symbol=&period=&limit=pollLimit，
+   *    GET {pollUrl}?symbol=&period=（不附加 limit，后端返回多少就回调多少），
    *    直接 fetch 网络（不走历史缓存，保证每次拿到后端最新）；
    *  - 增量过滤：只回调 time >= 已回调最大 time 的点（升序；同根盘中刷新也回调，
    *    控制器 series.update() 对同 time 是覆盖语义，无重复副作用）；
@@ -343,7 +339,6 @@ export class HttpChartDataService implements ChartDataService {
           {
             symbol,
             period,
-            limit: this.opts.pollLimit,
           },
           this.knownTotals.get(key), // 自动计算的已知条数（含缓存淘汰），附加到 latest URL
         )
@@ -510,19 +505,24 @@ export class HttpChartDataService implements ChartDataService {
   }
 
   /**
-   * HTTP 轮询实时专用接口：GET {pollUrl}?symbol=&period=&limit=
+   * HTTP 轮询实时专用接口：GET {pollUrl}?symbol=&period=
    *
    * 与 fetchNetwork（history 历史接口）相互独立——实时轮询不经过历史接口，
-   * 后端可对 /kline/latest 单独做轻量响应（只回最新 pollLimit 根）。
+   * 后端可对 /kline/latest 单独做轻量响应。**不附加 limit 参数**：后端返回多少
+   * 数据就回调多少（调用方按增量过滤消费）。
    * 响应格式与 history 一致：{ code: 200, data: [...] }（兼容数组 / 单点）。
    * @param knownTotal 服务自动计算的已知条数（含缓存淘汰）；已知时以 `total=<n>` 附加 URL
    */
-  private async fetchLatest(query: HistoryQuery, knownTotal?: number): Promise<ChartDataPoint[]> {
+  private async fetchLatest(
+    query: Omit<HistoryQuery, 'limit'> & { limit?: number },
+    knownTotal?: number,
+  ): Promise<ChartDataPoint[]> {
     const core: Record<string, string> = {
       symbol: query.symbol,
       period: query.period,
-      limit: String(query.limit),
     }
+    // limit 可选：不传时 URL 不附加 limit（后端返回多少就更新多少）
+    if (query.limit !== undefined) core.limit = String(query.limit)
     if (knownTotal !== undefined) core.total = String(knownTotal) // 自动计算/显式传入的 total
 
     // v1.6.30：pollUrl 必填完整地址；缺省不轮询（warn + 返回空）
