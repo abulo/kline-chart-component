@@ -33,6 +33,8 @@ import type { ChartDataService } from "../services/chartDataService";
 import type { ChartDataPoint } from "../types/chart";
 import type { ChartLoadStatus } from "../chart/core/types";
 import { MockChartDataService } from "../services/chartDataService";
+import { debounce } from "../chart/util/timing";
+import { SWITCH_DEBOUNCE_MS } from "../chart/core/constants";
 
 /** 默认数据服务（Mock 单例：池缓存复用，内存友好；接入后端时父组件传 HttpChartDataService） */
 const defaultService = new MockChartDataService({ fetchLimit: 200 });
@@ -95,6 +97,14 @@ const containerRef = ref<HTMLDivElement | null>(null);
 /** 控制器实例（父组件 ref 访问：放大 / 缩小 / 左移 / 右移） */
 const controller = ref<KLineChartController | null>(null);
 
+/** 数据请求防抖（v1.7.1）：周期 / 标的 / 服务快速切换时合并为最后一次 init，
+ *  避免并发 fetchHistory 数据争抢；setPeriod / setSymbol 等 UI 状态仍立即生效，
+ *  仅数据拉取延迟 SWITCH_DEBOUNCE_MS（controller 内部 loadSeq 仍作兜底丢弃过期响应）。
+ *  - 声明在 controller 之后（闭包引用不触发 TDZ；首次挂载前 props 变化 → 判空跳过）。 */
+const debouncedInit = debounce(() => {
+  void controller.value?.init();
+}, SWITCH_DEBOUNCE_MS);
+
 /** 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步） */
 const activePeriod = ref<PeriodValue>(props.period);
 
@@ -138,6 +148,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  // 取消挂起的防抖 init（快速切换后立即卸载 → 不再发过期请求）
+  debouncedInit.cancel();
   // destroy 内部已退订实时推送（v1.6.17）
   controller.value?.destroy();
   controller.value = null;
@@ -187,21 +199,21 @@ watch(
     if (data && data.length > 0) controller.value?.setKlineData(data);
   },
 );
-/** 外部周期变化 → 同步内部周期 + 重新 init（拉历史 + 重订阅实时，重置边缘加载状态） */
+/** 外部周期变化 → 同步内部周期 + 防抖重新 init（拉历史 + 重订阅实时，重置边缘加载状态） */
 watch(
   () => props.period,
   (value) => {
     if (value === activePeriod.value) return;
     activePeriod.value = value;
-    // v1.6.9：周期切换 → pane0 信息行时间格式随周期变更（setPeriod 触发重绘）
+    // v1.6.9：周期切换 → pane0 信息行时间格式随周期变更（setPeriod 触发重绘，立即生效）
     controller.value?.setPeriod(value);
     // v1.6.28：data 直通模式不拉取（数据以外部 data 为准）
     if (useCustomData.value) return;
-    // v1.6.17：init 统一处理竞态（loadSeq 丢弃过期响应）+ hasMoreHistory 重置
-    void controller.value?.init();
+    // v1.7.1 防抖：快速连续切换周期只发最后一次 init（loadSeq 兜底丢过期响应）
+    debouncedInit();
   },
 );
-/** symbol 变化 → 更新控制器标的 + 重新 init（v1.6.22：init 使用新 symbol / name） */
+/** symbol 变化 → 更新控制器标的 + 防抖重新 init（v1.6.22：init 使用新 symbol / name） */
 watch(
   () => props.symbol,
   () => {
@@ -209,7 +221,7 @@ watch(
     controller.value?.setName(props.name);
     // v1.6.28：data 直通模式不拉取
     if (useCustomData.value) return;
-    void controller.value?.init();
+    debouncedInit();
   },
 );
 /** name 变化 → 更新 pane0 信息行显示（无需重拉数据） */
@@ -217,14 +229,14 @@ watch(
   () => props.name,
   (value) => controller.value?.setName(value),
 );
-/** service 实例变化 → 更新控制器服务 + 重新 init（v1.6.22：init 使用新 service） */
+/** service 实例变化 → 更新控制器服务 + 防抖重新 init（v1.6.22：init 使用新 service） */
 watch(
   () => props.service,
   () => {
     controller.value?.setService(props.service ?? defaultService);
     // v1.6.28：data 直通模式不拉取
     if (useCustomData.value) return;
-    void controller.value?.init();
+    debouncedInit();
   },
 );
 

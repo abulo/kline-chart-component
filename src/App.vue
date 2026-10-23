@@ -217,6 +217,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       </button>
     </div>
   </div>
+  <div class="height">dd</div>
 </template>
 
 <style>
@@ -230,6 +231,9 @@ body,
   height: 100%;
   font-size: 12px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+}
+.height{
+  height: 2000px;
 }
 </style>
 

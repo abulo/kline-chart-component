@@ -82,7 +82,8 @@ import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitiv
 import { CrosshairTooltip, type TooltipBounds } from "../crosshair/crosshairTooltip";
 import { IndicatorManager } from "./indicatorManager";
 import { CrosshairManager } from "./crosshairManager";
-import { PRICE_SCALE_MIN_WIDTH, VISIBLE_BAR_COUNT } from "./constants";
+import { PRICE_SCALE_MIN_WIDTH, VISIBLE_BAR_COUNT, REALTIME_FLUSH_MS } from "./constants";
+import { throttle, type Throttled } from "../util/timing";
 import type { KLineChartOptions, ChartLoadStatus } from "./types";
 import type { MainIndicatorType } from "../indicator";
 import type { ChartDataService } from "../../services/chartDataService";
@@ -599,10 +600,12 @@ export class KLineChartController {
   private startRealtime = (): void => {
     this.realtimeUnsubscribe?.();
     if (!this.service) return;
+    // v1.7.1 节流：订阅回调走 enqueueRealtimePoint（REALTIME_FLUSH_MS 窗口内
+    // 批量合并 + trailing 保末点），高频推送不逐点重建指标缓存
     this.realtimeUnsubscribe = this.service.subscribeRealtime(
       this.symbol,
       this.period,
-      (point) => this.updateLastBar(point),
+      (point) => this.enqueueRealtimePoint(point),
     );
   };
 
@@ -671,13 +674,37 @@ export class KLineChartController {
   };
 
   /**
-   * 实时增量更新（ChartDataService 订阅回调）：
+   * 实时推送队列（v1.7.1 节流）：订阅回调进入队列，REALTIME_FLUSH_MS 窗口内由
+   * realtimeFlush 一次性消费——数据不丢（trailing 保留末次点），渲染合并。
+   */
+  private realtimeQueue: ChartDataPoint[] = [];
+  /** 实时批量 flush（throttle 包装，v1.7.1 节流）：消费队列 → 逐点应用 series/bars
+   *  → 统一重建指标缓存一次（避免高频推送逐点重建导致的争抢 / 卡顿） */
+  private readonly realtimeFlush: Throttled<[]> = throttle((): void => {
+    if (this.realtimeQueue.length === 0) return;
+    const batch = this.realtimeQueue;
+    this.realtimeQueue = [];
+    for (const point of batch) this.applyRealtimePoint(point);
+    this.rebuildRealtimeIndicators();
+  }, REALTIME_FLUSH_MS);
+
+  /** 实时订阅回调入口（节流批量，v1.7.1 节流）：WS / SSE / 轮询高频推送合并
+   *  为窗口内一次批量应用，避免数据争抢；单点透传不丢数据。 */
+  private enqueueRealtimePoint = (point: ChartDataPoint): void => {
+    this.realtimeQueue.push(point);
+    this.realtimeFlush();
+  };
+
+  /**
+   * 实时单点应用（series 更新 + bars/barIndex 维护）：
    *  - 同 time = 刷新最后一点（series.update 覆盖语义）；
    *  - time 更大 = 追加新点（实时推送）。
    * 按周期接收对应点类型：K 线周期收 pointType='kline'（update K 线 / 成交量锚点），
-   * 分时周期收 'timeshare'（update 价格 / 均价线 / 成交量直方图）。指标缓存增量重建。
+   * 分时周期收 'timeshare'（update 价格 / 均价线 / 成交量直方图）。
+   * **不含指标缓存重建**：单点入口（updateLastBar）与批量入口（realtimeFlush）
+   * 共用本方法，重建由调用方统一执行一次，避免逐点重建开销。
    */
-  updateLastBar = (point: ChartDataPoint): void => {
+  private applyRealtimePoint = (point: ChartDataPoint): void => {
     const expected = this.timeshareManager.isTimeshare ? "timeshare" : "kline";
     if (point.pointType !== expected) return;
     // v1.6.10：time 统一归一化为数字秒（防 BusinessDay 对象 → series.update 报错）
@@ -736,11 +763,28 @@ export class KLineChartController {
     }
     // 实时增量维护 tooltip 索引（O(1)；批量场景走 rebuildBarIndex）
     this.barIndex.set(time, { ...point, time });
+  };
+
+  /**
+   * 实时指标缓存统一重建（v1.7.1 节流关键）：单点入口（updateLastBar）与批量
+   * flush（realtimeFlush）共用，高频推送窗口内只重建一次，避免逐点重建开销。
+   */
+  private rebuildRealtimeIndicators = (): void => {
     this.indicatorManager.rebuildVolumeData();
     this.indicatorManager.refreshMainIndicatorData();
     this.indicatorManager.rebuildIndicatorData();
     // 分时实时推送：价格范围随最新数据重新对称（v1.7.1）
     this.timeshareManager.applyPriceRange();
+  };
+
+  /**
+   * 实时增量更新（ChartDataService 订阅回调；外部 / 测试单点调用入口）：
+   * series 更新 + bars/barIndex 维护 + 指标缓存重建（单点立即执行，语义与
+   * v1.7.1 前一致）；订阅内部走 enqueueRealtimePoint（节流批量合并）。
+   */
+  updateLastBar = (point: ChartDataPoint): void => {
+    this.applyRealtimePoint(point);
+    this.rebuildRealtimeIndicators();
   };
 
   /**
@@ -965,6 +1009,9 @@ export class KLineChartController {
     // 退订实时推送 + 使在途 init / loadEarlier 请求失效（destroyed 语义）
     this.realtimeUnsubscribe?.();
     this.realtimeUnsubscribe = null;
+    // 清理实时节流：取消窗口内 trailing 定时器 + 清空未消费队列（防泄漏 / 防销毁后回调）
+    this.realtimeFlush.cancel();
+    this.realtimeQueue = [];
     this.loadSeq++;
     // 十字星管理器退订监听 + 清空指示值 primitive 引用
     this.crosshairManager.destroy();
