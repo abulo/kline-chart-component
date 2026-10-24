@@ -6,7 +6,7 @@
  *  - candlestickBarWidth：奇偶修正（柱宽与影线宽 floor(dpr) 同奇偶）。
  */
 import { describe, expect, it } from 'vitest'
-import { optimalCandlestickWidth, candlestickBarWidth } from '../src/chart/core/candlestickWidth'
+import { optimalCandlestickWidth, candlestickBarWidth, timeshareBarWidth } from '../src/chart/core/candlestickWidth'
 
 describe('optimalCandlestickWidth（库源码原版）', () => {
   it('特殊区间 barSpacing ∈ [2.5, 4]：恒为 3 × dpr', () => {
@@ -62,5 +62,24 @@ describe('candlestickBarWidth（渲染最终柱宽 = 原版 + 奇偶修正）', 
         expect(candlestickBarWidth(barSpacing, dpr)).toBe(candlestickBarWidth(barSpacing, dpr))
       }
     }
+  })
+})
+
+describe('timeshareBarWidth（分时柱宽，v1.7.1 加宽保底）', () => {
+  it('保底 2 bitmap px（任意 DPR 下 ≥1 CSS px，retina 不模糊）', () => {
+    expect(timeshareBarWidth(1, 1)).toBe(2) // 极端窄 barSpacing 保底
+    expect(timeshareBarWidth(1, 2)).toBe(2)
+    expect(timeshareBarWidth(0.5, 2)).toBe(2)
+  })
+
+  it('随 barSpacing 增宽（×0.45 系数，四舍五入到 bitmap）', () => {
+    // 1d 分时（fitContent 后 barSpacing≈4, dpr=1）：round(4×0.45)=2 → 2 bitmap（CSS 2px）
+    expect(timeshareBarWidth(4, 1)).toBe(2)
+    // dpr=2：round(4×0.45×2)=round(3.6)=4 → CSS 2px
+    expect(timeshareBarWidth(4, 2)).toBe(4)
+    // 5d 分时（barSpacing≈2, dpr=2）：round(2×0.45×2)=round(1.8)=2 → 保底
+    expect(timeshareBarWidth(2, 2)).toBe(2)
+    // 放大档（barSpacing=8, dpr=2）：round(8×0.45×2)=round(7.2)=7 → 宽柱清晰
+    expect(timeshareBarWidth(8, 2)).toBe(7)
   })
 })

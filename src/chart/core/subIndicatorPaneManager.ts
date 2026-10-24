@@ -272,7 +272,7 @@ export class SubIndicatorPaneManager {
       5,
     )
     // MACD 红绿柱自绘（仅激活 MACD 时有数据；柱体 > 0 空心红 / < 0 绿实心）。
-    // v1.7.0 分时抽取：分时周期柱宽固定 1px（getIsTimeshare 注入 MacdBarPrimitive），
+    // v1.7.0 分时抽取：分时周期柱宽自适应（getIsTimeshare 注入 MacdBarPrimitive，v1.7.1 加宽），
     // 与 K 线周期共用自绘 primitive（库直方图仅作透明锚点）
     this.macdBarPrimitive = new MacdBarPrimitive(
       () => this.macdPoints,
@@ -442,7 +442,7 @@ export class SubIndicatorPaneManager {
       value: minValue,
     }
     // pane5 柱数据写入：统一透明锚点（可见柱由 MacdBarPrimitive 自绘红绿柱；
-    // 分时周期柱宽 1px 由 getIsTimeshare 注入，v1.7.0）
+    // 分时周期柱宽由 getIsTimeshare 注入（timeshareBarWidth 自适应），v1.7.0）
     this.indicatorsBarSeries.setData(anchorPoints)
     // 刻度对称锚点 series：全部时间点交替 ±absMax（可视区任意窗口恒含正 / 负锚点，
     // scale 值域恒为 [-absMax, +absMax] → 0 值线固定；平移 / 切换指标均不漂移）

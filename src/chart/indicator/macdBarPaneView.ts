@@ -19,7 +19,7 @@ import {
   type Logical,
 } from 'lightweight-charts'
 import type { MacdBarPrimitive } from './macdBarPrimitive'
-import { candlestickBarWidth } from '../core/candlestickWidth'
+import { candlestickBarWidth, timeshareBarWidth } from '../core/candlestickWidth'
 
 /** MACD 柱主题颜色（与 K 线同源：background 用于空心填充，up/down 红绿） */
 export interface MacdThemeColors {
@@ -65,12 +65,13 @@ export class MacdBarPaneView implements IPrimitivePaneView {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
           const barSpacing = timeScale.options().barSpacing
           const pixelRatio = window.devicePixelRatio || 1
-          // 柱宽：分时周期固定 1px（东财分时 MACD 细柱，v1.7.0）；
+          // 柱宽：分时周期按 barSpacing 自适应 + 保底 2 bitmap px（v1.7.1 替代固定
+          // 1px——retina 下仅 0.5 CSS px 红绿柱不清晰，见 timeshareBarWidth）；
           // K 线周期 = 库源码原版 optimalCandlestickWidth + 奇偶修正
           // （与成交量 / pane1 同一函数同一 barSpacing → 位图像素宽度绝对一致），
           // 转 CSS 像素
           const isTimeshare = this.source.getIsTimeshare()
-          const barWidthBitmap = isTimeshare ? 1 : candlestickBarWidth(barSpacing, pixelRatio)
+          const barWidthBitmap = isTimeshare ? timeshareBarWidth(barSpacing, pixelRatio) : candlestickBarWidth(barSpacing, pixelRatio)
           const barWidth = barWidthBitmap / pixelRatio
           const colors = this.source.getThemeColors()
           // 0 轴参考：priceToCoordinate(0) 仅用于计算"值相对 0 轴的像素距离"（延伸量）；
@@ -100,7 +101,7 @@ export class MacdBarPaneView implements IPrimitivePaneView {
 
             if (point.macd >= 0) {
               // 柱 > 0：K 线周期 = 空心红柱（背景填充 + 红色边框，同 pane1 上涨柱）；
-              // 分时周期 = 1px 实心红线（不做空心，细线视觉，v1.7.0）
+              // 分时周期 = 自适应宽度实心红线（不做空心，v1.7.1 加宽可见）
               const top = yBase - barHeight
               if (isTimeshare) {
                 context.fillStyle = colors.upColor
@@ -113,7 +114,7 @@ export class MacdBarPaneView implements IPrimitivePaneView {
                 context.strokeRect(barX + 0.5, top + 0.5, barWidth - 1, barHeight - 1)
               }
             } else {
-              // 柱 < 0：绿色实心（同 pane1 下跌柱；分时 1px 同），从中间向下延伸
+              // 柱 < 0：绿色实心（同 pane1 下跌柱；分时自适应宽度同），从中间向下延伸
               context.fillStyle = colors.downColor
               context.fillRect(barX, yBase, barWidth, barHeight)
             }

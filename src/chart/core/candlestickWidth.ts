@@ -54,3 +54,15 @@ export const candlestickBarWidth = (barSpacing: number, pixelRatio: number): num
   }
   return barWidth
 }
+
+/**
+ * 分时柱宽（v1.7.1）：按 barSpacing 自适应（×0.45）+ 保底 2 bitmap px。
+ * 背景：v1.7.0 分时量柱 / MACD 柱固定 1px，在 retina（DPR 2）下仅 0.5 CSS px，
+ * 红绿柱几乎不可见 → 不清晰。改为与 K 线柱宽同源的按间距缩放，任意 DPR 下
+ * 保证 ≥1 CSS px（保底 2 bitmap），柱体清晰可见且随缩放档位同步增宽。
+ * @param barSpacing timeScale barSpacing（CSS 像素）
+ * @param pixelRatio window.devicePixelRatio
+ * @returns 分时柱位图像素宽度
+ */
+export const timeshareBarWidth = (barSpacing: number, pixelRatio: number): number =>
+  Math.max(2, Math.round(barSpacing * 0.45 * pixelRatio))

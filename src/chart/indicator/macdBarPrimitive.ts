@@ -51,7 +51,7 @@ export class MacdBarPrimitive implements ISeriesPrimitive<Time> {
 
   /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
   private readonly paneView: MacdBarPaneView
-  /** 分时模式判定（v1.7.0）：分时 MACD 柱固定 1px 宽（东财分时细柱），K 线周期柱宽与 pane1 一致 */
+  /** 分时模式判定（v1.7.0）：分时 MACD 柱宽自适应（timeshareBarWidth，v1.7.1 保底可见），K 线周期柱宽与 pane1 一致 */
   public readonly getIsTimeshare: () => boolean
 
   constructor(

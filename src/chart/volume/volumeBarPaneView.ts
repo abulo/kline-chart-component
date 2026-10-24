@@ -17,7 +17,7 @@ import {
   type Logical,
 } from 'lightweight-charts'
 import type { VolumeBarPrimitive } from './volumeBarPrimitive'
-import { candlestickBarWidth } from '../core/candlestickWidth'
+import { candlestickBarWidth, timeshareBarWidth } from '../core/candlestickWidth'
 import { resolveTimeshareVolumeColor } from '../core/resolveBarColors'
 
 /** 成交量主题颜色（与 K 线同源：background 用于空心填充，up/down 红绿，flat 平盘） */
@@ -61,11 +61,12 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
           const bars = this.source.getBars()
           // 柱宽 = 库源码原版 optimalCandlestickWidth + 奇偶修正（与 pane1 同一函数
           // 同一 barSpacing → 位图像素宽度绝对一致），转 CSS 像素；
-          // 分时周期（v1.7.0）固定 1px（东财分时量柱细柱）——同周期数据同类型，
+          // 分时周期（v1.7.1）按 barSpacing 自适应 + 保底 2 bitmap px（替代 v1.7.0
+          // 固定 1px——retina 下仅 0.5 CSS px 不清晰）——同周期数据同类型，
           // 取首根判定即可（O(1)，避免每帧 some 全量遍历）
           const isTimeshare = bars[0]?.pointType === 'timeshare'
           const barWidthBitmap = isTimeshare
-            ? 1
+            ? timeshareBarWidth(barSpacing, pixelRatio)
             : candlestickBarWidth(barSpacing, pixelRatio)
           const barWidth = barWidthBitmap / pixelRatio
           const colors = this.source.getThemeColors()
@@ -92,7 +93,7 @@ export class VolumeBarPaneView implements IPrimitivePaneView {
             if (barHeight <= 0) continue
 
             if (bar.pointType === 'timeshare') {
-              // 分时量柱（v1.7.0）：实心 1px 细柱，红绿判断规则——
+              // 分时量柱（v1.7.1）：实心自适应宽度细柱（timeshareBarWidth 保底可见），红绿判断规则——
               // 1. 每个交易日首根（前一根 tradeDate 不同 / 数组首根）：本分钟价格
               //    VS 昨日收盘 preClose（> 红 / < 绿 / = 平盘色）；
               // 2. 其余分钟：本分钟价 VS 上一分钟价（> 红 / < 绿 / = 平盘色）
