@@ -972,6 +972,16 @@ export class KLineChartController {
     this.indicatorManager.setSubIndicator(name);
   };
 
+  /**
+   * 重建附图指标数据缓存（v1.7.1）：数据未变化但指标层可能处于"过期/清空"状态时
+   * 强制按当前 bars 重算——典型场景：分时切回 K 线（分时下 CR 被防御清空缓存但
+   * 状态保留；data 直通模式下切周期不触发 applyData → 需显式重建，见 KLineChart.vue
+   * period watch）。指标层关闭时为空操作（rebuildDataIfOpen 幂等）。
+   */
+  refreshSubIndicatorData = (): void => {
+    this.indicatorManager.rebuildIndicatorData();
+  };
+
   /** 时间轴开关：切换显隐后重算 pane 高度（时间轴高度占用随之变化，保证固定空 Pane 仍绝对相等） */
   toggleTimeAxis = (visible: boolean): void => {
     this.chart.timeScale().applyOptions({ visible });

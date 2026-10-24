@@ -216,6 +216,9 @@ watch(
       controller.value?.setMainIndicator(
         props.mainIndicator ? (props.mainIndicator as MainIndicatorType) : null,
       );
+      // 附图指标同根因防御（v1.7.1）：分时下 CR 等被防御清空缓存（状态保留），
+      // data 直通模式切周期不触发 applyData → 显式重建（指标层关闭时空操作）
+      controller.value?.refreshSubIndicatorData();
     }
     // v1.6.28：data 直通模式不拉取（数据以外部 data 为准）
     if (useCustomData.value) return;
