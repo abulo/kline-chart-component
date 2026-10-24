@@ -16,7 +16,7 @@ import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
 import { MainIndicatorOptions, SubIndicatorOptions } from './chart/indicator/options'
 import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
-import { Periods, type PeriodValue } from './chart/periods'
+import { Periods, isTimesharePeriod, type PeriodValue } from './chart/periods'
 import { MockChartDataService } from './services/chartDataService'
 
 /** 图表组件 ref（访问控制器） */
@@ -38,16 +38,34 @@ const onChartStatusChange = (status: string): void => {
 const activePeriod = ref<PeriodValue>('day')
 
 /** 当前周期是否为分时（1d~5d，v1.7.0）：分时下隐藏平移 / 缩放按钮、主图指标栏、CR 附图指标 */
-const isTimeshare = computed(() => /^[1-5]d$/.test(activePeriod.value))
+const isTimeshare = computed(() => isTimesharePeriod(activePeriod.value))
 
 /** 周期切换（点击即选中，周期保持必选其一） */
 const togglePeriod = (value: PeriodValue): void => {
   activePeriod.value = value
+  applyDefaultScaleState(value)
 }
 
 /** 组件内白名单周期按钮切换 → 同步 App 高亮（period 经 prop 联动组件重拉） */
 const onPeriodChange = (value: PeriodValue): void => {
   activePeriod.value = value
+  applyDefaultScaleState(value)
+}
+
+/**
+ * 周期切换时的左右刻度默认状态（v1.7.1 用户口径）：
+ *  - 切到分时（1d~5d）：左 / 右刻度都打开（分时右侧百分比刻度是主视觉，默认展示）；
+ *  - 切到 K 线（day~1min）：左刻度打开、右刻度关闭（避免多余刻度干扰）。
+ * 仅设置默认值，用户仍可随时手动 toggle 覆盖。
+ */
+const applyDefaultScaleState = (value: PeriodValue): void => {
+  if (isTimesharePeriod(value)) {
+    showLeftScale.value = true
+    showRightScale.value = true
+  } else {
+    showLeftScale.value = true
+    showRightScale.value = false
+  }
 }
 
 /** 当前主题 */
