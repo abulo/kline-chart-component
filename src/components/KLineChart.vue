@@ -14,7 +14,7 @@
  *  - symbol / name：股票代码 / 名称（pane0 信息行：名称 [代码]）；
  *  - timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator：状态开关；
  *  - 拉取条数：服务实例 fetchLimit（构造必填，如 200）；
- *  - period：当前周期（外部可控，默认 'day'；变化时重新拉取）；
+ *  - period：当前周期（外部可控，缺省不设置（不发起请求）；变化时重新拉取）；
  *  - service：数据服务实现（默认 MockChartDataService 单例；接入真实行情传
  *    HttpChartDataService 实例即可，组件 / 控制器零改动）。
  *

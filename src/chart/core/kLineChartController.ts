@@ -362,12 +362,11 @@ export class KLineChartController {
     /* ---------- 8. 高度分配：pane0 / pane2 / pane4 固定 topPaneHeight（同一 factor，绝对相等），pane1 K 线，pane3 成交量 / pane5 指标 ---------- */
     this.timeFormat = options.format;
     // v1.7.1：构造即应用初始周期（组件透传 props.period）——分时判定 / 数据过滤
-    // 按此生效；缺省 'day'（K 线）。此前硬编码 'day' 导致默认周期为分时时
-    // controller 仍按 K 线渲染。
-    // 默认值语义（v1.7.1 修正）：options.period 为 undefined（父组件未传）→ 'day'
-    // 保持历史默认行为（不传也渲染日 K）；显式传 ''（PeriodValueOrEmpty）→ 周期未
-    // 设置，init 不发起请求（与 symbol 空值守卫一致）。
-    this.period = options.period ?? "day";
+    // 按此生效；缺省**不设置**（父组件未传时周期为空，不发起数据请求）。
+    // 此前硬编码 'day' 导致默认周期为分时时 controller 仍按 K 线渲染。
+    // 默认值语义（v1.7.1）：options.period 为 undefined（父组件未传）→ ''（不设置，
+    // init 守卫跳过，与 symbol 空值守卫一致）；显式传具体周期 → 按该周期加载。
+    this.period = options.period ?? "";
     // v1.7.1：构造即应用分时交互（默认周期为分时时 setPeriod 不触发 →
     // 平移禁用必须在此生效，否则分时仍可拖拽平移）
     this.applyTimeshareInteractions();
