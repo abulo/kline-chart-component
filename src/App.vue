@@ -53,10 +53,11 @@ const onPeriodChange = (value: PeriodValue): void => {
 }
 
 /**
- * 周期切换时的左右刻度默认状态（v1.7.1 用户口径）：
+ * 周期切换时的左右刻度 / 主图指标默认状态（v1.7.1 用户口径）：
  *  - 切到分时（1d~5d）：左 / 右刻度都打开（分时右侧百分比刻度是主视觉，默认展示）；
- *  - 切到 K 线（day~1min）：左刻度打开、右刻度关闭（避免多余刻度干扰）。
- * 仅设置默认值，用户仍可随时手动 toggle 覆盖。
+ *  - 切到 K 线（day~1min）：左刻度打开、右刻度关闭（避免多余刻度干扰），
+ *    并默认打开主图指标 MA（分时无主图，切回 K 线恢复 MA 展示）。
+ * 仅设置默认值，用户仍可随时手动 toggle / 切换指标覆盖。
  */
 const applyDefaultScaleState = (value: PeriodValue): void => {
   if (isTimesharePeriod(value)) {
@@ -65,6 +66,8 @@ const applyDefaultScaleState = (value: PeriodValue): void => {
   } else {
     showLeftScale.value = true
     showRightScale.value = false
+    // 分时 → K 线：默认打开主图指标 MA
+    activeMainIndicator.value = 'ma'
   }
 }
 
