@@ -9,7 +9,7 @@
  */
 import type { ISeriesApi, UTCTimestamp } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
-import type { PeriodValue } from '../periods'
+import type { PeriodValueOrEmpty } from '../periods'
 import type { ChartThemeName } from './theme'
 import { PRICE_SCALE_MIN_WIDTH, VIEW_SHIFT_STEP } from './constants'
 import { normalizeChartTime } from '../util/format'
@@ -113,7 +113,7 @@ export interface DebugApiAccessors {
   /** 静态字段（构造时固定） */
   symbol: string
   name: string
-  period: PeriodValue
+  period: PeriodValueOrEmpty
   isTimeshare: boolean
   theme: ChartThemeName
   /** 动态字段（getter 实时取最新值） */

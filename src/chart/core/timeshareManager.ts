@@ -14,7 +14,7 @@
  */
 import type { ISeriesApi } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
-import { isTimesharePeriod, type PeriodValue } from '../periods'
+import { isTimesharePeriod, type PeriodValueOrEmpty } from '../periods'
 import { symmetricExpandRange, buildTimeshareScaleValues } from '../util/timeshareScale'
 import { themeColors, type ChartThemeName } from './theme'
 import { resolveVsBaseColor } from './resolveBarColors'
@@ -23,8 +23,8 @@ import { resolveVsBaseColor } from './resolveBarColors'
 export interface TimeshareManagerDeps {
   /** chart 实例（priceScale 0 margins 设置） */
   chart: ReturnType<typeof import('lightweight-charts').createChart>
-  /** 当前周期（1d~5d 判定） */
-  getPeriod: () => PeriodValue
+  /** 当前周期（1d~5d 判定；v1.7.1 允许 '' 空值 = 未设置） */
+  getPeriod: () => PeriodValueOrEmpty
   /** 当前全部 bar（分时点含 preClose / price / avgPrice） */
   getBars: () => ChartDataPoint[]
   /** 附图指标层是否开启（横向等分数 6 / 8） */

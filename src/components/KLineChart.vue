@@ -28,7 +28,7 @@ import { KLineChartController } from "../chart/core/kLineChartController";
 import type { ChartThemeName } from "../chart/core/theme";
 import  { themeColors } from "../chart/core/theme";
 import type { MainIndicatorType, SubIndicatorType } from "../chart/indicator";
-import type { PeriodValue } from "../chart/periods";
+import type { PeriodValueOrEmpty } from "../chart/periods";
 import { isTimesharePeriod } from "../chart/periods";
 import type { ChartDataService } from "../services/chartDataService";
 import type { ChartDataPoint } from "../types/chart";
@@ -72,8 +72,9 @@ const props = withDefaults(
     mainIndicator?: string;
     /** 附图指标（'' = 关闭指标层；互斥单选，由父组件保证） */
     subIndicator?: string;
-    /** 当前周期（外部可控；变化时经 service 重新拉取该周期数据） */
-    period?: PeriodValue;
+    /** 当前周期（外部可控；变化时经 service 重新拉取该周期数据；
+     *  传 ''（v1.7.1）= 周期未设置，不发起数据请求，就位后重新拉取） */
+    period?: PeriodValueOrEmpty;
     /** 数据服务（默认 MockChartDataService 单例；传 HttpChartDataService 接入真实行情） */
     service?: ChartDataService;
     /** 外部自定义数据（v1.6.28）：提供时优先渲染 data，跳过 service 拉取 / 分页 / 实时 */
@@ -119,8 +120,9 @@ const handleKeydown = (event: KeyboardEvent): void => {
   }
 };
 
-/** 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步） */
-const activePeriod = ref<PeriodValue>(props.period);
+/** 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步；
+ *  v1.7.1 允许 '' 空值 = 周期未设置） */
+const activePeriod = ref<PeriodValueOrEmpty>(props.period);
 
 // v1.6.24：props.theme 为 string，需断言到 ChartThemeName（与 applyTheme 调用一致）
 const theme = computed(() => themeColors(props.theme as ChartThemeName));

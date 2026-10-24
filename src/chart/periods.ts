@@ -27,6 +27,13 @@ export const Periods = [
 /** 周期值联合类型（'1d' | '2d' | … | '1min'，供周期状态变量使用） */
 export type PeriodValue = (typeof Periods)[number]['value']
 
+/**
+ * 周期或空值（v1.7.1）：'' = 周期未设置（父组件异步加载 / 暂未传入），
+ * 组件 / 控制器对空周期不发起数据请求，等周期就位后重新 init。
+ * 用于 props.period / KLineChartOptions.period / 控制器周期字段。
+ */
+export type PeriodValueOrEmpty = PeriodValue | ''
+
 /** 周期展示文案联合类型（'1日分时' | …，供按钮渲染使用） */
 export type PeriodLabel = (typeof Periods)[number]['label']
 

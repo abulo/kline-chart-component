@@ -16,7 +16,7 @@ import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
 import { MainIndicatorOptions, SubIndicatorOptions } from './chart/indicator/options'
 import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
-import { Periods, isTimesharePeriod, type PeriodValue } from './chart/periods'
+import { Periods, isTimesharePeriod, type PeriodValueOrEmpty } from './chart/periods'
 import { MockChartDataService } from './services/chartDataService'
 
 /** 图表组件 ref（访问控制器） */
@@ -35,19 +35,19 @@ const onChartStatusChange = (status: string): void => {
 }
 
 /** 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入） */
-const activePeriod = ref<PeriodValue>('1d')
+const activePeriod = ref<PeriodValueOrEmpty>('1d')
 
 /** 当前周期是否为分时（1d~5d，v1.7.0）：分时下隐藏平移 / 缩放按钮、主图指标栏、CR 附图指标 */
 const isTimeshare = computed(() => isTimesharePeriod(activePeriod.value))
 
 /** 周期切换（点击即选中，周期保持必选其一） */
-const togglePeriod = (value: PeriodValue): void => {
+const togglePeriod = (value: PeriodValueOrEmpty): void => {
   activePeriod.value = value
   applyDefaultScaleState(value)
 }
 
 /** 组件内白名单周期按钮切换 → 同步 App 高亮（period 经 prop 联动组件重拉） */
-const onPeriodChange = (value: PeriodValue): void => {
+const onPeriodChange = (value: PeriodValueOrEmpty): void => {
   activePeriod.value = value
   applyDefaultScaleState(value)
 }
@@ -59,7 +59,7 @@ const onPeriodChange = (value: PeriodValue): void => {
  *    并默认打开主图指标 MA（分时无主图，切回 K 线恢复 MA 展示）。
  * 仅设置默认值，用户仍可随时手动 toggle / 切换指标覆盖。
  */
-const applyDefaultScaleState = (value: PeriodValue): void => {
+const applyDefaultScaleState = (value: PeriodValueOrEmpty): void => {
   if (isTimesharePeriod(value)) {
     showLeftScale.value = true
     showRightScale.value = true

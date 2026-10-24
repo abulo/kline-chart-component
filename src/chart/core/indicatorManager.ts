@@ -34,7 +34,7 @@ import {
 } from '../indicator'
 import { formatVolume, formatPrice, formatTimeByFmt, formatAxisTime } from '../util/format'
 import type { ChartThemeColors } from './theme'
-import { isTimesharePeriod, timeshareVerticalCount, type PeriodValue } from '../periods'
+import { isTimesharePeriod, timeshareVerticalCount, type PeriodValueOrEmpty } from '../periods'
 import { type IndicatorLineSpec, type CrosshairPrimitiveRegistry, type IndicatorValueMap } from './types'
 import { type MainIndicatorType } from '../indicator'
 import { SubIndicatorPaneManager } from './subIndicatorPaneManager'
@@ -66,7 +66,7 @@ export interface IndicatorManagerDeps {
   /** 时间格式模板（v1.6.9 透传 format；undefined → 按周期自动） */
   getTimeFormat: () => string | undefined
   /** 当前周期（v1.6.9；日/周/月 → YYYY-MM-DD，分时 → HH:mm，分钟 K → YYYY-MM-DD HH:mm） */
-  getPeriod: () => PeriodValue
+  getPeriod: () => PeriodValueOrEmpty
 }
 
 /** 指标值缓存项（信息行分段：label + 线色 + time→value Map，现取 O(1)）——见 types.ts */

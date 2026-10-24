@@ -15,7 +15,7 @@ import {
   type ISeriesApi,
 } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
-import { timeshareVerticalCount, type PeriodValue } from '../periods'
+import { timeshareVerticalCount, type PeriodValueOrEmpty } from '../periods'
 import { chartFont, themeColors, transparentColor, type ChartThemeName } from './theme'
 import { formatPrice, formatVolume, formatPercent } from '../util/format'
 import { TopPaneOverlayPrimitive } from '../overlay/topPaneOverlayPrimitive'
@@ -44,7 +44,7 @@ export interface PaneFactoryDeps {
   /** 当前全部 bar（分时点 / K 线，成交量与高低点标注取数） */
   getBars: () => ChartDataPoint[]
   /** 当前周期（分时栅格竖线份数） */
-  getPeriod: () => PeriodValue
+  getPeriod: () => PeriodValueOrEmpty
   /** 指标管理器（pane0/2 信息行、SAR 圆点、主图 / 均量线数据源） */
   indicatorManager: IndicatorManager
   /** 分时计算管理器（等分 / 固定刻度 / 三态着色） */

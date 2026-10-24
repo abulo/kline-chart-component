@@ -76,7 +76,7 @@ import { createPanes } from "./paneFactory";
 import { applyPaneStretchFactors, calcPaneTop } from "./paneLayout";
 import { zoomIn as viewportZoomIn, zoomOut as viewportZoomOut, shiftLeft as viewportShiftLeft, shiftRight as viewportShiftRight, applyPriceScaleVisible as viewportApplyPriceScaleVisible, refreshKlineColors as viewportRefreshKlineColors, exposeDebugApi as viewportExposeDebugApi } from "./viewport";
 import { normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock } from "../util/format";
-import { type PeriodValue } from "../periods";
+import { type PeriodValueOrEmpty } from "../periods";
 import { CrosshairAxisLabelPrimitive } from "../crosshair/crosshairAxisLabelPrimitive";
 import { CrosshairLineCapPrimitive } from "../crosshair/crosshairLineCapPrimitive";
 import { CrosshairTooltip, type TooltipBounds } from "../crosshair/crosshairTooltip";
@@ -125,8 +125,9 @@ export class KLineChartController {
   private symbol: string;
   /** 时间格式模板（v1.6.9 透传 KLineChart.vue format；undefined → 按周期自动） */
   private readonly timeFormat: string | undefined;
-  /** 当前周期（v1.6.9 setPeriod 更新；pane0 信息行时间格式按周期切换） */
-  private period: PeriodValue;
+  /** 当前周期（v1.6.9 setPeriod 更新；pane0 信息行时间格式按周期切换；
+   *  v1.7.1 允许 '' 空值 = 周期未设置，init 不发起请求） */
+  private period: PeriodValueOrEmpty;
   /** 数据服务（init / loadEarlier 经其拉取历史与订阅实时；组件构造时注入） */
   private service: ChartDataService | undefined;
   /** 加载状态回调（可选；init 全流程状态通知） */
@@ -586,12 +587,12 @@ export class KLineChartController {
    * 状态：'loading'（首载）→ 'ready' / 'error'。
    */
   init = async (): Promise<void> => {
-    // v1.7.1 修复：symbol 未就绪（父组件异步加载代码 / 暂未传入）时不发起请求——
-    // 组件 onMounted 创建 controller 后立即 init，构造快照 symbol 可能为 "" →
-    // 第一次请求出现 `symbol=` 空参数；之后父组件 symbol 就位 → props.symbol
-    // watch → setSymbol + debouncedInit → 重新拉取（"第一次空、后面正常"根因）。
+    // v1.7.1 修复：symbol / period 未就绪（父组件异步加载代码 / 暂未传入）时不发起请求——
+    // 组件 onMounted 创建 controller 后立即 init，构造快照 symbol / period 可能为空
+    // （symbol='' → 第一次请求出现 `symbol=` 空参数；period='' → 空周期无意义请求）。
+    // 之后就位 → props watch → setSymbol / setPeriod + debouncedInit → 重新拉取。
     // 这里直接跳过，避免无效请求；状态保持 idle 等待后续 init。
-    if (!this.symbol) {
+    if (!this.symbol || !this.period) {
       return;
     }
     this.setStatus('loading');
@@ -888,7 +889,7 @@ export class KLineChartController {
     this.service = service;
   };
 
-  setPeriod = (period: PeriodValue): void => {
+  setPeriod = (period: PeriodValueOrEmpty): void => {
     if (this.period === period) return;
     this.period = period;
     // 分时不可平移（v1.7.0）：分时整日数据 fitContent 固定视口，滚轮 / 按住拖拽 /
