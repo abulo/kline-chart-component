@@ -133,6 +133,9 @@ onMounted(() => {
     container: containerRef.value,
     symbol: props.symbol,
     name: props.name,
+    // v1.7.1：透传初始周期（默认分时时 controller 构造即按分时处理，
+    // 不再依赖 init 后的 setPeriod——首次挂载 watch 不触发）
+    period: props.period,
     // v1.6.9：时间格式模板透传（pane0 信息行时间；缺省按周期自动）
     format: props.format,
     // v1.6.17：数据服务由组件注入（默认 Mock 兜底），controller.init 统一管理拉取 / 实时

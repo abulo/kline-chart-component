@@ -13,6 +13,7 @@
 import type { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import type { ChartDataPoint } from '../../types/chart'
 import type { ChartDataService } from '../../services/chartDataService'
+import type { PeriodValue } from '../periods'
 
 /** 控制器选项 */
 export interface KLineChartOptions {
@@ -34,6 +35,10 @@ export interface KLineChartOptions {
   initialBars?: ChartDataPoint[]
   /** 加载状态回调（v1.6.17 init 统一管理：'loading' | 'ready' | 'error'） */
   onStatusChange?: (status: ChartLoadStatus) => void
+  /** 初始周期（v1.7.1）：组件透传 props.period；缺省 'day'。
+   *  构造即生效（分时判定 / 数据过滤按此），避免默认周期为分时时
+   *  controller 仍按 K 线处理（此前构造硬编码 'day'） */
+  period?: PeriodValue
 }
 
 /** 加载状态（controller 统一管理：init 拉最新页 → 'loading'；左滑分页 → 'loading-older'；

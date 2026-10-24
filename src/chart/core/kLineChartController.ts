@@ -360,7 +360,10 @@ export class KLineChartController {
 
     /* ---------- 8. 高度分配：pane0 / pane2 / pane4 固定 topPaneHeight（同一 factor，绝对相等），pane1 K 线，pane3 成交量 / pane5 指标 ---------- */
     this.timeFormat = options.format;
-    this.period = "day";
+    // v1.7.1：构造即应用初始周期（组件透传 props.period）——分时判定 / 数据过滤
+    // 按此生效；缺省 'day'（K 线）。此前硬编码 'day' 导致默认周期为分时时
+    // controller 仍按 K 线渲染。
+    this.period = options.period ?? "day";
 
     this.applyStretchFactors();
 
