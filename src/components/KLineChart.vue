@@ -93,7 +93,7 @@ const props = withDefaults(
     theme: "dark",
     mainIndicator: "",
     subIndicator: "",
-    period: "day",
+    period: "",
     fullscreen: false,
   },
 );
