@@ -586,6 +586,14 @@ export class KLineChartController {
    * 状态：'loading'（首载）→ 'ready' / 'error'。
    */
   init = async (): Promise<void> => {
+    // v1.7.1 修复：symbol 未就绪（父组件异步加载代码 / 暂未传入）时不发起请求——
+    // 组件 onMounted 创建 controller 后立即 init，构造快照 symbol 可能为 "" →
+    // 第一次请求出现 `symbol=` 空参数；之后父组件 symbol 就位 → props.symbol
+    // watch → setSymbol + debouncedInit → 重新拉取（"第一次空、后面正常"根因）。
+    // 这里直接跳过，避免无效请求；状态保持 idle 等待后续 init。
+    if (!this.symbol) {
+      return;
+    }
     this.setStatus('loading');
     const seq = ++this.loadSeq;
     if (!this.service) {
