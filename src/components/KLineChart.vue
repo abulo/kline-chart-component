@@ -111,6 +111,14 @@ const debouncedInit = debounce(() => {
   void controller.value?.init();
 }, SWITCH_DEBOUNCE_MS);
 
+/** ESC 退出全屏（v1.7.1）：仅 props.fullscreen 为 true 时响应；
+ *  经 fullscreen-change 回传父组件关闭（受控 prop 同步，与退出按钮一致） */
+const handleKeydown = (event: KeyboardEvent): void => {
+  if (event.key === "Escape" && props.fullscreen) {
+    emit("fullscreen-change", false);
+  }
+};
+
 /** 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步） */
 const activePeriod = ref<PeriodValue>(props.period);
 
@@ -151,11 +159,16 @@ onMounted(() => {
   // 数据层：controller.init 统一拉历史 + 订阅实时（v1.6.17）；
   // v1.6.28：外部 data 直通时不 init（构造已 setKlineData，跳过 service）
   if (!useCustomData.value) void controller.value.init();
+  // ESC 退出全屏（v1.7.1）：挂 window（chart 任意区域/焦点均生效），
+  // 仅全屏态触发；onBeforeUnmount 移除（防泄漏）
+  window.addEventListener("keydown", handleKeydown);
 });
 
 onBeforeUnmount(() => {
   // 取消挂起的防抖 init（快速切换后立即卸载 → 不再发过期请求）
   debouncedInit.cancel();
+  // 移除 ESC 监听（与 onMounted 配对，防泄漏）
+  window.removeEventListener("keydown", handleKeydown);
   // destroy 内部已退订实时推送（v1.6.17）
   controller.value?.destroy();
   controller.value = null;
