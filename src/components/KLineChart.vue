@@ -332,13 +332,13 @@ defineExpose({ controller, loadStatus });
 /* 全屏退出按钮（右上角，z-index 高于图表绘制层；颜色跟随当前主题） */
 .exit-fullscreen {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 0px;
+  right: 0px;
   z-index: 99;
   font-size: 12px;
-  padding: 2px 2px;
+  padding: 1px;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: 1px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
   background: v-bind('theme.buttonBackground');
   color: v-bind('theme.buttonText');

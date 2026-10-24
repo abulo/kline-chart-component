@@ -364,6 +364,9 @@ export class KLineChartController {
     // 按此生效；缺省 'day'（K 线）。此前硬编码 'day' 导致默认周期为分时时
     // controller 仍按 K 线渲染。
     this.period = options.period ?? "day";
+    // v1.7.1：构造即应用分时交互（默认周期为分时时 setPeriod 不触发 →
+    // 平移禁用必须在此生效，否则分时仍可拖拽平移）
+    this.applyTimeshareInteractions();
 
     this.applyStretchFactors();
 
@@ -882,6 +885,15 @@ export class KLineChartController {
     // 分时不可平移（v1.7.0）：分时整日数据 fitContent 固定视口，滚轮 / 按住拖拽 /
     // 触摸平移全部关闭（缩放仍由工具栏按钮控制，handleScale 全局已禁滚轮）；
     // 切回 K 线周期恢复默认平移交互
+    this.applyTimeshareInteractions();
+  };
+
+  /**
+   * 平移交互按周期应用（v1.7.1 抽取）：分时（1d~5d）禁用滚轮 / 拖拽平移，
+   * K 线恢复默认。setPeriod 与构造（默认周期即分时时，setPeriod 因周期相同
+   * 直接 return，必须构造时应用）统一走此方法。
+   */
+  private applyTimeshareInteractions = (): void => {
     this.chart.applyOptions({
       handleScroll: this.timeshareManager.isTimeshare
         ? {
