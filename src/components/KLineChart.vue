@@ -29,6 +29,7 @@ import type { ChartThemeName } from "../chart/core/theme";
 import  { themeColors } from "../chart/core/theme";
 import type { MainIndicatorType, SubIndicatorType } from "../chart/indicator";
 import type { PeriodValue } from "../chart/periods";
+import { isTimesharePeriod } from "../chart/periods";
 import type { ChartDataService } from "../services/chartDataService";
 import type { ChartDataPoint } from "../types/chart";
 import type { ChartLoadStatus } from "../chart/core/types";
@@ -202,11 +203,20 @@ watch(
 /** 外部周期变化 → 同步内部周期 + 防抖重新 init（拉历史 + 重订阅实时，重置边缘加载状态） */
 watch(
   () => props.period,
-  (value) => {
+  (value, oldValue) => {
     if (value === activePeriod.value) return;
     activePeriod.value = value;
     // v1.6.9：周期切换 → pane0 信息行时间格式随周期变更（setPeriod 触发重绘，立即生效）
     controller.value?.setPeriod(value);
+    // 分时 → K 线（v1.7.1 修复）：分时期间 indicatorManager.setMainIndicator 会被
+    // 静默清空（分时无主图指标），而 props.mainIndicator 值未变 → watch 不触发、
+    // 切回 K 线后主图指标缓存仍为空（表现为"需手动点击才生效"）。
+    // 此处用 oldValue 精准判定"从分时切到 K 线"，主动重新应用当前主图指标（幂等）。
+    if (isTimesharePeriod(oldValue) && !isTimesharePeriod(value)) {
+      controller.value?.setMainIndicator(
+        props.mainIndicator ? (props.mainIndicator as MainIndicatorType) : null,
+      );
+    }
     // v1.6.28：data 直通模式不拉取（数据以外部 data 为准）
     if (useCustomData.value) return;
     // v1.7.1 防抖：快速连续切换周期只发最后一次 init（loadSeq 兜底丢过期响应）
