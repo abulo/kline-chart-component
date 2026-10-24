@@ -374,7 +374,17 @@ export class KLineChartController {
     this.chart.timeScale().fitContent();
 
     /* ---------- 10. 容器尺寸监听：重算固定 Pane 高度（topPaneHeight） ---------- */
-    this.resizeObserver = new ResizeObserver(() => this.applyStretchFactors());
+    this.resizeObserver = new ResizeObserver(() => {
+      // 容器尺寸变化 → 重算 pane 高度（pane1..5 高度按比例分配）
+      this.applyStretchFactors();
+      // 分时（v1.7.1）：fitContent 只在数据加载时按当时宽度 fit，
+      // 全屏 / 窗口缩放后容器变宽，X 轴数据带不会自动重新铺满 → 左侧留白。
+      // 这里在容器 resize 时重新 fit（分时整日数据全量可见、平移禁用，无副作用）；
+      // K 线为固定 120 根可视（setVisibleLogicalRange），库自动调整 barSpacing 撑满，无需处理。
+      if (this.timeshareManager.isTimeshare) {
+        this.chart.timeScale().fitContent();
+      }
+    });
     this.resizeObserver.observe(this.container);
 
     /* ---------- 11. 平移左滑到边缘 → 触发更早历史加载（回调组件拉取） ----------
