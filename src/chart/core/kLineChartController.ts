@@ -671,13 +671,14 @@ export class KLineChartController {
       this.timeshareManager.isTimeshare ? point.pointType === "timeshare" : point.pointType === "kline",
     );
     this.rebuildBarIndex();
-    this.applyData();
-    // v1.7.1 修复：pane 全部创建后按当前刻度开关重应用——构造时 setRightScaleVisible
-    // 仅作用于当时已存在的首 pane，applyData 新建的 pane1~pane5 的 right/left scale
-    // 仍为库默认（right 不可见）→ 初始右刻度未打开（手动点击时才因 pane 已齐全而生效）。
-    // 此处先保存/恢复可见时间范围（applyPriceScaleVisible 内部），后续视口设置覆盖。
+    // v1.7.1：刻度显隐（Y 轴刻度区宽度）在数据写入前应用——与 X 轴视口完全解耦，
+    // 避免 applyPriceScaleVisible 内部"保存/恢复 visibleRange"与下方数据 setData /
+    // fitContent / setVisibleLogicalRange 交叉（跨周期数据时间戳跨度大时，恢复的
+    // 旧 range 会干扰视口铺满，见 K线→分时视图未铺满修复）。
+    // pane 在构造时已全部创建（addSeries 即建 pane），此处遍历全部 pane 生效。
     this.applyPriceScaleVisible("left", this.showLeftScale);
     this.applyPriceScaleVisible("right", this.showRightScale);
+    this.applyData();
     // 分时数据为完整 N 个交易日（无更早分页），不触发左滑边缘加载
     if (this.timeshareManager.isTimeshare) {
       this.hasMoreHistory = false;
