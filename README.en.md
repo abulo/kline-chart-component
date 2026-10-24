@@ -288,6 +288,45 @@ Backend contract: `GET {historyUrl}?symbol=&period=&before=&limit=` returns (his
 
 **Pan-left auto-load of older history (v1.6.17, moved into the controller `loadEarlier`)**: when the visible range reaches the far-left edge, the controller uses the current earliest bar's `time` as the `before` anchor to fetch one more page, prepending via `prependHistory` (dedupe / ascending + viewport keeps the original data position); stops when the return is below limit or the merged increment is 0.
 
+### HttpChartDataService constructor options (v1.7.1)
+
+```ts
+new HttpChartDataService({
+  fetchLimit: 200,                    // required: bars per page (history / pan-left paging)
+  historyUrl: 'http://<host>/api/kline/history', // required: full history URL (own route / query)
+  realtimeTransport: 'ws',            // optional: 'ws' (default) | 'sse' | 'poll'
+  wsUrl: 'wss://<host>/ws',           // required for 'ws'
+  sseUrl: 'https://<host>/sse',       // required for 'sse'
+  sseEventName: 'message',            // optional: SSE event name, default 'message'
+  pollUrl: 'https://<host>/api/kline/latest', // required for 'poll'
+  pollIntervalMs: 3000,               // optional: poll interval ms, default 3000
+  timeoutMs: 8000,                    // optional: fetch timeout ms, default 8000
+  headers: { Authorization: 'Bearer <token>' },  // optional: injected into all HTTP requests
+  cookies: { session: 'abc123' },     // optional: object form, serialized into the Cookie header
+  params: { market: 'SH' },           // optional: extra URL query on every request
+  cache: true,                        // optional: history cache on/off, default true
+  maxCacheEntries: 12,                // optional: LRU cache entry cap (symbol|period combos)
+  maxKnownTotals: 64,                 // optional: "known total count" record cap (memory guard)
+  cacheTtlMs: 30000,                  // optional: latest-page cache TTL ms (older paging unaffected)
+})
+```
+
+**Realtime transport comparison**:
+
+| Mode | Options used | Custom headers / cookies | Notes |
+|---|---|---|---|
+| `'ws'` (default) | `wsUrl` | ✗ browser forbids injection | Full-duplex WebSocket push; cross-origin needs server support |
+| `'sse'` | `sseUrl` + `sseEventName` | ✓ via `@microsoft/fetch-event-source` | One-way server push; 3s auto-reconnect; aborts on 401/403 |
+| `'poll'` | `pollUrl` + `pollIntervalMs` | ✓ plain fetch | HTTP polling (default 3000ms); no persistent connection |
+
+When auth depends on custom request headers, prefer `'sse'` or `'poll'` (WebSocket cannot inject headers).
+
+**Full-URL semantics (v1.6.30)**: `historyUrl` / `wsUrl` / `sseUrl` / `pollUrl` always take a **full URL** (may include own route / query); the library appends core params (`symbol` / `period` / `before` / `limit`) with `&` (core params win over `params` on name conflict). A missing URL for a mode disables that mode with a console.warn.
+
+**Request protocol**: history `GET {historyUrl}?symbol=&period=&before=&limit=` returns `{ code: 200, data: ChartDataPoint[] }` (time ascending; count < limit means no older data) or a bare array; realtime pushes share the same structure, `time` equal to the last bar = refresh that bar, larger = append a new bar.
+
+**Memory management**: history cache LRU-evicts per `symbol|period` combo (`maxCacheEntries`, default 12); `knownTotals` independently tracks each key's known total count (survives cache eviction) and is only LRU-pruned above `maxKnownTotals` (default 64), preventing unlimited metadata growth across paging round-trips; data handed to callers is always an independent copy, realtime updates never pollute the cache.
+
 Data point type `ChartDataPoint` (`src/types/chart.ts`, K-line):
 
 ```ts

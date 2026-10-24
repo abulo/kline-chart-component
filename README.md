@@ -328,6 +328,53 @@ SSE 实时（v1.6.31）基于 **`@microsoft/fetch-event-source`**（fetch 流式
 边缘时，控制器以当前最早一根 time 为 `before` 锚点拉取更早一页，经 `prependHistory`
 前置插入（去重 / 升序 + 视口保持原数据位置）；返回不足 limit 或合并新增 0 时停止触发。
 
+### HttpChartDataService 构造参数总表（v1.7.1）
+
+```ts
+new HttpChartDataService({
+  fetchLimit: 200,                    // 必填：每页拉取条数（历史 / 左滑分页共用）
+  historyUrl: 'http://<host>/api/kline/history', // 必填：历史完整地址（含自有路由 / query）
+  realtimeTransport: 'ws',            // 可选：'ws'（默认）| 'sse' | 'poll'
+  wsUrl: 'wss://<host>/ws',           // 'ws' 模式必填完整地址
+  sseUrl: 'https://<host>/sse',       // 'sse' 模式必填完整地址
+  sseEventName: 'message',            // 可选：SSE 事件名，默认 'message'
+  pollUrl: 'https://<host>/api/kline/latest', // 'poll' 模式必填完整地址
+  pollIntervalMs: 3000,               // 可选：轮询频率 ms，默认 3000
+  timeoutMs: 8000,                    // 可选：fetch 超时 ms，默认 8000
+  headers: { Authorization: 'Bearer <token>' },  // 可选：注入所有 HTTP 请求头
+  cookies: { session: 'abc123' },     // 可选：对象形式，序列化注入 Cookie 头
+  params: { market: 'SH' },           // 可选：附加所有请求的 URL query
+  cache: true,                        // 可选：历史缓存开关，默认 true
+  maxCacheEntries: 12,                // 可选：LRU 缓存条目上限（symbol|period 组合数）
+  maxKnownTotals: 64,                 // 可选：「已知总条数」记录上限（防内存无限增长）
+  cacheTtlMs: 30000,                  // 可选：最新页缓存有效期 ms（更早分页不受限）
+})
+```
+
+**实时传输三模式对比**：
+
+| 模式 | 使用参数 | 自定义 headers / cookies | 说明 |
+|---|---|---|---|
+| `'ws'`（默认） | `wsUrl` | ✗ 浏览器限制无法注入 | WebSocket 全双工推送，跨域需后端配合 |
+| `'sse'` | `sseUrl` + `sseEventName` | ✓ 基于 `@microsoft/fetch-event-source` | 单向服务端推送，断线自动 3s 重连，401/403 自动中止 |
+| `'poll'` | `pollUrl` + `pollIntervalMs` | ✓ 普通 fetch | HTTP 轮询（默认 3000ms），无长连接，最简单 |
+
+鉴权依赖自定义请求头时，请优先选用 `'sse'` 或 `'poll'`（WebSocket 无法注入头）。
+
+**完整地址语义**（v1.6.30）：`historyUrl` / `wsUrl` / `sseUrl` / `pollUrl` 一律传**完整
+URL**（可含自有路由 / query）；库在请求时以 `&` 追加 `symbol` / `period` / `before` /
+`limit` 等核心参数（`params` 同名冲突时核心参数优先）。缺省对应模式的地址 = 该模式
+不启用并 console.warn。
+
+**请求协议约定**：历史 `GET {historyUrl}?symbol=&period=&before=&limit=` 返回
+`{ code: 200, data: ChartDataPoint[] }`（time 升序、返回条数 < limit 表示无更早数据）
+或直接返回数组；实时推送与历史同结构，`time` 与最后一根相同 = 刷新该根、更大 = 追加。
+
+**内存管理**：历史缓存按 `symbol|period` 组合做 LRU 淘汰（`maxCacheEntries` 默认 12）；
+`knownTotals` 独立记录各 key 已知总条数（淘汰缓存不清除），超过 `maxKnownTotals`（默认
+64）才按 LRU 清理，防止分页往返下「总条数」元数据无限增长；返回调用方的数据一律为
+独立副本，实时更新不污染缓存。
+
 数据点类型 `ChartDataPoint`（`src/types/chart.ts`，K 线）：
 
 ```ts
