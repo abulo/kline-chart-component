@@ -551,7 +551,9 @@ export class HttpChartDataService implements ChartDataService {
       limit: String(query.limit),
     }
     if (query.before !== undefined) core.before = String(query.before)
-    if (knownTotal !== undefined) core.total = String(knownTotal) // 自动计算/显式传入的 total
+    // v1.7.1：total 无条件附加——第一次请求（knownTotal 未知）时置 0，
+    // 保证后端每次请求都能收到 total 参数；后续请求携带自动计算/显式传入的值。
+    core.total = String(knownTotal ?? 0)
 
     // v1.6.30：historyUrl 必填完整地址，直接使用
     const url = this.withParams(this.opts.historyUrl, core)
