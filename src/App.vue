@@ -35,7 +35,7 @@ const onChartStatusChange = (status: string): void => {
 }
 
 /** 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入） */
-const activePeriod = ref<PeriodValue>('day')
+const activePeriod = ref<PeriodValue>('1d')
 
 /** 当前周期是否为分时（1d~5d，v1.7.0）：分时下隐藏平移 / 缩放按钮、主图指标栏、CR 附图指标 */
 const isTimeshare = computed(() => isTimesharePeriod(activePeriod.value))
@@ -81,10 +81,12 @@ const isFullscreen = ref(false)
 /** 附图指标（互斥单选，默认无选中 → 指标层关闭）。
  * 点击已选中指标 = 取消（关闭指标层）；点击其他指标 = 切换。 */
 const activeSubIndicator = ref<SubIndicatorType | null>("macd")
-/** 左刻度区开关（默认关） */
-const showLeftScale = ref(false)
-/** 右刻度区开关（默认关） */
-const showRightScale = ref(false)
+/**
+ * 左 / 右刻度区开关（v1.7.1）：初始值跟随初始周期（与 applyDefaultScaleState 同规则）——
+ * 分时（1d~5d）左右都开；K 线左开右关。避免默认周期为分时时刻度未打开。
+ */
+const showLeftScale = ref(true)
+const showRightScale = ref(isTimesharePeriod(activePeriod.value))
 /** 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关） */
 const activeMainIndicator = ref<MainIndicatorType | null>("ma")
 
