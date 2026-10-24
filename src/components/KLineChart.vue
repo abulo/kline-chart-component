@@ -44,6 +44,8 @@ const defaultService = new MockChartDataService({ fetchLimit: 200 });
 /** 加载状态事件（v1.6.18）：controller.init 全流程状态通知（'loading' | 'ready' | 'error'） */
 const emit = defineEmits<{
   "status-change": [status: ChartLoadStatus];
+  /** 全屏切换（v1.7.1）：组件内"退出全屏"按钮触发，父组件据以更新 fullscreen prop */
+  "fullscreen-change": [fullscreen: boolean];
 }>();
 
 /** 当前加载状态（v1.6.21 组件内部可读：模板 / script 直接引用；变化时同步 emit） */
@@ -78,6 +80,8 @@ const props = withDefaults(
     data?: ChartDataPoint[];
     /** 时间格式模板（v1.6.9）：如 'YYYY-MM-DD' / 'YYYY-MM-DD HH:mm'；缺省按周期自动 */
     format?: string;
+    /** 全屏（v1.7.1）：true 时组件铺满浏览器视口（fixed 覆盖），false 保持父容器布局 */
+    fullscreen?: boolean;
   }>(),
   {
     symbol: "",
@@ -89,6 +93,7 @@ const props = withDefaults(
     mainIndicator: "",
     subIndicator: "",
     period: "day",
+    fullscreen: false,
   },
 );
 
@@ -259,7 +264,7 @@ defineExpose({ controller, loadStatus });
 </script>
 
 <template>
-  <div class="kline-chart">
+  <div class="kline-chart" :class="{ fullscreen: props.fullscreen }">
     <!-- 首次加载遮罩 -->
     <div v-if="loadStatus === 'loading'"
       class="kline-mask"
@@ -279,6 +284,15 @@ defineExpose({ controller, loadStatus });
       正在加载更早数据…
     </div>
     <div ref="containerRef" class="kline-chart-container" />
+    <!-- 全屏退出按钮（v1.7.1）：全屏时组件铺满视口盖住页面其他区域，
+         此按钮为唯一出口（工具栏在视口外被盖住） -->
+    <button
+      v-if="props.fullscreen"
+      class="exit-fullscreen"
+      @click="emit('fullscreen-change', false)"
+    >
+      退出全屏
+    </button>
   </div>
 </template>
 
@@ -287,6 +301,32 @@ defineExpose({ controller, loadStatus });
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+/* 全屏态（v1.7.1）：fixed 铺满浏览器视口，盖住页面其他区域；
+   背景由库绘制（autoSize + ResizeObserver 自动跟随容器尺寸） */
+.kline-chart.fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+}
+
+/* 全屏退出按钮（右上角，z-index 高于图表绘制层；颜色跟随当前主题） */
+.exit-fullscreen {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10000;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+  background: v-bind('theme.buttonBackground');
+  color: v-bind('theme.buttonText');
+  border: 1px solid v-bind('theme.buttonBorder');
 }
 
 .kline-chart-container {

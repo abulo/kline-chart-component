@@ -75,8 +75,8 @@ const applyDefaultScaleState = (value: PeriodValue): void => {
 const theme = ref<ChartThemeName>('dark')
 /** 时间轴开关 */
 const showTimeAxis = ref(true)
-/** 全屏开关（v1.7.1）：chart-wrap 铺满浏览器视口（fixed 覆盖，盖住页面其他区域）；
- *  退出按钮渲染在 chart 内部右上角（全屏时工具栏被盖住，必须内置出口） */
+/** 全屏开关（v1.7.1）：受控 prop 传给 KLineChart（组件内 fixed 铺满视口）；
+ *  组件内"退出全屏"按钮经 fullscreen-change 回传关闭 */
 const isFullscreen = ref(false)
 /** 附图指标（互斥单选，默认无选中 → 指标层关闭）。
  * 点击已选中指标 = 取消（关闭指标层）；点击其他指标 = 切换。 */
@@ -112,9 +112,14 @@ const toggleTimeAxis = (): void => {
   showTimeAxis.value = !showTimeAxis.value
 }
 
-/** 全屏开关（v1.7.1）：取反 isFullscreen，驱动 chart-wrap.fullscreen 固定铺满视口 */
+/** 全屏开关（v1.7.1）：取反 isFullscreen，经 prop 驱动组件全屏态 */
 const toggleFullscreen = (): void => {
   isFullscreen.value = !isFullscreen.value
+}
+
+/** 组件内"退出全屏"按钮回调（受控 prop 同步回父状态） */
+const onFullscreenChange = (fullscreen: boolean): void => {
+  isFullscreen.value = fullscreen
 }
 
 /** 附图指标开关（互斥）：点击已选中指标 = 关闭（null → 指标层关闭）；否则切换。
@@ -185,8 +190,8 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
     </div>
 
     <!-- 图表容器：占浏览器 80% 宽高、居中（symbol / name 在 pane0 顶部信息行显示）。
-         全屏（v1.7.1）→ fixed 铺满视口，盖住页面其他区域 -->
-    <div class="chart-wrap" :class="{ fullscreen: isFullscreen }">
+         全屏（v1.7.1）由 KLineChart 组件内部处理（fixed 铺满视口 + 内置退出按钮） -->
+    <div class="chart-wrap">
       <KLineChart
         ref="chartRef"
         symbol="300750"
@@ -199,17 +204,11 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         :sub-indicator="activeSubIndicator ?? ''"
         :period="activePeriod"
         :service="chartDataService"
+        :fullscreen="isFullscreen"
         @status-change="onChartStatusChange"
         @period-change="onPeriodChange"
+        @fullscreen-change="onFullscreenChange"
       />
-      <!-- 全屏退出按钮：全屏时工具栏被 chart 盖住，此处为唯一出口 -->
-      <button
-        v-if="isFullscreen"
-        class="btn exit-fullscreen"
-        @click="toggleFullscreen"
-      >
-        退出全屏
-      </button>
     </div>
 
     <!-- 底部容器：主图指标（MA / EXPMA / BOLL / SAR / BBI，互斥开关，画在 pane1）。
@@ -396,32 +395,13 @@ body,
 }
 
 /* 图表容器：宽度 80%、高度占满剩余空间（顶部信息行 + 工具栏 + 底部指标容器之外）居中。
-   背景与图表底色一致（库的 separator / 时间轴裁切处会露出此背景）。 */
+   背景与图表底色一致（库的 separator / 时间轴裁切处会露出此背景）。
+   全屏（v1.7.1）由 KLineChart 组件内部处理（props.fullscreen → fixed 铺满视口） */
 .chart-wrap {
-  position: relative; /* 全屏退出按钮绝对定位锚点 */
   flex: 1;
   width: 80%;
   min-height: 400px;
   box-sizing: border-box;
   background: v-bind('themeColors(theme).background');
-}
-
-/* 全屏态（v1.7.1）：fixed 铺满浏览器视口，盖住页面其他区域；
-   background 跟随主题（与图表底色一致，无白边） */
-.chart-wrap.fullscreen {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  z-index: 9999;
-}
-
-/* 全屏退出按钮（chart-wrap 内部右上角，z-index 高于图表绘制层） */
-.exit-fullscreen {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 10000;
 }
 </style>
