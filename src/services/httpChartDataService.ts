@@ -58,15 +58,15 @@ export interface HttpChartDataServiceOptions {
    * 附加请求头（外部参数）：注入到**所有 HTTP 请求**（history / latest 轮询）的 fetch 头中，
    * 与默认的 Accept 合并（同名以这里的值为准）。示例：
    *   headers: { Authorization: 'Bearer <token>', 'X-App-Version': '1.0.0' }
- * v1.6.31：SSE 基于 @microsoft/fetch-event-source（fetch 流），**可注入自定义头**；
- * WebSocket 仍受浏览器限制无法自定义请求头，鉴权依赖自定义头时请改用 'sse' 或 'poll'。
+   * v1.6.31：SSE 基于 @microsoft/fetch-event-source（fetch 流），**可注入自定义头**；
+   * WebSocket 仍受浏览器限制无法自定义请求头，鉴权依赖自定义头时请改用 'sse' 或 'poll'。
    */
   headers?: Record<string, string>
   /**
    * 附加 Cookie（外部参数）：**对象形式**，例如 { session: 'abc123', theme: 'dark' }，
    * 内部序列化为 `session=abc123; theme=dark` 注入到**所有 HTTP 请求**的 `Cookie` 头。
- * v1.6.31：SSE 基于 fetch 可注入 Cookie 头（与 HTTP 一致）；WebSocket 仍由浏览器
- * 自动携带同源 Cookie，无法注入自定义 Cookie；跨域 WS 请配合后端 CORS credentials 或改用 poll。
+   * v1.6.31：SSE 基于 fetch 可注入 Cookie 头（与 HTTP 一致）；WebSocket 仍由浏览器
+   * 自动携带同源 Cookie，无法注入自定义 Cookie；跨域 WS 请配合后端 CORS credentials 或改用 poll。
    */
   cookies?: Record<string, string>
   /**
@@ -95,6 +95,18 @@ export interface HttpChartDataServiceOptions {
  * 请求层会抛错（错误信息取 msg 字段）；直接返回数组视为成功。
  */
 type BackendResponse = { code?: number; data?: unknown; msg?: string } | unknown[]
+
+/**
+ * 请求超时错误（v1.7.2）：request() 超时中止时抛出。
+ * 将 fetch 的裸 AbortError 语义化为"超时"错误，供上层（KLineChartController）
+ * 识别为**可重试**错误（网络抖动 / 后端慢可自愈），而非意外崩溃。
+ */
+export class RequestTimeoutError extends Error {
+  constructor(timeoutMs: number, url: string) {
+    super(`请求超时（${timeoutMs}ms）：${url}`)
+    this.name = 'RequestTimeoutError'
+  }
+}
 
 /** 单 key 缓存条目 */
 interface CacheEntry {
@@ -205,7 +217,7 @@ export class HttpChartDataService implements ChartDataService {
       } else {
         // —— 更早分页请求：历史数据不可变，只要缓存中已有该区间就命中（不受 TTL 限制）——
         const before = query.before // 局部常量：闭包内可被 TS 正确收窄
-        const older = entry.points.filter((p) => p.time < before)
+        const older = entry.points.filter(p => p.time < before)
         if (older.length) return clonePoints(older.slice(-query.limit))
       }
     }
@@ -248,7 +260,7 @@ export class HttpChartDataService implements ChartDataService {
    *  - 也可直接给 fetchHistory 传 `query.total` 覆盖自动值。
    * 用途示例：判断该标的在该周期下目前有多少条 K 线，用于"是否还有更早历史"提示。
    */
-  getTotal = (symbol: string, period: string): number | undefined  => {
+  getTotal = (symbol: string, period: string): number | undefined => {
     return this.knownTotals.get(`${symbol}|${period}`)
   }
 
@@ -258,7 +270,7 @@ export class HttpChartDataService implements ChartDataService {
    *  - 超过 maxKnownTotals 上限时淘汰最旧（Map 首个）记录。
    * 缓存条目被 LRU 淘汰时**不调用**本方法删除——total 语义"包括缓存淘汰的"。
    */
-  private recordTotal = (key: string, total: number): void  => {
+  private recordTotal = (key: string, total: number): void => {
     this.knownTotals.delete(key)
     this.knownTotals.set(key, total)
     while (this.knownTotals.size > this.opts.maxKnownTotals) {
@@ -288,7 +300,7 @@ export class HttpChartDataService implements ChartDataService {
       this.withParams(this.opts.wsUrl, {
         symbol: symbol,
         period: period,
-      }),
+      })
     )
 
     ws.onmessage = (ev: MessageEvent) => {
@@ -297,12 +309,12 @@ export class HttpChartDataService implements ChartDataService {
         // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）
         const points = Array.isArray(msg) ? msg : msg.data !== undefined ? msg.data : msg
         const list = Array.isArray(points) ? points : points !== undefined ? [points] : []
-        list.forEach((raw) => handler(normalizePoint(raw as Record<string, unknown>)))
+        list.forEach(raw => handler(normalizePoint(raw as Record<string, unknown>)))
       } catch (e) {
         console.error('[HttpChartDataService] 实时消息解析失败：', e)
       }
     }
-    ws.onerror = (e) => {
+    ws.onerror = e => {
       console.error('[HttpChartDataService] WebSocket 连接错误：', e)
     }
 
@@ -340,12 +352,12 @@ export class HttpChartDataService implements ChartDataService {
             symbol,
             period,
           },
-          this.knownTotals.get(key), // 自动计算的已知条数（含缓存淘汰），附加到 latest URL
+          this.knownTotals.get(key) // 自动计算的已知条数（含缓存淘汰），附加到 latest URL
         )
         // 增量过滤（同根刷新也保留）：仅回调 time >= lastTime 的点
-        const fresh = points.filter((p) => p.time >= lastTime)
+        const fresh = points.filter(p => p.time >= lastTime)
         if (fresh.length) lastTime = fresh[fresh.length - 1].time
-        fresh.forEach((p) => handler(p))
+        fresh.forEach(p => handler(p))
         // 同步进历史缓存（不读取缓存，只写入，保持最新快照一致）
         this.mergeIntoCache(symbol, period, points)
         // 自动计算 knownTotals = max(已知, 累计去重后持有条数)（后端不返回 total）
@@ -361,7 +373,9 @@ export class HttpChartDataService implements ChartDataService {
     void tick() // 立即拉一次（不等首个间隔）
     // 包装箭头函数显式忽略 Promise：tick 为 async，直接传 setInterval 触发
     // no-misused-promises（Promise returned in function argument where a void return was expected）
-    const timer = setInterval(() => { void tick() }, this.opts.pollIntervalMs)
+    const timer = setInterval(() => {
+      void tick()
+    }, this.opts.pollIntervalMs)
     return () => {
       stopped = true
       clearInterval(timer)
@@ -382,8 +396,8 @@ export class HttpChartDataService implements ChartDataService {
   private startSSE(symbol: string, period: string, handler: RealtimeHandler): () => void {
     // v1.6.30：sseUrl 必填完整地址；缺省不订阅（warn）
     if (!this.opts.sseUrl) {
-      console.warn('[HttpChartDataService] realtimeTransport=sse 需配置 sseUrl，已跳过订阅');
-      return () => {};
+      console.warn('[HttpChartDataService] realtimeTransport=sse 需配置 sseUrl，已跳过订阅')
+      return () => {}
     }
     const url = this.withParams(this.opts.sseUrl, {
       symbol,
@@ -399,7 +413,7 @@ export class HttpChartDataService implements ChartDataService {
         // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）
         const points = Array.isArray(msg) ? msg : msg.data !== undefined ? msg.data : msg
         const list = Array.isArray(points) ? points : points !== undefined ? [points] : []
-        list.forEach((raw) => handler(normalizePoint(raw as Record<string, unknown>)))
+        list.forEach(raw => handler(normalizePoint(raw as Record<string, unknown>)))
       } catch (e) {
         console.error('[HttpChartDataService] SSE 消息解析失败：', e)
       }
@@ -440,7 +454,7 @@ export class HttpChartDataService implements ChartDataService {
   }
 
   /** 将轮询拉到的最新点合并进历史缓存（无缓存条目则创建） */
-  private mergeIntoCache = (symbol: string, period: string, points: ChartDataPoint[]): void  => {
+  private mergeIntoCache = (symbol: string, period: string, points: ChartDataPoint[]): void => {
     if (!this.opts.cache) return
     const key = `${symbol}|${period}`
     const now = Date.now()
@@ -464,7 +478,7 @@ export class HttpChartDataService implements ChartDataService {
    *  - **同名冲突时核心参数优先**：先写入外部 params、再写入核心参数，
    *    因此外部参数不会覆盖 symbol/period 等核心字段。
    */
-  private withParams = (base: string, query: Record<string, string | number>): string  => {
+  private withParams = (base: string, query: Record<string, string | number>): string => {
     const sp = new URLSearchParams()
     // 外部 params 为空对象时不参与拼接（不产生任何附加查询参数）
     if (this.opts.params && Object.keys(this.opts.params).length > 0) {
@@ -472,14 +486,20 @@ export class HttpChartDataService implements ChartDataService {
     }
     Object.entries(query).forEach(([k, v]) => sp.set(k, String(v)))
     // v1.6.29：base 已带 query（完整自定义地址）时用 & 追加，避免 `?a=1?b=2`
-    const sep = base.includes("?") ? "&" : "?"
+    const sep = base.includes('?') ? '&' : '?'
     return `${base}${sep}${sp.toString()}`
   }
 
   /** fetch + 超时控制（统一注入外部 headers / Cookie） */
   private async request(url: string): Promise<unknown> {
     const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), this.opts.timeoutMs)
+    // 超时标记：timer 触发后置 true。本方法的 AbortController 仅由超时 timer 触发
+    // （无外部 signal 来源），据此区分"超时中止"与"意外 abort"。
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      ctrl.abort()
+    }, this.opts.timeoutMs)
     try {
       // 请求头合并顺序：默认 Accept → 外部附加 headers（同名覆盖）→ 外部附加 Cookie（对象序列化）
       const headers: Record<string, string> = { Accept: 'application/json' }
@@ -499,6 +519,13 @@ export class HttpChartDataService implements ChartDataService {
         throw new Error(`后端业务错误(code=${body.code})：${body.msg ?? '(无错误信息)'}`)
       }
       return body
+    } catch (error) {
+      // v1.7.2：超时中止 → 转语义化 RequestTimeoutError，不再向上泄漏裸 AbortError
+      //（上层据此识别为"超时可重试"；SSE 流式读取等主动 abort 场景不受影响）
+      if (timedOut || (error as { name?: string })?.name === 'AbortError') {
+        throw new RequestTimeoutError(this.opts.timeoutMs, url)
+      }
+      throw error
     } finally {
       clearTimeout(timer)
     }
@@ -515,7 +542,7 @@ export class HttpChartDataService implements ChartDataService {
    */
   private async fetchLatest(
     query: Omit<HistoryQuery, 'limit'> & { limit?: number },
-    knownTotal?: number,
+    knownTotal?: number
   ): Promise<ChartDataPoint[]> {
     const core: Record<string, string> = {
       symbol: query.symbol,
@@ -527,15 +554,15 @@ export class HttpChartDataService implements ChartDataService {
 
     // v1.6.30：pollUrl 必填完整地址；缺省不轮询（warn + 返回空）
     if (!this.opts.pollUrl) {
-      console.warn('[HttpChartDataService] poll 模式需配置 pollUrl，本次返回空');
-      return [];
+      console.warn('[HttpChartDataService] poll 模式需配置 pollUrl，本次返回空')
+      return []
     }
     const url = this.withParams(this.opts.pollUrl, core)
     const res = (await this.request(url)) as BackendResponse
 
     const body = Array.isArray(res) ? res : ((res as { data?: unknown }).data ?? [])
     if (!Array.isArray(body)) throw new Error('后端实时数据格式异常：期望数组')
-    return body.map((raw) => normalizePoint(raw as Record<string, unknown>))
+    return body.map(raw => normalizePoint(raw as Record<string, unknown>))
   }
 
   /**
@@ -561,13 +588,13 @@ export class HttpChartDataService implements ChartDataService {
 
     const body = Array.isArray(res) ? res : ((res as { data?: unknown }).data ?? [])
     if (!Array.isArray(body)) throw new Error('后端历史数据格式异常：期望数组')
-    return body.map((raw) => normalizePoint(raw as Record<string, unknown>))
+    return body.map(raw => normalizePoint(raw as Record<string, unknown>))
   }
 
   /** LRU 淘汰：超出 maxCacheEntries 时移除最近未使用（lastUsed 最小）的条目。
    *  **注意**：不删除 knownTotals 记录——total 语义为"包括已被缓存淘汰的数据"，
    *  该记录由 recordTotal 独立 LRU（maxKnownTotals）管理。 */
-  private evict = (): void  => {
+  private evict = (): void => {
     if (this.cache.size <= this.opts.maxCacheEntries) return
     let oldestKey: string | null = null
     let oldest = Infinity
@@ -599,7 +626,7 @@ const serializeCookies = (cookies: Record<string, string>): string =>
 
 /** 独立副本（新数组 + 新元素对象），防止调用方修改污染缓存 */
 const clonePoints = (list: ChartDataPoint[]): ChartDataPoint[] => {
-  return list.map((p) => ({ ...p }))
+  return list.map(p => ({ ...p }))
 }
 
 /**
