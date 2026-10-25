@@ -69,6 +69,8 @@ export interface SubIndicatorPaneManagerDeps {
   getTheme: () => ChartThemeName
   /** 十字星当前时间（null = 未命中 → 显示最新 bar；CrosshairManager 提供） */
   getOverlayTime: () => number | null
+  /** 十字星竖线实时 x（数据区坐标，v1.7.1；Controller 提供，pane4/5 cap 竖线共用） */
+  getCrosshairX: () => number | null
   /** 十字星指示值注册表（CrosshairManager；pane5 的注册 / 移除走这里） */
   crosshairRegistry: CrosshairPrimitiveRegistry
   /** 当前周期是否为分时（v1.7.0）：MACD 红绿柱改库直方图 / 附图指标无 CR /
@@ -106,6 +108,8 @@ export class SubIndicatorPaneManager {
   private readonly getBars: SubIndicatorPaneManagerDeps['getBars']
   private readonly getTheme: SubIndicatorPaneManagerDeps['getTheme']
   private readonly getOverlayTime: SubIndicatorPaneManagerDeps['getOverlayTime']
+  /** 十字星竖线实时 x（pane4/5 cap 竖线共用，v1.7.1） */
+  private readonly getCrosshairX: SubIndicatorPaneManagerDeps['getCrosshairX']
   private readonly crosshairRegistry: CrosshairPrimitiveRegistry
   /** 当前周期是否为分时（v1.7.0，deps 注入） */
   private readonly getIsTimeshare: SubIndicatorPaneManagerDeps['getIsTimeshare']
@@ -151,6 +155,7 @@ export class SubIndicatorPaneManager {
     this.getBars = deps.getBars
     this.getTheme = deps.getTheme
     this.getOverlayTime = deps.getOverlayTime
+    this.getCrosshairX = deps.getCrosshairX
     this.crosshairRegistry = deps.crosshairRegistry
     this.getIsTimeshare = deps.getIsTimeshare
     this.getVerticalCount = deps.getVerticalCount
@@ -349,6 +354,7 @@ export class SubIndicatorPaneManager {
   private createCrosshairLineCap = (): CrosshairLineCapPrimitive =>
     new CrosshairLineCapPrimitive({
       getOverlayTime: this.getOverlayTime,
+      getCrosshairX: () => this.getCrosshairX(),
       getTimeScale: () => this.chart.timeScale(),
       getLineColor: () => themeColors(this.getTheme()).crosshairLineColor,
     })

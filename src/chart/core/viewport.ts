@@ -108,9 +108,31 @@ export const refreshKlineColors = (
   series.setData(points)
 }
 
+/**
+ * 键盘十字星目标索引（v1.7.1）：方向键移动十字星的目标 bar 下标。
+ *  - 基准：十字星当前命中的 bar（overlayTime 反查；鼠标 / 上次键盘位置均同步于此）；
+ *    未激活（overlayTime = null）时从最后 bar 起算（首次按键即定位到最后 bar 附近）；
+ *  - 目标：base + delta，clamp 到 [0, bars.length - 1]；
+ *  - 纯函数（无 chart / 状态依赖），可单测。
+ *  @returns 目标下标；bars 为空返回 null（调用方直接跳过）。
+ */
+export const computeCrosshairTargetIndex = (
+  bars: ChartDataPoint[],
+  overlayTime: number | null,
+  delta: -1 | 1,
+): number | null => {
+  if (bars.length === 0) return null
+  const lastIndex = bars.length - 1
+  let base = lastIndex
+  if (overlayTime !== null) {
+    const index = bars.findIndex((bar) => normalizeChartTime(bar.time) === overlayTime)
+    if (index >= 0) base = index
+  }
+  return Math.max(0, Math.min(lastIndex, base + delta))
+}
+
 /** 调试对象访问器（controller 注入；getter 惰性读取 → 数据 / 周期实时变化生效） */
-export interface DebugApiAccessors {
-  /** 静态字段（构造时固定） */
+export interface DebugApiAccessors {  /** 静态字段（构造时固定） */
   symbol: string
   name: string
   period: PeriodValueOrEmpty
@@ -125,6 +147,17 @@ export interface DebugApiAccessors {
   /** 视口探针（v1.7.1 调试）：逻辑范围 / 时间范围（null = 尚未布局） */
   getVisibleLogicalRange: () => { from: number; to: number } | null
   getVisibleRange: () => import('lightweight-charts').IRange<import('lightweight-charts').Time> | null
+  /** 十字星当前命中 bar 时间探针（v1.7.1 调试）：拖拽 / 键盘移动时 overlayTime 是否实时跟随 */
+  getOverlayTime: () => number | null
+  /** 拖拽"两条竖线"探针（v1.7.1）：cap 竖线 x 数据源实时值
+   *  - lastMouseX：window mousemove 记录的容器相对 x（null = 无记录）
+   *  - capX：getCrosshairX 最终返回值（cap 竖线绘制 x，null = 回退 overlayTime）
+   *  - leftScaleWidth：左刻度区宽（cap 坐标换算基准） */
+  getLastMouseX: () => number | null
+  getKeyboardX: () => number | null
+  getKeyboardRecent: () => boolean
+  getCapX: () => number | null
+  getLeftScaleWidth: () => number
 }
 
 /** 调试数据暴露（仅开发用）：挂 window.__klineChart，控制台实时查看
@@ -160,6 +193,14 @@ export const exposeDebugApi = (accessors: DebugApiAccessors): void => {
   // 视口探针（v1.7.1 调试）：getVisibleLogicalRange / getVisibleRange（null = 尚未布局）
   define('logicalRange', () => accessors.getVisibleLogicalRange())
   define('visibleRange', () => accessors.getVisibleRange())
+  // 十字星命中 time 探针（v1.7.1 调试）：拖拽 / 键盘移动时实时查看 overlayTime 是否跟随
+  define('overlayTime', () => accessors.getOverlayTime())
+  // 拖拽"两条竖线"探针（v1.7.1）：cap 竖线 x 数据源实时值
+  define('lastMouseX', () => accessors.getLastMouseX())
+  define('keyboardX', () => accessors.getKeyboardX())
+  define('keyboardRecent', () => accessors.getKeyboardRecent())
+  define('capX', () => accessors.getCapX())
+  define('leftScaleWidth', () => accessors.getLeftScaleWidth())
   // 遍历全部 bar 返回最高 / 最低价（price / avgPrice 极值）
   debug.getMaxMin = (): { maxPrice: number; minPrice: number } => {
     let maxPrice = Number.NEGATIVE_INFINITY

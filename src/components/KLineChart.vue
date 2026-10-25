@@ -117,9 +117,26 @@ const debouncedInit = debounce(() => {
 
 /** ESC 退出全屏（v1.7.1）：仅 props.fullscreen 为 true 时响应；
  *  经 fullscreen-change 回传父组件关闭（受控 prop 同步，与退出按钮一致） */
+/** 键盘全局按键（v1.7.1）：ESC 退出全屏 + 左右方向键移动十字星（每次 1 根 bar） */
 const handleKeydown = (event: KeyboardEvent): void => {
   if (event.key === "Escape" && props.fullscreen) {
     emit("fullscreen-change", false);
+  }
+  // 左右方向键 → 十字星移动（v1.7.1）：不劫持输入控件内的方向键（组件无输入框，
+  // 防御外部监听共用同一 window 事件时的误劫持）
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+    // 阻止页面默认滚动（方向键在非聚焦区域会滚动页面 / 切换焦点）
+    event.preventDefault();
+    controller.value?.moveCrosshairBy(event.key === "ArrowLeft" ? -1 : 1);
   }
 };
 

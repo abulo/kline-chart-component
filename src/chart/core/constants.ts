@@ -13,8 +13,8 @@
  */
 export const LIBRARY_TIME_AXIS_HEIGHT = 28
 
-/** 左移 / 右移每次平移的 K 线条数（v1.7.1，固定 30 条） */
-export const VIEW_SHIFT_STEP = 30
+/** 左移 / 右移每次平移的 K 线条数（v1.7.1：60 条，左右对称；用户反馈左移步长加大） */
+export const VIEW_SHIFT_STEP = 60
 
 /** K 线状态初始可视 K 线条数（v1.7.1：加载后视口仅展示最近 120 根，右边缘对齐；
  *  分时周期为整日全量展示，不使用本常量） */

@@ -24,6 +24,15 @@ import { CrosshairLineCapPaneView } from './crosshairLineCapPaneView'
 export interface CrosshairLineCapDataSource {
   /** 十字星当前命中时间（null = 未命中 → 不绘制；CrosshairManager 提供） */
   getOverlayTime: () => number | null
+  /**
+   * 十字星竖线实时 x（数据区坐标，v1.7.1）：优先于 timeToCoordinate(overlayTime)。
+   *  - 鼠标 hover / 拖拽平移：鼠标 x 实时反查（coordinateToTime → timeToCoordinate），
+   *    消除 crosshairMove 事件 rAF 节流 / pan 手势空窗导致的 cap 竖线滞后
+   *    （"两条竖线"：cap 画上一帧 overlayTime 的 bar，与库竖线错开）；
+   *  - 键盘定位：moveCrosshairBy 注入的目标 x（时间戳优先于鼠标）。
+   * 返回 null 时回退 timeToCoordinate(overlayTime)（鼠标离开图表 / tooltip 悬停等场景）。
+   */
+  getCrosshairX: () => number | null
   /** x 坐标转换 timeScale（chart.timeScale()） */
   getTimeScale: () => ITimeScaleApi<Time>
   /** 竖线颜色（theme.crosshairLineColor，深浅系区分；主题切换动态取） */

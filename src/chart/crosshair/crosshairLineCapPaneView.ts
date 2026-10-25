@@ -43,9 +43,15 @@ export class CrosshairLineCapPaneView implements IPrimitivePaneView {
     return {
       draw: (target) => {
         target.useMediaCoordinateSpace(({ context, mediaSize }) => {
-          const time = this.source.getOverlayTime()
-          if (time === null) return
-          const x = this.source.getTimeScale().timeToCoordinate(time as Time)
+          // v1.7.1：优先使用十字星竖线实时 x（鼠标实时反查 / 键盘定位缓存）——
+          // 消除拖拽平移时 crosshairMove 事件空窗导致的 cap 竖线滞后（"两条竖线"）；
+          // null 时回退 overlayTime 反查（鼠标离开图表 / tooltip 悬停等场景）
+          let x = this.source.getCrosshairX()
+          if (x === null) {
+            const time = this.source.getOverlayTime()
+            if (time === null) return
+            x = this.source.getTimeScale().timeToCoordinate(time as Time)
+          }
           if (x === null) return
 
           // 物理 / CSS 换算：devicePixelRatio（亚像素线宽 = FINE_LINE_WIDTH_CSS × dpr 物理 px）

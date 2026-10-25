@@ -80,6 +80,21 @@
     已复用（每帧至多一次 DOM 更新）、命中取数走 time→bar 索引 O(1)（实时增量维护）；
   - 定位算法抽为纯函数 resolveTooltipPosition（单测覆盖：角落定位 / 拖动固定 / 越界 clamp）；
 - **十字星不贯穿 pane0**：pane0 内不触发十字星（controller 清除），pane0 顶层遮罩（`TopPaneOverlayPrimitive`，zOrder 'top'）以背景色覆盖竖线；
+- **键盘方向键移动十字星（v1.7.1）**：K 线模式（分时 1d~5d 同样支持）下，**左右方向键每按一次移动 1 根 bar**——
+  基准取十字星当前命中的 bar（`overlayTime` 反查，鼠标 / 键盘位置天然同步），未激活（overlayTime null）时从最后 bar 起算；
+  目标索引委托纯函数 `viewport.computeCrosshairTargetIndex`（clamp 到 `[0, lastIndex]`，可单测）；
+  定位用 `chart.setCrosshairPosition(价格, time, 主 series)`——库自动重绘竖线 / 横线 / 轴标签，
+  并触发 crosshairMove 事件 → CrosshairManager 联动 tooltip / pane0 信息行 / 左刻度指示值（与鼠标命中同一条链路）；
+  K 线 price 取 `bar.close`，分时取 `bar.price`；组件 keydown 监听（KLineChart.vue）在输入控件内不劫持，且 `preventDefault` 阻止页面滚动；
+  **修复"两条竖线"（v1.7.1）**：`setCrosshairPosition` 触发的 crosshairMove 事件经 rAF 节流**下一帧**才更新 `overlayTime`——
+  同帧内 `CrosshairLineCapPrimitive` 竖线仍以旧 `overlayTime` 绘制，与库竖线（已到键盘目标）错位成两条竖线；
+  控制器在 `setCrosshairPosition` 后同步调用 `CrosshairManager.setOverlayTimeByKeyboard(time)` 立即对齐（cap 竖线与库竖线同帧重叠，随后的 rAF 事件写入相同值无副作用）；
+  **同步修复"tooltip 更新延迟"（v1.7.1）**：数据浮层同样经 rAF 事件链路（下一帧才 `tooltip.show` 新 bar），键盘连发时持续滞后——
+  控制器改为同步调用 `CrosshairManager.syncKeyboardMove(bar, time, pane1LocalY)` 全链路对齐（overlayTime + tooltip 数据 + 左刻度指示值，指示值仅注入 pane1：键盘横线在主 series 的 close/price 价）；
+  **修复"拖拽平移两条竖线"（v1.7.1）**：拖拽时库进入 pan 手势，crosshairMove 事件稀疏 / 暂停 → overlayTime 滞后于鼠标 → cap 竖线与库竖线错开（慢速拖拽差 1 根 bar）。修复：`CrosshairManager` 监听 `window.mousemove`（passive，仅记录坐标），cap 竖线 x 改为**鼠标实时反查**（`getCrosshairX`：鼠标 x 扣左刻度宽 → 数据区精确 x，键盘定位用时间戳优先 + `setKeyboardX` 注入目标 x；鼠标离开图表 / 浮层悬停回退 overlayTime）；实测拖拽中 cap 与库竖线同帧重叠；
+  **"两条竖线"二次修复（v1.7.1 实测定位）**：
+  1. **拖拽路径穿过 tooltip 浮层**（`tooltip.isHovered=true`）时，cap 走"浮层悬停回退 overlayTime"冻结在旧 bar，与库竖线错开——新增 `CrosshairManager` 拖拽状态（window mousedown/mouseup 跟踪 `isDragging`），按住时忽略浮层回退，cap 始终用鼠标实时 x；
+  2. **cap 竖线吸附 bar 中心**（`coordinateToTime→timeToCoordinate` round trip）而库竖线（`CrosshairMode.Normal`）精确跟随鼠标，两者差半个 bar（≈barSpacing/2）——cap 鼠标路径改为直接返回数据区精确 x，与库竖线完全同坐标（拖拽中像素实测两线重叠，峰值亮度翻倍为一条）；
 - **十字星细虚线**（`CrosshairLineCapPrimitive` + `CrosshairLineCapPaneView`，v1.4.101）：竖线在 top 层重绘为 0.75 CSS px 亚像素细虚线（虚线周期 [1,1] 物理 px（最密）），底部补齐实线保证"到底"；横竖线颜色 `crosshairLineColor` 透明度 0.25（深浅系区分，theme.ts），视觉更细更淡；库横竖线本体仍保留（时间轴时间 label 依赖库绘制）；
 - **指标叠加绘图在十字星之上**（`IndicatorLinePrimitive`，zOrder 'top' top canvas 自绘）：主图指标线（MA / EXPMA / BOLL / BBI）与成交量均量线（VOL MA5 / MA10）自绘折线，绘制在十字星之上 —— 十字星横线穿过时指标线完整可见（库十字星画在 top canvas 的 series 之上，LineSeries 必被横线压住，故改自绘）；坐标 = timeScale.timeToCoordinate × anchorSeries.priceToCoordinate，按可视时间范围裁剪，坐标缺失断开路径；
 - **内容 Pane 边框**（`PaneBorderPrimitive`）：pane1 / pane3 / pane5 自绘 1px 直角矩形边框，颜色随主题；bitmap 物理像素绘制（缩放时始终贴住画布最右边缘，无亚像素缝隙）；
