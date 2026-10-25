@@ -117,7 +117,37 @@ const debouncedInit = debounce(() => {
 
 /** ESC 退出全屏（v1.7.1）：仅 props.fullscreen 为 true 时响应；
  *  经 fullscreen-change 回传父组件关闭（受控 prop 同步，与退出按钮一致） */
-/** 键盘全局按键（v1.7.1）：ESC 退出全屏 + 左右方向键移动十字星（每次 1 根 bar） */
+/** 方向键按住自动重复节拍（ms/根，v1.7.1）：
+ *  浏览器 keydown 原生重复有 ~500ms 初始延迟且受系统重复速率限制（移动偏慢），
+ *  改为自定义节拍：首次按下立即移动 1 根，随后每 KEYBOARD_REPEAT_MS 移动 1 根
+ *  （keyup / 窗口失焦 / 组件卸载停止；可按需调快 / 调慢） */
+const KEYBOARD_REPEAT_MS = 160;
+
+/** 方向键按住加速定时器句柄（null = 未按住） */
+let keyRepeatTimer: ReturnType<typeof setInterval> | null = null;
+/** 当前按住方向（interval 节拍回调使用；keydown 切换方向时更新） */
+let keyRepeatDirection: -1 | 1 | null = null;
+
+/** 启动方向键按住节拍（首次 keydown 已移动一次，这里负责后续连续移动） */
+const startKeyRepeat = (direction: -1 | 1): void => {
+  stopKeyRepeat();
+  keyRepeatDirection = direction;
+  keyRepeatTimer = setInterval(() => {
+    controller.value?.moveCrosshairBy(keyRepeatDirection ?? 1);
+  }, KEYBOARD_REPEAT_MS);
+};
+
+/** 停止方向键按住节拍（keyup / window blur / 卸载，防泄漏与残留移动） */
+const stopKeyRepeat = (): void => {
+  if (keyRepeatTimer !== null) {
+    clearInterval(keyRepeatTimer);
+    keyRepeatTimer = null;
+  }
+  keyRepeatDirection = null;
+};
+
+/** 键盘全局按键（v1.7.1）：ESC 退出全屏 + 左右方向键移动十字星（每次 1 根 bar；
+ *  按住自动加速 = 自定义节拍，见 KEYBOARD_REPEAT_MS） */
 const handleKeydown = (event: KeyboardEvent): void => {
   if (event.key === "Escape" && props.fullscreen) {
     emit("fullscreen-change", false);
@@ -136,7 +166,20 @@ const handleKeydown = (event: KeyboardEvent): void => {
     }
     // 阻止页面默认滚动（方向键在非聚焦区域会滚动页面 / 切换焦点）
     event.preventDefault();
-    controller.value?.moveCrosshairBy(event.key === "ArrowLeft" ? -1 : 1);
+    // 浏览器自动重复（按住不放触发的 repeat keydown）→ 忽略：
+    // 自定义节拍 interval 已在持续移动，避免双重加速
+    if (event.repeat) return;
+    const direction = event.key === "ArrowLeft" ? -1 : 1;
+    controller.value?.moveCrosshairBy(direction);
+    // 按住加速：首次移动后启动节拍（后续 keydown 重复事件不再进入本分支）
+    startKeyRepeat(direction);
+  }
+};
+
+/** 方向键松开：停止按住节拍 */
+const handleKeyup = (event: KeyboardEvent): void => {
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    stopKeyRepeat();
   }
 };
 
@@ -189,13 +232,20 @@ onMounted(() => {
   // ESC 退出全屏（v1.7.1）：挂 window（chart 任意区域/焦点均生效），
   // 仅全屏态触发；onBeforeUnmount 移除（防泄漏）
   window.addEventListener("keydown", handleKeydown);
+  // 方向键按住加速（v1.7.1）：keyup 停止节拍；window blur 停止（按住不放切出窗口
+  // 时防止后台持续移动）
+  window.addEventListener("keyup", handleKeyup);
+  window.addEventListener("blur", stopKeyRepeat);
 });
 
 onBeforeUnmount(() => {
   // 取消挂起的防抖 init（快速切换后立即卸载 → 不再发过期请求）
   debouncedInit.cancel();
-  // 移除 ESC 监听（与 onMounted 配对，防泄漏）
+  // 移除 ESC / 方向键监听（与 onMounted 配对，防泄漏）+ 停止按住节拍
   window.removeEventListener("keydown", handleKeydown);
+  window.removeEventListener("keyup", handleKeyup);
+  window.removeEventListener("blur", stopKeyRepeat);
+  stopKeyRepeat();
   // destroy 内部已退订实时推送（v1.6.17）
   controller.value?.destroy();
   controller.value = null;

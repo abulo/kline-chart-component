@@ -89,7 +89,9 @@
   **修复"两条竖线"（v1.7.1）**：`setCrosshairPosition` 触发的 crosshairMove 事件经 rAF 节流**下一帧**才更新 `overlayTime`——
   同帧内 `CrosshairLineCapPrimitive` 竖线仍以旧 `overlayTime` 绘制，与库竖线（已到键盘目标）错位成两条竖线；
   控制器在 `setCrosshairPosition` 后同步调用 `CrosshairManager.setOverlayTimeByKeyboard(time)` 立即对齐（cap 竖线与库竖线同帧重叠，随后的 rAF 事件写入相同值无副作用）；
-  **同步修复"tooltip 更新延迟"（v1.7.1）**：数据浮层同样经 rAF 事件链路（下一帧才 `tooltip.show` 新 bar），键盘连发时持续滞后——
+      **方向键按住自动加速（v1.7.1）**：浏览器 keydown 原生重复有 ~500ms 初始延迟且受系统重复速率限制——改为自定义节拍（`KEYBOARD_REPEAT_MS=40`，KLineChart.vue）：首次按下立即移动 1 根、随后每 40ms 移动 1 根（25 根/秒），`event.repeat` 重复事件忽略防双重加速；keyup / window blur / 组件卸载停止（防泄漏）；实测按住左 500ms 移动约 19 根（日K 含周末按自然日计数）；
+**键盘十字星视口跟随（v1.7.1）**：方向键移动到可视区最后一个数据（左 / 右）再按键时，目标 bar 已超出可视区——`getCrosshairScrollOffset`（纯函数）计算滚动量，视口平移让目标进入视野（边缘场景恰好平移 1 个 bar；距可视区较远时一次滚动到位，如未激活直接按键时十字星立即可见）；实测：可视区 [280,399] 内 hover 左缘 bar 280 → 按左 → 视口 [279,398]、十字星命中 279；
+**同步修复"tooltip 更新延迟"（v1.7.1）**：数据浮层同样经 rAF 事件链路（下一帧才 `tooltip.show` 新 bar），键盘连发时持续滞后——
   控制器改为同步调用 `CrosshairManager.syncKeyboardMove(bar, time, pane1LocalY)` 全链路对齐（overlayTime + tooltip 数据 + 左刻度指示值，指示值仅注入 pane1：键盘横线在主 series 的 close/price 价）；
   **"两条竖线"最终方案：删除自绘 cap 竖线（v1.7.1）**：多次对齐修复（window mousemove 鼠标反查 / 拖拽状态忽略浮层回退 / 精确数据区 x）后仍有边界场景错位（拖拽路径穿 tooltip 浮层、bar 中心吸附 vs 库精确跟随）——直接**删除自绘细竖线**（`CrosshairLineCapPrimitive` / `CrosshairLineCapPaneView`，pane1~5 五处挂载全部移除），**只保留库竖线**（`CrosshairMode.Normal` 精确跟随鼠标，键盘移动由 `setCrosshairPosition` 驱动）。同步清理：`CrosshairManager` 的 window mousemove / mousedown / mouseup 跟踪与键盘 x 注入、controller `getCrosshairX`、IndicatorManager / SubIndicatorPaneManager 透传、调试探针（capX / lastMouseX / keyboardX 等）。键盘十字星导航保留（`syncKeyboardMove` 对齐 overlayTime / tooltip / 左刻度指示值），实测 hover / 键盘 / 拖拽均为**单条竖线**；
 - **十字星细虚线**（`CrosshairLineCapPrimitive` + `CrosshairLineCapPaneView`，v1.4.101）：竖线在 top 层重绘为 0.75 CSS px 亚像素细虚线（虚线周期 [1,1] 物理 px（最密）），底部补齐实线保证"到底"；横竖线颜色 `crosshairLineColor` 透明度 0.25（深浅系区分，theme.ts），视觉更细更淡；库横竖线本体仍保留（时间轴时间 label 依赖库绘制）；

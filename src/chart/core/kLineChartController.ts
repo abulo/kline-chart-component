@@ -80,6 +80,7 @@ import {
   refreshKlineColors as viewportRefreshKlineColors,
   exposeDebugApi as viewportExposeDebugApi,
   computeCrosshairTargetIndex,
+  getCrosshairScrollOffset,
 } from './viewport'
 import { normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock } from '../util/format'
 import { type PeriodValueOrEmpty } from '../periods'
@@ -1110,6 +1111,7 @@ export class KLineChartController {
    *  - 基准：十字星当前命中的 bar（overlayTime 反查，鼠标 / 上次键盘位置天然同步）；
    *    未激活（overlayTime = null）时从最后 bar 起算（首次按键定位到最后 bar 附近）；
    *  - 目标：委托 viewport.computeCrosshairTargetIndex（纯函数，clamp 到数据范围）；
+   *  - 视口跟随：目标超出可视区（边缘继续按键）→ 视口平移让目标可见（getCrosshairScrollOffset，边缘=1 根）；
    *  - 定位：chart.setCrosshairPosition(价格, time, 主 series)——库自动重绘竖线 / 横线 /
    *    轴标签，并触发 crosshairMove 事件 → CrosshairManager 联动 overlayTime / tooltip /
    *    左刻度指示值（与鼠标命中同一条链路，无重复逻辑）；
@@ -1128,6 +1130,17 @@ export class KLineChartController {
       delta,
     )
     if (target === null) return
+    // 视口跟随（v1.7.1）：十字星到达可视区最后一个数据（左 / 右）继续按键时，
+    // 目标 bar 超出可视区 —— 视口平移让目标进入视野（边缘场景 = 平移 1 个 bar，
+    // 距可视区较远时一次滚动到位）。getVisibleLogicalRange 未布局（null）时跳过。
+    const visible = this.chart.timeScale().getVisibleLogicalRange()
+    const scrollOffset = getCrosshairScrollOffset(target, visible)
+    if (scrollOffset !== 0 && visible !== null) {
+      this.chart.timeScale().setVisibleLogicalRange({
+        from: visible.from + scrollOffset,
+        to: visible.to + scrollOffset,
+      })
+    }
     const bar = this.bars[target]
     const time = normalizeChartTime(bar.time)
     if (time === null) return

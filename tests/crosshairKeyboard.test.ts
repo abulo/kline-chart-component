@@ -9,7 +9,7 @@
  *  - overlayTime 无对应 bar（数据已变 / 时间偏移）：回退最后 bar 起算。
  */
 import { describe, expect, it } from 'vitest'
-import { computeCrosshairTargetIndex } from '../src/chart/core/viewport'
+import { computeCrosshairTargetIndex, getCrosshairScrollOffset } from '../src/chart/core/viewport'
 import type { ChartDataPoint } from '../src/types/chart'
 
 /** 构造最小 K 线点（time 秒级整数；仅用 time 字段即可测索引计算） */
@@ -73,3 +73,43 @@ describe('computeCrosshairTargetIndex（键盘十字星移动目标）', () => {
     expect(computeCrosshairTargetIndex(single, 1, 1)).toBe(0)
   })
 })
+
+describe('getCrosshairScrollOffset（键盘十字星视口跟随）', () => {
+  // 可视区 logical [280, 399.5]：可见 bar 280~399（400 根数据，最后 120 根）
+  const visible = { from: 280, to: 399.5 }
+
+  it('目标在可视区内 → 不滚动（offset 0）', () => {
+    expect(getCrosshairScrollOffset(300, visible)).toBe(0)
+    expect(getCrosshairScrollOffset(280, visible)).toBe(0)
+    expect(getCrosshairScrollOffset(399, visible)).toBe(0)
+  })
+
+  it('边缘再按右（target 400 > floor(to)=399）→ 向右滚 1 个 bar', () => {
+    // 十字星在最后可见 bar 399 再按右 → 目标 400 超出可视区 1 根 → 滚 1
+    expect(getCrosshairScrollOffset(400, visible)).toBe(1)
+  })
+
+  it('边缘再按左（target 279 < ceil(from)=280）→ 向左滚 1 个 bar', () => {
+    expect(getCrosshairScrollOffset(279, visible)).toBe(-1)
+  })
+
+  it('远距离超界 → 一次滚动到位（未激活直接按键：base=最后 bar 远离可视区）', () => {
+    // 可视区 [280,399]，十字星在 400 根数据的最后 bar（index 399 已在区内）——
+    // 模拟更早视口 [100,219]，target=399 距右界 180 根 → 一次滚 180（右移为正）
+    expect(getCrosshairScrollOffset(399, { from: 100, to: 219 })).toBe(180)
+    // 左超界同样：target=100 距左界 80 根 → 一次滚 -80
+    expect(getCrosshairScrollOffset(100, { from: 180, to: 299 })).toBe(-80)
+  })
+
+  it('可视范围未布局（null）→ 不滚动（0）', () => {
+    expect(getCrosshairScrollOffset(400, null)).toBe(0)
+  })
+
+  it('浮点边界：to=400.0 时 target=400 仍在可视区内（不滚动）', () => {
+    // 可视右界恰好是整数 400 → floor(400)=400 → 400 可见
+    expect(getCrosshairScrollOffset(400, { from: 280, to: 400 })).toBe(0)
+    // 再按右目标 401 → 滚 1
+    expect(getCrosshairScrollOffset(401, { from: 280, to: 400 })).toBe(1)
+  })
+})
+

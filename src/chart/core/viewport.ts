@@ -131,6 +131,28 @@ export const computeCrosshairTargetIndex = (
   return Math.max(0, Math.min(lastIndex, base + delta))
 }
 
+/**
+ * 键盘十字星视口滚动量（v1.7.1）：目标 bar 索引超出当前可视 logical 范围时
+ * 返回需要平移的 bar 数（右移为正 / 左移为负；0 = 不滚动）。
+ *  - 十字星在可视区边缘（最后一个可见 bar）再按键：target 超界 1 根 → 滚动 1 根，
+ *    视口平移一个 bar、目标进入视野（用户语义）；
+ *  - 目标距可视区较远（如未激活时直接按键，base = 最后 bar）：一次滚动到目标可见，
+ *    避免十字星长期停在被滚出视野的 bar 上（每按一次按键只发生一次）。
+ *  - 可视范围未布局（null）→ 0（不滚动）。
+ * 纯函数，不触碰 chart 实例（可单测）。
+ */
+export const getCrosshairScrollOffset = (
+  targetIndex: number,
+  visibleRange: { from: number; to: number } | null,
+): number => {
+  if (visibleRange === null) return 0
+  const firstVisible = Math.ceil(visibleRange.from)
+  const lastVisible = Math.floor(visibleRange.to)
+  if (targetIndex > lastVisible) return targetIndex - lastVisible
+  if (targetIndex < firstVisible) return targetIndex - firstVisible
+  return 0
+}
+
 /** 调试对象访问器（controller 注入；getter 惰性读取 → 数据 / 周期实时变化生效） */
 export interface DebugApiAccessors {  /** 静态字段（构造时固定） */
   symbol: string
