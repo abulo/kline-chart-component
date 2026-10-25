@@ -129,13 +129,15 @@ src/
 ├── chart/                     # 按功能分组的图表源码
 │   ├── periods.ts            # 周期配置（PERIODS 13 项：分时 1~5 日 + 日/周/月 K + 60~1 分 K；periodMap O(1) 查询 + getPeriodLabel，v1.4.94）
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / mock / 蜡烛宽度
-│   │   ├── KLineChartController.ts # 控制器（v1.7.1 拆分版，<1000 行）：数据 / 生命周期 / 对外 API，Pane 构建与分时计算等职责委托给下方模块
+│   │   ├── KLineChartController.ts # 控制器（v1.7.2 拆分版，<1000 行）：数据 / 生命周期 / 对外 API，Pane 构建与分时计算等职责委托给下方模块
 │   │   ├── indicatorManager.ts # 指标管理器（主图五指标 + 成交量均量线 + pane0/pane2 信息行；setMainIndicator / setSubIndicator 转发附图指标层）
 │   │   ├── subIndicatorPaneManager.ts # 附图指标 Pane 管理器（pane4 指标信息行 + pane5 指标图：创建/销毁/数据/信息行/主题；v1.4.89 拆分）
 │   │   ├── crosshairManager.ts # 十字星管理器（十字星移动联动 + overlayTime + 左刻度指示值注册表）
 │   │   ├── timeshareManager.ts # 分时计算管理器（v1.7.1 拆分：isTimeshare / preClose / 对称半幅 / 等差刻度 / 三态着色 / 固定价格范围）
 │   │   ├── paneFactory.ts      # Pane 构建工厂（v1.7.1 拆分：pane0~pane3 全部 series / primitive 创建装配）
 │   │   ├── paneLayout.ts       # Pane 高度分配工具（v1.7.1 拆分：固定空 Pane 等高等分 + 组比例；paneTop 累加定位）
+│   │   ├── chartDataBridge.ts   # 数据 IO 桥（v1.7.2 拆分：历史首载 / 更早翻页 / 实时订阅生命周期 / 加载状态，竞态守卫与退订清理集中于此）
+│   │   ├── realtimePipeline.ts  # 实时增量管线（v1.7.2 拆分：节流入队 → 批量消费 → series/bars/barIndex 增量更新 → 指标重建 + priceLine 视口跟随）
 │   │   ├── viewport.ts         # 视口 / 刻度 / 配色工具（v1.7.1 拆分：缩放平移 / 刻度区显隐 / K 线换色 / 调试对象）
 │   │   ├── constants.ts        # 共享常量（LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH / VIEW_SHIFT_STEP）
 │   │   ├── types.ts            # 核心公共类型（KLineChartOptions / IndicatorLineSpec；主图/附图指标类型见 indicator/types.ts）
@@ -153,9 +155,7 @@ src/
 │   ├── crosshair/             # 十字星左刻度指示值 + 竖线底部补齐 + 数据浮层 tooltip
 │   │   ├── crosshairAxisLabelPrimitive.ts
 │   │   ├── crosshairAxisLabelPaneView.ts
-│   │   ├── crosshairTooltip.ts   # 十字星数据浮层（九项数据跟随鼠标，v1.6.35）
-│   │   ├── crosshairLineCapPrimitive.ts # 竖线底部补齐（填 LargeDashed 最后空白段，v1.4.90）
-│   │   └── crosshairLineCapPaneView.ts
+│   │   └── crosshairTooltip.ts   # 十字星数据浮层（九项数据跟随鼠标，v1.6.35；竖线底部补齐已并入轴线自绘，v1.7.2）
 │   ├── border/                # 内容 Pane 边框自绘
 │   │   ├── paneBorderPrimitive.ts
 │   │   └── paneBorderPaneView.ts

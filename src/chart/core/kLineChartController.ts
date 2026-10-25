@@ -87,13 +87,13 @@ import { type PeriodValueOrEmpty } from '../periods'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import { CrosshairTooltip, type TooltipBounds } from '../crosshair/crosshairTooltip'
 import { IndicatorManager } from './indicatorManager'
+import { ChartDataBridge } from './chartDataBridge'
+import { RealtimePipeline } from './realtimePipeline'
 import { CrosshairManager } from './crosshairManager'
-import { PRICE_SCALE_MIN_WIDTH, VISIBLE_BAR_COUNT, REALTIME_FLUSH_MS } from './constants'
-import { throttle, type Throttled } from '../util/timing'
+import { PRICE_SCALE_MIN_WIDTH, VISIBLE_BAR_COUNT } from './constants'
 import type { KLineChartOptions, ChartLoadStatus } from './types'
 import type { MainIndicatorType } from '../indicator'
 import type { ChartDataService } from '../../services/chartDataService'
-import { RequestTimeoutError } from '../../services/httpChartDataService'
 
 /** 公共类型 re-export（App.vue 等外部使用者继续从本文件导入，保持接口稳定；
  *  主图指标类型已统一迁移至 ../indicator —— 指标公共类型单一来源） */
@@ -139,17 +139,16 @@ export class KLineChartController {
   private service: ChartDataService | undefined
   /** 加载状态回调（可选；init 全流程状态通知） */
   private readonly onStatusChange: ((status: ChartLoadStatus) => void) | undefined
-  /** 数据加载请求序号（快速切换周期 / 标的时丢弃过期响应，防乱序覆盖） */
-  private loadSeq = 0
-  /** 是否还有更早历史（返回不足 limit 或合并 0 新增 → false，防死循环） */
-  private hasMoreHistory = true
-  /** 更早历史加载中标志（防抖：一次只允许一个在途请求） */
-  private loadingEarlier = false
-  /** 实时订阅退订函数（周期 / 标的切换与 destroy 时调用） */
-  private realtimeUnsubscribe: (() => void) | null = null
+  /** 数据 IO 桥（v1.7.2 拆分）：历史首载 / 更早翻页 / 实时订阅生命周期 / 加载状态。
+   *  竞态守卫（loadSeq 代际）、hasMoreHistory / loadingEarlier / 订阅退订均在此类内；
+   *  拉到的数据经回调交还本控制器（setKlineData / prependHistory / enqueueRealtimePoint）。 */
+  private readonly dataBridge: ChartDataBridge
+  /** 实时增量管线（v1.7.2 拆分）：节流入队 → 批量消费 → series/bars/barIndex 增量更新
+   *  → 指标缓存统一重建 + priceLine 视口跟随；chart 经 getter 惰性取（构造时序：pipeline 先于 chart 创建） */
+  private readonly realtimePipeline: RealtimePipeline
   /** 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载（内部 loadEarlier） */
   private readonly handleVisibleLogicalRangeChange = (range: LogicalRange | null): void => {
-    if (range && range.from <= 0) void this.loadEarlier()
+    if (range && range.from <= 0) void this.dataBridge.loadEarlier()
   }
 
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心） */
@@ -195,6 +194,35 @@ export class KLineChartController {
     // 数据服务（组件构造时注入 props.service ?? defaultService；未注入则 init 报错不拉数）
     this.service = options.service
     this.onStatusChange = options.onStatusChange
+    // 数据 IO 桥（v1.7.2）：deps 惰性取当前 symbol / period / service（切换后无需重建），
+    // 回调绑定本控制器数据处理入口（setKlineData / prependHistory / enqueueRealtimePoint）
+    this.dataBridge = new ChartDataBridge({
+      getSymbol: () => this.symbol,
+      getPeriod: () => this.period,
+      getService: () => this.service,
+      onStatus: status => this.onStatusChange?.(status),
+      onHistory: points => this.setKlineData(points),
+      onPrepend: points => this.prependHistory(points),
+      onEarliest: () => this.getEarliestTime(),
+      onRealtimePoint: point => this.realtimePipeline.enqueueRealtimePoint(point),
+    })
+    // 实时增量管线（v1.7.2）：订阅回调 → 节流批量 → series/bars/barIndex 增量更新 →
+    // 指标缓存统一重建 + 视口跟随。series / bars / barIndex 经 getter 取引用直接变异。
+    this.realtimePipeline = new RealtimePipeline({
+      // 惰性 getter：本构造内 pipeline 先于 chart 创建（createChart 在后段），
+      // 取快照会得到 undefined（v1.7.2 修复：realtimePipeline.deps.chart → getChart）
+      getChart: () => this.chart,
+      getBars: () => this.bars,
+      getBarIndex: () => this.barIndex,
+      getIsTimeshare: () => this.timeshareManager.isTimeshare,
+      getTheme: () => this.theme,
+      getKlineSeries: () => this.klineSeries,
+      getVolumeSeries: () => this.volumeSeries,
+      getTimesharePriceSeries: () => this.timesharePriceSeries ?? undefined,
+      getTimeshareAvgSeries: () => this.timeshareAvgSeries ?? undefined,
+      getTimeshareRightAxisSeries: () => this.timeshareRightAxisSeries ?? undefined,
+      onRebuildIndicators: () => this.rebuildRealtimeIndicators(),
+    })
     // 十字星数据浮层：挂 document.body（position: fixed，v1.6.40 脱离图表 DOM 树，
     // 杜绝层级 / 事件拦截不确定性；传入 chart 容器作为定位基准 rect）
     this.tooltip = new CrosshairTooltip(this.container, themeColors(this.theme))
@@ -576,120 +604,13 @@ export class KLineChartController {
 
   /* ===================== 数据（service 集成） ===================== */
 
-  /** 更新加载状态并回调外部（可选；状态仅作通知，不持久化） */
-  private setStatus = (status: ChartLoadStatus): void => {
-    this.onStatusChange?.(status)
-  }
-
   /**
-   * 首次初始化（v1.6.17 由组件统一调用，替代原组件 loadData + setupRealtime）：
-   * 拉取最新一页历史 → setKlineData 全量重绘 + fitContent → 订阅实时推送。
-   * 竞态保护：loadSeq 代际丢弃过期响应；失败 → status='error' 不抛异常。
-   * 状态：'loading'（首载）→ 'ready' / 'error'。
+   * 首次初始化（v1.6.17 由组件统一调用；v1.7.2 转发数据 IO 桥）：
+   * 拉取最新一页历史 → 回填渲染 + fitContent → 订阅实时推送。
+   * 竞态 / 重试 / 状态流转逻辑见 ChartDataBridge。
    */
   init = async (): Promise<void> => {
-    // v1.7.1 修复：symbol / period 未就绪（父组件异步加载代码 / 暂未传入）时不发起请求——
-    // 组件 onMounted 创建 controller 后立即 init，构造快照 symbol / period 可能为空
-    // （symbol='' → 第一次请求出现 `symbol=` 空参数；period='' → 空周期无意义请求）。
-    // 之后就位 → props watch → setSymbol / setPeriod + debouncedInit → 重新拉取。
-    // 这里直接跳过，避免无效请求；状态保持 idle 等待后续 init。
-    if (!this.symbol || !this.period) {
-      return
-    }
-    this.setStatus('loading')
-    const seq = ++this.loadSeq
-    if (!this.service) {
-      console.error('[KLineChart] init: 未注入 ChartDataService（组件构造时传 service）')
-      this.setStatus('error')
-      return
-    }
-    try {
-      const points = await this.fetchHistoryWithRetry(seq)
-      if (seq !== this.loadSeq) return // 期间又切换了周期 / 标的 → 丢弃过期响应
-      // 返回满页说明还有更早数据，允许后续左滑边缘自动加载
-      this.hasMoreHistory = points.length >= this.service.fetchLimit
-      this.setKlineData(points)
-      this.setStatus('ready')
-      this.startRealtime()
-    } catch (error) {
-      if (seq !== this.loadSeq) return
-      console.error('[KLineChart] init failed:', error)
-      this.setStatus('error')
-    }
-  }
-
-  /**
-   * 拉取最新一页历史：请求超时自动重试 1 次（v1.7.2）。
-   *  - 背景：history 接口偶发超时（网络抖动 / 后端慢 / 首次冷加载）时，
-   *    此前裸 AbortError 直接走 error 路径，图表首载失败无自愈；
-   *  - 行为：仅在 RequestTimeoutError（service 层语义化超时）时重试一次；
-   *    其他错误（HTTP 状态 / 业务码 / 网络异常）原样抛出，由 init 走 error 路径；
-   *  - 竞态：重试同样受 loadSeq 守卫——期间切换周期 / 标的 / destroy
-   *    则静默丢弃过期响应（状态由新 init 自己发），不重复请求。
-   */
-  private fetchHistoryWithRetry = async (seq: number): Promise<ChartDataPoint[]> => {
-    const service = this.service
-    if (!service) return []
-    const doFetch = () =>
-      service.fetchHistory({
-        symbol: this.symbol,
-        period: this.period,
-        limit: service.fetchLimit,
-      })
-    try {
-      return await doFetch()
-    } catch (error) {
-      if (seq !== this.loadSeq) return [] // 期间切换 / 销毁 → 静默丢弃
-      if (error instanceof RequestTimeoutError) {
-        console.warn('[KLineChart] 历史请求超时，自动重试 1 次…')
-        return await doFetch()
-      }
-      throw error
-    }
-  }
-
-  /** 订阅实时行情（先退订旧订阅保证唯一；回调 = 控制器增量更新最后一根） */
-  private startRealtime = (): void => {
-    this.realtimeUnsubscribe?.()
-    if (!this.service) return
-    // v1.7.1 节流：订阅回调走 enqueueRealtimePoint（REALTIME_FLUSH_MS 窗口内
-    // 批量合并 + trailing 保末点），高频推送不逐点重建指标缓存
-    this.realtimeUnsubscribe = this.service.subscribeRealtime(this.symbol, this.period, point =>
-      this.enqueueRealtimePoint(point)
-    )
-  }
-
-  /**
-   * 加载更早一页历史（左滑到最左边缘自动触发）：
-   * 以当前最早一根 time 为 before 锚点拉取更早页 → prependHistory 前置插入。
-   * 停止条件：返回条数 < limit（服务语义：无更早数据）或合并新增 0（重复页）。
-   */
-  private loadEarlier = async (): Promise<void> => {
-    if (this.loadingEarlier || !this.hasMoreHistory || !this.service) return
-    const earliest = this.getEarliestTime()
-    if (earliest === undefined) return
-    this.loadingEarlier = true
-    const seq = this.loadSeq
-    // v1.6.20：左滑分页回传 'loading-older'（与首次加载 'loading' 区分）
-    this.setStatus('loading-older')
-    try {
-      const points = await this.service.fetchHistory({
-        symbol: this.symbol,
-        period: this.period,
-        before: earliest,
-        limit: this.service.fetchLimit,
-      })
-      if (seq !== this.loadSeq) return // 期间重新 init（周期 / 标的切换）→ 丢弃，状态由新 init 自己发
-      const added = this.prependHistory(points)
-      if (added === 0 || points.length < this.service.fetchLimit) this.hasMoreHistory = false
-      this.setStatus('ready')
-    } catch (error) {
-      if (seq !== this.loadSeq) return
-      console.error('[KLineChart] loadEarlier failed:', error)
-      this.setStatus('error')
-    } finally {
-      this.loadingEarlier = false
-    }
+    await this.dataBridge.init()
   }
 
   /**
@@ -715,11 +636,11 @@ export class KLineChartController {
     this.applyData()
     // 分时数据为完整 N 个交易日（无更早分页），不触发左滑边缘加载
     if (this.timeshareManager.isTimeshare) {
-      this.hasMoreHistory = false
+      this.dataBridge.setHasMoreHistory(false)
       this.chart.timeScale().fitContent()
       return
     }
-    this.hasMoreHistory = points.length >= (this.service?.fetchLimit ?? 0)
+    this.dataBridge.setHasMoreHistory(points.length >= (this.service?.fetchLimit ?? 0))
     // K 线初始视口：仅展示最近 VISIBLE_BAR_COUNT 根（右边缘对齐，from 不为负）
     const total = this.bars.length
     if (total > 0) {
@@ -731,131 +652,8 @@ export class KLineChartController {
   }
 
   /**
-   * 实时推送队列（v1.7.1 节流）：订阅回调进入队列，REALTIME_FLUSH_MS 窗口内由
-   * realtimeFlush 一次性消费——数据不丢（trailing 保留末次点），渲染合并。
-   */
-  private realtimeQueue: ChartDataPoint[] = []
-  /** 实时批量 flush（throttle 包装，v1.7.1 节流）：消费队列 → 逐点应用 series/bars
-   *  → 统一重建指标缓存一次（避免高频推送逐点重建导致的争抢 / 卡顿） */
-  private readonly realtimeFlush: Throttled<[]> = throttle((): void => {
-    if (this.realtimeQueue.length === 0) return
-    const batch = this.realtimeQueue
-    this.realtimeQueue = []
-    for (const point of batch) this.applyRealtimePoint(point)
-    this.rebuildRealtimeIndicators()
-  }, REALTIME_FLUSH_MS)
-
-  /** 实时订阅回调入口（节流批量，v1.7.1 节流）：WS / SSE / 轮询高频推送合并
-   *  为窗口内一次批量应用，避免数据争抢；单点透传不丢数据。 */
-  private enqueueRealtimePoint = (point: ChartDataPoint): void => {
-    this.realtimeQueue.push(point)
-    this.realtimeFlush()
-  }
-
-  /**
-   * 实时单点应用（series 更新 + bars/barIndex 维护）：
-   *  - 同 time = 刷新最后一点（series.update 覆盖语义）；
-   *  - time 更大 = 追加新点（实时推送）。
-   * 按周期接收对应点类型：K 线周期收 pointType='kline'（update K 线 / 成交量锚点），
-   * 分时周期收 'timeshare'（update 价格 / 均价线 / 成交量直方图）。
-   * **不含指标缓存重建**：单点入口（updateLastBar）与批量入口（realtimeFlush）
-   * 共用本方法，重建由调用方统一执行一次，避免逐点重建开销。
-   */
-  private applyRealtimePoint = (point: ChartDataPoint): void => {
-    const expected = this.timeshareManager.isTimeshare ? 'timeshare' : 'kline'
-    if (point.pointType !== expected) return
-    // v1.6.10：time 统一归一化为数字秒（防 BusinessDay 对象 → series.update 报错）
-    const time = normalizeChartTime(point.time)
-    if (time === null) return
-    // 越界防御：新 time 早于最后一根（周期切换残留 / 旧周期实时推送）→ 忽略，
-    // 避免 lightweight-charts "Cannot update oldest data, last time=[object Object]"
-    const last = this.bars[this.bars.length - 1]
-    if (last && time < normalizeChartTime(last.time)!) return
-    if (this.timeshareManager.isTimeshare) {
-      // 分时：更新价格 / 均价线 + 成交量锚点（1px 细柱由 VolumeBarPrimitive 自绘，
-      // 红绿按 price vs preClose 三态，v1.7.0）
-      this.timesharePriceSeries?.update({
-        time: time as UTCTimestamp,
-        value: point.price ?? 0,
-      })
-      this.timeshareAvgSeries?.update({
-        time: time as UTCTimestamp,
-        value: point.avgPrice ?? 0,
-      })
-      this.volumeSeries.update({
-        time: time as UTCTimestamp,
-        value: point.volume ?? 0,
-      })
-      // 右刻度承载 series 同步（v1.7.1 修复：保持 right scale 有数据，见 applyData 注释）
-      this.timeshareRightAxisSeries?.update({
-        time: time as UTCTimestamp,
-        value: point.price ?? 0,
-      })
-    } else {
-      this.klineSeries.update({
-        time: time as UTCTimestamp,
-        open: point.open!,
-        high: point.high!,
-        low: point.low!,
-        close: point.close!,
-        ...resolveBarColors(point, themeColors(this.theme)), // 三态色随实时数据更新（v1.6.57）
-      })
-      this.volumeSeries.update({
-        time: time as UTCTimestamp,
-        value: point.volume ?? 0,
-      })
-      // 右刻度承载 series 同步（v1.7.1 修复：K 线实时推送保持 right scale 有数据）
-      this.timeshareRightAxisSeries?.update({
-        time: time as UTCTimestamp,
-        value: point.close ?? 0,
-      })
-    }
-    if (last && time > normalizeChartTime(last.time)!) {
-      this.bars.push({ ...point, time })
-      // v1.7.1 priceLine 修复：实时追加新 bar 后最后 bar 的 logical index 变大，
-      // 视口若仍固定在旧 120 根范围 → 最后 bar 逐渐移出视口 → 库 priceLine
-      // （画在最后 bar 位置）随之消失（"不操作，一会这条线就没有了"）。
-      // 仅当视口右边缘贴近最后 bar（用户未左滑看历史）时跟随——保持最后 120 根
-      // 可视 + 价格线恒在视口；用户左滑查看更早数据时不抢回视口。
-      this.followLastBarIfTracking()
-    } else {
-      const index = this.bars.findIndex(bar => normalizeChartTime(bar.time) === time)
-      if (index >= 0) this.bars[index] = { ...point, time }
-    }
-    // 实时增量维护 tooltip 索引（O(1)；批量场景走 rebuildBarIndex）
-    this.barIndex.set(time, { ...point, time })
-  }
-
-  /**
-   * 实时视口跟随（v1.7.1 priceLine 修复）：K 线模式实时追加新 bar 后，
-   * 若视口右边缘贴近最后 bar（用户未左滑查看更早历史），将视口重新定位到
-   * 最后 VISIBLE_BAR_COUNT 根——最后 bar（及库 priceLine）恒在视口内；
-   * 用户左滑看历史（右边缘远离最后 bar）时不抢回视口。
-   * 分时模式：视口由 fitContent 固定（整日数据无追加），直接跳过。
-   * 非动画实现（setVisibleLogicalRange），避免 scrollToRealTime 的 400ms 滚动动画
-   * 在 60ms 实时 flush 下连续触发导致的闪烁。
-   */
-  private followLastBarIfTracking = (): void => {
-    if (this.timeshareManager.isTimeshare || this.bars.length === 0) return
-    const range = this.chart.timeScale().getVisibleLogicalRange()
-    if (!range) return
-    const lastIndex = this.bars.length - 1
-    // 仅当视口右缘与最后 bar 相差不足 1 根（贴住数据末尾、未主动平移 / 越界）时跟随；
-    // lightweight-charts 允许逻辑范围越出数据右缘（拖拽后 to 可 > lastIndex），
-    // 此时若用宽松条件（to >= lastIndex - 1）会在下一次实时推送把视口拽回最后 120 根
-    // （"右移 10 多条后一段时间复原" v1.7.1 修复）——越界（to > lastIndex）或
-    // 看历史（to < lastIndex - 1）均视为用户已脱离跟踪，实时追加不再抢回视口。
-    if (Math.abs(range.to - lastIndex) < 1) {
-      this.chart.timeScale().setVisibleLogicalRange({
-        from: Math.max(lastIndex + 1 - VISIBLE_BAR_COUNT, 0),
-        to: lastIndex,
-      })
-    }
-  }
-
-  /**
    * 实时指标缓存统一重建（v1.7.1 节流关键）：单点入口（updateLastBar）与批量
-   * flush（realtimeFlush）共用，高频推送窗口内只重建一次，避免逐点重建开销。
+   * flush（realtimePipeline）共用，高频推送窗口内只重建一次，避免逐点重建开销。
    */
   private rebuildRealtimeIndicators = (): void => {
     this.indicatorManager.rebuildVolumeData()
@@ -866,13 +664,12 @@ export class KLineChartController {
   }
 
   /**
-   * 实时增量更新（ChartDataService 订阅回调；外部 / 测试单点调用入口）：
-   * series 更新 + bars/barIndex 维护 + 指标缓存重建（单点立即执行，语义与
-   * v1.7.1 前一致）；订阅内部走 enqueueRealtimePoint（节流批量合并）。
+   * 实时增量更新（ChartDataService 订阅回调；外部 / 测试单点调用入口，v1.7.2 转发
+   * RealtimePipeline）：series 更新 + bars/barIndex 维护 + 指标缓存重建（单点立即
+   * 执行）；订阅内部走 pipeline.enqueueRealtimePoint（节流批量合并）。
    */
   updateLastBar = (point: ChartDataPoint): void => {
-    this.applyRealtimePoint(point)
-    this.rebuildRealtimeIndicators()
+    this.realtimePipeline.updateLastBar(point)
   }
 
   /**
@@ -1166,13 +963,10 @@ export class KLineChartController {
 
   /** 销毁：移除监听 / primitive / chart / 清除实例标记（防内存泄漏） */
   destroy = (): void => {
-    // 退订实时推送 + 使在途 init / loadEarlier 请求失效（destroyed 语义）
-    this.realtimeUnsubscribe?.()
-    this.realtimeUnsubscribe = null
-    // 清理实时节流：取消窗口内 trailing 定时器 + 清空未消费队列（防泄漏 / 防销毁后回调）
-    this.realtimeFlush.cancel()
-    this.realtimeQueue = []
-    this.loadSeq++
+    // 退订实时推送 + 使在途 init / loadEarlier 请求失效（destroyed 语义，v1.7.2 委托 IO 桥）
+    this.dataBridge.dispose()
+    // 清理实时节流：取消窗口内 trailing 定时器 + 清空未消费队列（v1.7.2 委托实时管线）
+    this.realtimePipeline.cancel()
     // 十字星管理器退订监听 + 清空指示值 primitive 引用
     this.crosshairManager.destroy()
     // 移除十字星数据浮层节点（防泄漏）
