@@ -417,6 +417,7 @@ Auto-deployment via GitHub Actions is built in (`.github/workflows/pages.yml`, v
 - **Trigger**: push to `main` (or run the workflow manually from the Actions tab)
 - **Pipeline**: `pnpm install --frozen-lockfile` → `pnpm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
 - **One-time setup**: repo `Settings → Pages → Build and deployment → Source` = `GitHub Actions`
+- **Environment**: node 24 + pnpm 12 (`packageManager` in `package.json` pins `pnpm@12.9.1`; the Actions workflow uses `pnpm/action-setup@v4` + `actions/setup-node@v4` with node 24)
 - **Local check**: `pnpm run build` then `npx vite preview`, open `http://127.0.0.1:4173/kline-chart-component/`
 
 > Package manager (v1.7.1): the project uses **pnpm** (`package-lock.json` removed, `pnpm-lock.yaml` committed). To migrate back to npm, delete `pnpm-lock.yaml` and run `npm install`.

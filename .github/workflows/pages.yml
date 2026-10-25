@@ -34,11 +34,11 @@ jobs:
       # pnpm 版本锁定（v1.7.1：项目包管理已从 npm 全面切换 pnpm）
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 12
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies

@@ -490,6 +490,7 @@ pnpm build         # vue-tsc 类型检查 + 构建
 - **触发**：push 到 `main` 分支（或仓库 Actions 页手动 Run workflow）
 - **流程**：`pnpm install --frozen-lockfile` → `pnpm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
 - **首次启用（一次性）**：repo `Settings → Pages → Build and deployment → Source` 选择 `GitHub Actions`
+- **环境**：node 24 + pnpm 12（`package.json` 的 `packageManager` 锁定 `pnpm@12.9.1`，Actions 用 `pnpm/action-setup@v4` + `actions/setup-node@v4` node 24）
 - **本地验证**：`pnpm run build` 后 `npx vite preview`，访问 `http://127.0.0.1:4173/kline-chart-component/`
 
 > 包管理说明（v1.7.1）：项目使用 **pnpm**（删除 `package-lock.json`，锁定 `pnpm-lock.yaml`）；如需迁移回 npm，删掉 `pnpm-lock.yaml` 后 `npm install` 重新生成即可。
