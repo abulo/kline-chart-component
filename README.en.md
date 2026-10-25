@@ -26,7 +26,7 @@ Height allocation (same whether the time axis is on or off; only the usable heig
 - Empty panes are fixed at `topPaneHeight = 22px` (same stretchFactor, exactly equal);
 - Remaining height is split by group ratios (`calcPaneHeights` pure function, see `chart/core/layout.ts`);
 - Pixel-factor approach: `stretchFactor` is set directly to the target pixel height → no rounding error, panes fully fill the space;
-- Pane heights are not resizable (`layout.panes.enableResize: false`), no separators between panes (library patch `SeparatorHeight: 1 → 0`).
+- Pane heights are not resizable (`layout.panes.enableResize: false`); separators between panes use the library default 1px (an earlier script patched `SeparatorHeight` to 0, but the crosshair "not reaching bottom" issue was fixed at the source layer via dash phase alignment, so the patch script was removed).
 
 ## 2. Visuals & Interaction
 
@@ -391,13 +391,11 @@ Intraday periods (`1d` ~ `5d`) share the same component and layout as K-line per
 ## 6. Running
 
 ```bash
-npm install        # pinned versions: lightweight-charts 5.2.1 / vue 3.5.43
-npm run dev        # development (http://127.0.0.1:5210)
-npm run test       # vitest unit tests (202 tests, 21 files; incl. split-module tests splitModules.test.ts)
-npm run build      # vue-tsc type check + build
+pnpm install       # pinned versions: lightweight-charts 5.2.1 / vue 3.5.43
+pnpm dev           # development (http://127.0.0.1:5210)
+pnpm test          # vitest unit tests (incl. split-module tests splitModules.test.ts)
+pnpm build         # vue-tsc type check + build
 ```
-
-Note: after `node_modules` is installed you must run `npm run patch` (or `node scripts/patch-lwc-separator.js`, idempotent) — the script sets the separator height (`SeparatorConstants.SeparatorHeight`) in the lightweight-charts dist from 1px to 0. Without the patch: 1px separators appear between panes and content pane heights are squeezed (5px total with the indicator pane on, 6 panes), making the bottom pane5 shorter and the **crosshair vertical line visually "not reaching pane5's bottom"** (the line fills the pane5 canvas but the tail is cut off by the leftover separator).
 
 ## 7. Memory & Performance
 
@@ -415,8 +413,10 @@ Note: after `node_modules` is installed you must run `npm run patch` (or `node s
 
 Auto-deployment via GitHub Actions is built in (`.github/workflows/pages.yml`, v1.7.1):
 
-- **URL**: `https://abulo.github.io/kline/` (Pages project path = repository name; rename the repo to `kline` for this exact URL. If you keep `kline-chart-component`, the URL becomes `https://abulo.github.io/kline-chart-component/` — the Actions workflow swaps the `base` in `vite.config.ts` automatically, no code change needed)
+- **URL**: `https://abulo.github.io/kline-chart-component/` (Pages project path = repository name)
 - **Trigger**: push to `main` (or run the workflow manually from the Actions tab)
-- **Pipeline**: `npm ci` → sed replaces the `base` placeholder in `vite.config.ts` with `/<repo>/` → `npm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
+- **Pipeline**: `pnpm install --frozen-lockfile` → `pnpm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
 - **One-time setup**: repo `Settings → Pages → Build and deployment → Source` = `GitHub Actions`
-- **Local check**: `npm run build` then `npx vite preview`, open `http://127.0.0.1:4173/kline/`
+- **Local check**: `pnpm run build` then `npx vite preview`, open `http://127.0.0.1:4173/kline-chart-component/`
+
+> Package manager (v1.7.1): the project uses **pnpm** (`package-lock.json` removed, `pnpm-lock.yaml` committed). To migrate back to npm, delete `pnpm-lock.yaml` and run `npm install`.

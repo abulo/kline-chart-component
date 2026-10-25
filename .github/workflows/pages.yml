@@ -1,12 +1,12 @@
 # pages.yml —— GitHub Pages 自动部署（v1.7.1）
 #
 # 触发：push 到 main（或手动 workflow_dispatch）。
-# 流程：npm ci → 动态替换 base 为 /<仓库名>/ → vite build → 上传 dist → deploy-pages。
+# 流程：pnpm install --frozen-lockfile → vite build → 上传 dist → deploy-pages。
 #
 # 首次启用（一次性，需在 GitHub 网页操作）：
 #   repo Settings → Pages → Build and deployment → Source 选 "GitHub Actions"。
-#   （若仓库名不是 kline，访问地址为 https://<用户名>.github.io/<仓库名>/，
-#    想得到 https://abulo.github.io/kline 需把仓库改名为 kline，base 会自动适配。）
+#   部署地址 = https://<用户名>.github.io/<仓库名>/（本仓库 → /kline-chart-component/，
+#   base 已在 vite.config.ts 写死为该路径；若仓库改名，改 vite.config.ts 的 base 即可）。
 name: Deploy to GitHub Pages
 
 on:
@@ -31,24 +31,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm 版本锁定（v1.7.1：项目包管理已从 npm 全面切换 pnpm）
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm ci
-
-      # GitHub Pages 项目路径 = 仓库名：把 vite.config.ts 里的 base 占位
-      # '/kline/' 替换为 '/<仓库名>/'，仓库改名后无需再改代码
-      - name: Set base path to repository name
-        run: |
-          BASE="/${{ github.event.repository.name }}/"
-          sed -i "s|base: '/kline/',|base: '$BASE',|" vite.config.ts
-          echo "base => $BASE"
+        run: pnpm install --frozen-lockfile
 
       - name: Type check + Build
-        run: npm run build
+        run: pnpm run build
 
       - uses: actions/upload-pages-artifact@v3
         with:

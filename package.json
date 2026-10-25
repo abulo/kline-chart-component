@@ -8,8 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",
-    "preview": "vite preview",
-    "patch": "node scripts/patch-lwc-separator.js"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@microsoft/fetch-event-source": "2.0.1",
@@ -24,5 +23,6 @@
     "vite": "8.3.4",
     "vitest": "^5.0.5",
     "vue-tsc": "3.3.13"
-  }
+  },
+  "packageManager": "pnpm@9.15.4"
 }

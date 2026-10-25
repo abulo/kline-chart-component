@@ -26,7 +26,7 @@
 - 空 Pane 固定 `topPaneHeight = 22px`（同一 stretchFactor，绝对相等）；
 - 剩余高度按组比例分配（`calcPaneHeights` 纯函数，见 `chart/core/layout.ts`）；
 - 像素因子方案：`stretchFactor` 直接设为目标像素高度 → 无舍入误差，pane 完全铺满；
-- Pane 高度不可拖拽（`layout.panes.enableResize: false`）、Pane 之间无分割线（库 patch `SeparatorHeight: 1 → 0`）。
+- Pane 高度不可拖拽（`layout.panes.enableResize: false`）、Pane 之间分割线为库默认 1px（早期曾用脚本 patch 置 0，竖线"不到底"已由源码层虚线相位修复解决，patch 脚本已移除）。
 
 ## 二、视觉与交互
 
@@ -453,17 +453,11 @@ URL**（可含自有路由 / query）；库在请求时以 `&` 追加 `symbol` /
 ## 六、运行
 
 ```bash
-npm install        # 固定版本：lightweight-charts 5.2.1 / vue 3.5.43
-npm run dev        # 开发（http://127.0.0.1:5210）
-npm run test       # vitest 单测（202 项，21 files；含拆分模块 splitModules.test.ts）
-npm run build      # vue-tsc 类型检查 + 构建
+pnpm install       # 固定版本：lightweight-charts 5.2.1 / vue 3.5.43
+pnpm dev           # 开发（http://127.0.0.1:5210）
+pnpm test          # vitest 单测（含拆分模块 splitModules.test.ts）
+pnpm build         # vue-tsc 类型检查 + 构建
 ```
-
-注意：`node_modules` 安装后必须运行 `npm run patch`（或 `node scripts/patch-lwc-separator.js`，
-幂等）—— 该脚本把 lightweight-charts dist 的分隔线高度（SeparatorConstants.SeparatorHeight）
-从 1px 置为 0。若未 patch：Pane 之间会出现 1px 分隔线，且内容 Pane 高度被分隔线
-挤占（指标开 6 Pane 时共 5px），导致最底部 pane5 高度偏小、**十字星竖线视觉上
-"不能到 pane5 底部"**（竖线画满 pane5 canvas，但底部被残留分隔线截断）。
 
 ## 七、内存与性能
 
@@ -492,8 +486,10 @@ npm run build      # vue-tsc 类型检查 + 构建
 
 项目已内置 GitHub Pages 自动部署（`.github/workflows/pages.yml`，v1.7.1）：
 
-- **部署地址**：`https://abulo.github.io/kline/`（Pages 项目路径 = 仓库名，需把仓库改名为 `kline`；若保留 `kline-chart-component`，地址为 `https://abulo.github.io/kline-chart-component/`，base 由 Actions 自动适配，无需改代码）
+- **部署地址**：`https://abulo.github.io/kline-chart-component/`（Pages 项目路径 = 仓库名，本仓库即 kline-chart-component）
 - **触发**：push 到 `main` 分支（或仓库 Actions 页手动 Run workflow）
-- **流程**：`npm ci` → sed 替换 `vite.config.ts` 的 `base` 占位为 `/<仓库名>/` → `npm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
+- **流程**：`pnpm install --frozen-lockfile` → `pnpm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
 - **首次启用（一次性）**：repo `Settings → Pages → Build and deployment → Source` 选择 `GitHub Actions`
-- **本地验证**：`npm run build` 后 `npx vite preview`，访问 `http://127.0.0.1:4173/kline/`
+- **本地验证**：`pnpm run build` 后 `npx vite preview`，访问 `http://127.0.0.1:4173/kline-chart-component/`
+
+> 包管理说明（v1.7.1）：项目使用 **pnpm**（删除 `package-lock.json`，锁定 `pnpm-lock.yaml`）；如需迁移回 npm，删掉 `pnpm-lock.yaml` 后 `npm install` 重新生成即可。
