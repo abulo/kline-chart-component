@@ -95,6 +95,48 @@ export interface ChartDataService {
   type LimitPattern,
 } from './mockDataGenerator'
 
+/**
+ * 内存管理上限（v1.7.1）：各缓存采用 LRU 淘汰——超限删除最久未使用，
+ * 防止多 symbol / 多周期切换时派生池（1 分 K 每 symbol 上万根）无限增长导致内存溢出。
+ *  - 日 K / 分时池：最多保留 4 个 symbol（日 K 每 symbol 约 400 根，分时 241*5）
+ *  - 派生周期池：最多保留 8 个 key（week/month/分钟 K，1 分 K 每 symbol 约 1.4 万根）
+ *  - 实时定时器：最多保留 8 个订阅（unsubscribe 时正常清理，此处仅防异常堆积）
+ */
+const CACHE_MAX_SYMBOL_POOLS = 4
+const CACHE_MAX_PERIOD_POOLS = 8
+const CACHE_MAX_REALTIME_TIMERS = 8
+
+/**
+ * LRU 缓存访问（v1.7.1，模块级纯函数可单测）：命中时刷新顺序
+ * （delete + 重插使遍历序 = 最近使用序）；未命中时由 factory 生成并写入；
+ * 超 maxSize 淘汰最久未使用（遍历序第一个）。
+ * 用于 MockChartDataService 的 pools / tsPools / periodPools / timers 统一入口。
+ * @param map 目标缓存
+ * @param key 键
+ * @param maxSize 上限（超出即淘汰最旧）
+ * @param factory 未命中时的生成函数
+ */
+export const touchCache = <V>(
+  map: Map<string, V>,
+  key: string,
+  maxSize: number,
+  factory: () => V,
+): V => {
+  const existed = map.get(key)
+  if (existed !== undefined) {
+    map.delete(key)
+    map.set(key, existed)
+    return existed
+  }
+  const value = factory()
+  map.set(key, value)
+  if (map.size > maxSize) {
+    const oldestKey = map.keys().next().value as string | undefined
+    if (oldestKey !== undefined) map.delete(oldestKey)
+  }
+  return value
+}
+
 /** MockChartDataService 构造参数 */
 export interface MockChartDataServiceOptions {
   /** 每页拉取条数（构造必填，如 200） */
@@ -123,11 +165,9 @@ export class MockChartDataService implements ChartDataService {
    * 趋势波段状态机 + GARCH 波动聚集 + 开盘跳空 + 价量联动，周 K / 月 K /
    * 分钟 K（60/30/15/5/1 分）全部由本池派生，跨周期价格自洽。
    */
-  private ensurePool = (symbol: string): ChartDataPoint[]  => {
-    const existed = this.pools.get(symbol)
-    if (existed) return existed
-
-    const rand = createRandom(hashSeed(symbol))
+  private ensurePool = (symbol: string): ChartDataPoint[] =>
+    touchCache(this.pools, symbol, CACHE_MAX_SYMBOL_POOLS, () => {
+      const rand = createRandom(hashSeed(symbol))
     const dates = buildTradingDates()
     const pool: ChartDataPoint[] = []
 
@@ -258,9 +298,9 @@ export class MockChartDataService implements ChartDataService {
       preClose = +close.toFixed(2)
     }
 
-    this.pools.set(symbol, pool)
-    return pool
-  }
+      this.pools.set(symbol, pool)
+      return pool
+    })
 
   /**
    * 生成（或获取）某标的的「最近 N 个交易日」分时数据池（升序，共 N×241 分钟点）。
@@ -327,13 +367,10 @@ export class MockChartDataService implements ChartDataService {
   }
 
   /** 分时周期数据池（最近 5 交易日，1d~5d 共用；缓存于 tsPools） */
-  private ensureTsPool = (symbol: string): ChartDataPoint[]  => {
-    const existed = this.tsPools.get(symbol)
-    if (existed) return existed
-    const out = this.buildTsPool(symbol, 5)
-    this.tsPools.set(symbol, out)
-    return out
-  }
+  private ensureTsPool = (symbol: string): ChartDataPoint[] =>
+    touchCache(this.tsPools, symbol, CACHE_MAX_SYMBOL_POOLS, () =>
+      this.buildTsPool(symbol, 5),
+    )
 
   /**
    * 生成当日 241 个分钟路径点（升序，价格口径）：
@@ -452,24 +489,22 @@ export class MockChartDataService implements ChartDataService {
    *    time 落在周初/月初 00:00、tradeDate 取组内末交易日、preClose 取组内首点昨收近似）；
    *  - 60/30/15/5/1min：分钟 K 池（buildMinuteKPool，布朗桥锚定日开/收 + 真实时段聚合）。
    */
-  private ensurePeriodPool = (symbol: string, period: string): ChartDataPoint[]  => {
+  private ensurePeriodPool = (symbol: string, period: string): ChartDataPoint[] => {
     if (period === 'day') return this.ensurePool(symbol)
     const key = `${symbol}|${period}`
-    const existed = this.periodPools.get(key)
-    if (existed) return existed
-    let out: ChartDataPoint[]
-    if (period === 'week') {
-      out = aggregateToBars(this.ensurePool(symbol), weekBucketOf, 'kline')
-    } else if (period === 'month') {
-      out = aggregateToBars(this.ensurePool(symbol), monthBucketOf, 'kline')
-    } else if (isMinutePeriod(period)) {
-      out = this.buildMinuteKPool(symbol, MINUTE_GRANULARITY[period])
-    } else {
+    return touchCache(this.periodPools, key, CACHE_MAX_PERIOD_POOLS, () => {
+      if (period === 'week') {
+        return aggregateToBars(this.ensurePool(symbol), weekBucketOf, 'kline')
+      }
+      if (period === 'month') {
+        return aggregateToBars(this.ensurePool(symbol), monthBucketOf, 'kline')
+      }
+      if (isMinutePeriod(period)) {
+        return this.buildMinuteKPool(symbol, MINUTE_GRANULARITY[period])
+      }
       // 未知周期：回退日 K（接口协议未知周期时后端行为由服务端决定，Mock 兜底）
       return this.ensurePool(symbol)
-    }
-    this.periodPools.set(key, out)
-    return out
+    })
   }
 
   /** 二分查找：第一个 time >= target 的下标 */
@@ -589,7 +624,7 @@ export class MockChartDataService implements ChartDataService {
           handler(clone(updated))
         }
       }, TS_REALTIME_INTERVAL)
-      this.timers.set(key, timer)
+      touchCache(this.timers, key, CACHE_MAX_REALTIME_TIMERS, () => timer)
       return () => {
         clearInterval(timer)
         if (this.timers.get(key) === timer) this.timers.delete(key)
@@ -648,7 +683,7 @@ export class MockChartDataService implements ChartDataService {
       }
     }, REALTIME_INTERVAL)
 
-    this.timers.set(key, timer)
+    touchCache(this.timers, key, CACHE_MAX_REALTIME_TIMERS, () => timer)
 
     return () => {
       clearInterval(timer)

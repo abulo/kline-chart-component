@@ -14,7 +14,7 @@ import {
   type IPrimitivePaneRenderer,
   type IPrimitivePaneView,
 } from 'lightweight-charts'
-import { chartFont } from '../core/theme'
+import { chartFont, priceLabelInverseText } from '../core/theme'
 import { formatPrice } from '../util/format'
 import type { PriceLinePrimitive } from './priceLinePrimitive'
 
@@ -78,7 +78,8 @@ export class PriceLinePaneView implements IPrimitivePaneView {
           const g = parseInt(color.slice(3, 5), 16)
           const b = parseInt(color.slice(5, 7), 16)
           const luma = 0.299 * r + 0.587 * g + 0.114 * b
-          context.fillStyle = luma > 150 ? '#131722' : '#FFFFFF'
+          // 反色文字色提取自 theme.ts 公共常量（避免组件内硬编码）
+          context.fillStyle = luma > 150 ? priceLabelInverseText.light : priceLabelInverseText.dark
           context.textAlign = 'left'
           context.fillText(text, labelX + padX, y)
         })

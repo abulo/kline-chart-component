@@ -89,7 +89,8 @@
   **修复"两条竖线"（v1.7.1）**：`setCrosshairPosition` 触发的 crosshairMove 事件经 rAF 节流**下一帧**才更新 `overlayTime`——
   同帧内 `CrosshairLineCapPrimitive` 竖线仍以旧 `overlayTime` 绘制，与库竖线（已到键盘目标）错位成两条竖线；
   控制器在 `setCrosshairPosition` 后同步调用 `CrosshairManager.setOverlayTimeByKeyboard(time)` 立即对齐（cap 竖线与库竖线同帧重叠，随后的 rAF 事件写入相同值无副作用）；
-      **方向键按住自动加速（v1.7.1）**：浏览器 keydown 原生重复有 ~500ms 初始延迟且受系统重复速率限制——改为自定义节拍（`KEYBOARD_REPEAT_MS=40`，KLineChart.vue）：首次按下立即移动 1 根、随后每 40ms 移动 1 根（25 根/秒），`event.repeat` 重复事件忽略防双重加速；keyup / window blur / 组件卸载停止（防泄漏）；实测按住左 500ms 移动约 19 根（日K 含周末按自然日计数）；
+        **缓存内存管理（v1.7.1）**：MockChartDataService 各缓存引入 LRU 上限（`touchCache` 纯函数，模块级可单测）——日 K / 分时池最多 4 个 symbol、派生周期池（week/month/分钟 K，1 分 K 每 symbol 约 1.4 万根）最多 8 个 key、实时定时器最多 8 个订阅，超限淘汰最久未使用，防多 symbol 切换内存无限增长；价格线标签反色文字提取为 `priceLabelInverseText`（theme.ts），组件内不再硬编码色值；
+**方向键按住自动加速（v1.7.1）**：浏览器 keydown 原生重复有 ~500ms 初始延迟且受系统重复速率限制——改为自定义节拍（`KEYBOARD_REPEAT_MS=40`，KLineChart.vue）：首次按下立即移动 1 根、随后每 40ms 移动 1 根（25 根/秒），`event.repeat` 重复事件忽略防双重加速；keyup / window blur / 组件卸载停止（防泄漏）；实测按住左 500ms 移动约 19 根（日K 含周末按自然日计数）；
 **键盘十字星视口跟随（v1.7.1）**：方向键移动到可视区最后一个数据（左 / 右）再按键时，目标 bar 已超出可视区——`getCrosshairScrollOffset`（纯函数）计算滚动量，视口平移让目标进入视野（边缘场景恰好平移 1 个 bar；距可视区较远时一次滚动到位，如未激活直接按键时十字星立即可见）；实测：可视区 [280,399] 内 hover 左缘 bar 280 → 按左 → 视口 [279,398]、十字星命中 279；
 **同步修复"tooltip 更新延迟"（v1.7.1）**：数据浮层同样经 rAF 事件链路（下一帧才 `tooltip.show` 新 bar），键盘连发时持续滞后——
   控制器改为同步调用 `CrosshairManager.syncKeyboardMove(bar, time, pane1LocalY)` 全链路对齐（overlayTime + tooltip 数据 + 左刻度指示值，指示值仅注入 pane1：键盘横线在主 series 的 close/price 价）；

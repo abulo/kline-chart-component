@@ -27,6 +27,13 @@ export const transparentColor = 'rgba(0, 0, 0, 0)'
 
 export const chartFont = `12px ${chartFontFamily}`
 
+/** 价格线标签文字反色（priceLinePaneView 按线色亮度自动选黑 / 白）：
+ *  light = 线色亮（浅底）→ 用深色字；dark = 线色暗（深底）→ 用白字 */
+export const priceLabelInverseText = {
+  light: '#131722',
+  dark: '#FFFFFF',
+}
+
 /** 主题色定义 */
 export interface ChartThemeColors {
   /* ===== 图表核心 ===== */
