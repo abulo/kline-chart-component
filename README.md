@@ -487,3 +487,13 @@ npm run build      # vue-tsc 类型检查 + 构建
 - **标签缓存**：刻度标签在 `updateAllViews`（图表更新）时重建，渲染 draw 只读取缓存集合，不重复计算；
 - **生命周期**：controller `destroy()` 移除十字星监听、断开 ResizeObserver、`detachPrimitive`（SAR 圆点 / 主图指标线 / 成交量均量线）、`chart.remove()`、清除容器标记；指标关闭时 series 先 `removePane` 再置 null；primitive `detached()` 清空引用；
 - **实例保护**：容器 `dataset.lwcMounted` 标记防止重复创建 chart 实例。
+
+## GitHub Pages 在线预览
+
+项目已内置 GitHub Pages 自动部署（`.github/workflows/pages.yml`，v1.7.1）：
+
+- **部署地址**：`https://abulo.github.io/kline/`（Pages 项目路径 = 仓库名，需把仓库改名为 `kline`；若保留 `kline-chart-component`，地址为 `https://abulo.github.io/kline-chart-component/`，base 由 Actions 自动适配，无需改代码）
+- **触发**：push 到 `main` 分支（或仓库 Actions 页手动 Run workflow）
+- **流程**：`npm ci` → sed 替换 `vite.config.ts` 的 `base` 占位为 `/<仓库名>/` → `npm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
+- **首次启用（一次性）**：repo `Settings → Pages → Build and deployment → Source` 选择 `GitHub Actions`
+- **本地验证**：`npm run build` 后 `npx vite preview`，访问 `http://127.0.0.1:4173/kline/`

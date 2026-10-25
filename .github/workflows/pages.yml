@@ -1,0 +1,65 @@
+# pages.yml —— GitHub Pages 自动部署（v1.7.1）
+#
+# 触发：push 到 main（或手动 workflow_dispatch）。
+# 流程：npm ci → 动态替换 base 为 /<仓库名>/ → vite build → 上传 dist → deploy-pages。
+#
+# 首次启用（一次性，需在 GitHub 网页操作）：
+#   repo Settings → Pages → Build and deployment → Source 选 "GitHub Actions"。
+#   （若仓库名不是 kline，访问地址为 https://<用户名>.github.io/<仓库名>/，
+#    想得到 https://abulo.github.io/kline 需把仓库改名为 kline，base 会自动适配。）
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pages 部署需要的最小权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时刻只跑一个部署（避免并发互相覆盖）
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # GitHub Pages 项目路径 = 仓库名：把 vite.config.ts 里的 base 占位
+      # '/kline/' 替换为 '/<仓库名>/'，仓库改名后无需再改代码
+      - name: Set base path to repository name
+        run: |
+          BASE="/${{ github.event.repository.name }}/"
+          sed -i "s|base: '/kline/',|base: '$BASE',|" vite.config.ts
+          echo "base => $BASE"
+
+      - name: Type check + Build
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

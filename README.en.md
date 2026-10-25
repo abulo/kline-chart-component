@@ -410,3 +410,13 @@ Note: after `node_modules` is installed you must run `npm run patch` (or `node s
 - **Label caching**: axis labels are rebuilt in `updateAllViews` (chart update), the render draw only reads the cached collection without recomputing;
 - **Lifecycle**: controller `destroy()` removes the crosshair listener, disconnects the ResizeObserver, `detachPrimitive` (SAR dots / main indicator lines / volume average lines), `chart.remove()`, clears the container marker; when an indicator is off the series calls `removePane` before nulling; primitive `detached()` clears references;
 - **Instance protection**: the container `dataset.lwcMounted` marker prevents duplicate chart instances.
+
+## GitHub Pages live preview
+
+Auto-deployment via GitHub Actions is built in (`.github/workflows/pages.yml`, v1.7.1):
+
+- **URL**: `https://abulo.github.io/kline/` (Pages project path = repository name; rename the repo to `kline` for this exact URL. If you keep `kline-chart-component`, the URL becomes `https://abulo.github.io/kline-chart-component/` — the Actions workflow swaps the `base` in `vite.config.ts` automatically, no code change needed)
+- **Trigger**: push to `main` (or run the workflow manually from the Actions tab)
+- **Pipeline**: `npm ci` → sed replaces the `base` placeholder in `vite.config.ts` with `/<repo>/` → `npm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
+- **One-time setup**: repo `Settings → Pages → Build and deployment → Source` = `GitHub Actions`
+- **Local check**: `npm run build` then `npx vite preview`, open `http://127.0.0.1:4173/kline/`
