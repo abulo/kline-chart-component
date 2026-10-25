@@ -39,6 +39,9 @@ export interface KLineChartOptions {
    *  init 不发起请求，等周期就位后重新 init）。构造即生效（分时判定 / 数据过滤
    *  按此），避免默认周期为分时时 controller 仍按 K 线处理（此前构造硬编码 'day'） */
   period?: PeriodValueOrEmpty
+  /** 最后价线显隐（v1.7.1）：默认 true 显示（K 线主图自绘 priceLine）；
+   *  传 false 隐藏。可通过 controller.setPriceLineVisible 运行时切换 */
+  priceLineVisible?: boolean
 }
 
 /** 加载状态（controller 统一管理：init 拉最新页 → 'loading'；左滑分页 → 'loading-older'；

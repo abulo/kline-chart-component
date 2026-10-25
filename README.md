@@ -398,6 +398,17 @@ URL**（可含自有路由 / query）；库在请求时以 `&` 追加 `symbol` /
   v1.4.92 起去白化（灰线 `#666666` / BOLL 中轨 `#33373E` / BBI `#607D8B`），浅系下清晰可见；
 - 页面 html 背景由 App.vue 随主题同步（`pageBackground`），图表内颜色全部走主题对象。
 
+#### 5.6.1 最后价线（priceLine，v1.7.1）
+
+- **为什么自绘**：库原生 `priceLine` 只有两种锚定——`LastBar`（真实最后 bar，左移看历史时移出视口而消失）与 `LastVisible`（视口右缘 bar，左移可见但显示历史价格，"最后价"语义失真），均无法同时满足"真实最后价 + 始终可见"；
+- **实现**：`PriceLinePrimitive` 自绘（`src/chart/overlay/priceLinePrimitive.ts` + `priceLinePaneView.ts`）——价格 = 真实最后 K 线 bar 的 close（`findLastKlineBar` 逆序过滤分时点，纯函数可单测），横虚线**横贯 pane1 全宽**（1px，`setLineDash([6,4])` 模拟库 dashed），右缘内侧价格标签（线色背景 + 按亮度自动黑白文字）；
+- **钳制**：最新价超出当前视口值域（如左移看历史）时，线钳到主图顶部 / 底部边缘、标签仍显示真实最新价——任何视口位置都持续可见；
+- **涨跌色**：最后 bar `close vs preClose` → 红（`upColor`）/ 绿（`downColor`）/ 平盘（`flatColor`，深系白·浅系黑），与 K 线柱体同一套主题色，实时推送自动变色；
+- **分时模式**：`klineSeries` 隐藏且 `getBars` 无 kline 点 → 自动不绘制；
+- **显隐参数**：`KLineChartOptions.priceLineVisible`（默认 `true`，组件 props `priceLineVisible` 透传，App.vue 工具栏"价格线"按钮运行时切换）→ `KLineChartController.setPriceLineVisible(visible)`（幂等，变化时对 `klineSeries` 同值 `applyOptions({ priceLineVisible: false })` 强制 invalidate 立即生效；库 priceLine 保持关闭，重绘由自绘 primitive 现取 `visible`）；
+- **实时视口跟随**（`followLastBarIfTracking`，v1.7.1）：K 线实时追加新 bar 后，**仅当视口右缘与最后 bar 相差不足 1 根**（`|range.to - lastIndex| < 1`，贴住数据末尾）时，视口重新定位到最后 120 根——最后 bar / 价格线恒在视口内。lightweight-charts 允许逻辑范围越出数据右缘（拖拽后 `to` 可 > `lastIndex`），**越界或右拖看历史（右缘远离最后 bar）都视为用户已脱离跟踪，实时推送不再把视口拽回**（修复"右移 10 多条后一段时间复原"）；右拖看历史后视口完全保持不动（实测 20 秒 / 2 根新 bar 不位移）；
+- 取数 / 显隐测试见 `tests/priceLine.test.ts`（8 用例：4 取数 + 3 显隐 + 1 构造）。
+
 ### 5.7 分时图（1d~5d，v1.7.0）
 
 分时周期（`1d` ~ `5d`）与 K 线周期共用同一组件与布局，渲染 / 交互差异如下：

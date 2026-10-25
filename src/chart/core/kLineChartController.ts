@@ -67,6 +67,7 @@ import type { ChartDataPoint } from '../../types/chart'
 
 import { IndicatorLinePrimitive } from '../overlay/indicatorLinePrimitive'
 import { SarMarkerPrimitive } from '../indicator/sarMarkerPrimitive'
+import { PriceLinePrimitive } from '../overlay/priceLinePrimitive'
 import { TimeshareManager } from './timeshareManager'
 import { createPanes } from './paneFactory'
 import { applyPaneStretchFactors, calcPaneTop } from './paneLayout'
@@ -177,6 +178,8 @@ export class KLineChartController {
   private sarMarkerPrimitive: SarMarkerPrimitive | null = null
   /** pane1 主图指标线 primitive（IndicatorLinePrimitive，top 层自绘） */
   private indicatorLinePrimitive: IndicatorLinePrimitive | null = null
+  /** pane1 最后价线 primitive（PriceLinePrimitive 自绘；priceLineVisible 参数控制显隐） */
+  private priceLinePrimitive: PriceLinePrimitive | null = null
   /** pane3 成交量均量线 primitive（IndicatorLinePrimitive，top 层自绘） */
   private volumeMaPrimitive: IndicatorLinePrimitive | null = null
 
@@ -349,6 +352,7 @@ export class KLineChartController {
     this.timeshareRightAxisSeries = panes.timeshareRightAxisSeries
     this.volumeSeries = panes.volumeSeries
     this.sarMarkerPrimitive = panes.sarMarkerPrimitive
+    this.priceLinePrimitive = panes.priceLinePrimitive
     this.indicatorLinePrimitive = panes.indicatorLinePrimitive
     this.volumeMaPrimitive = panes.volumeMaPrimitive
 
@@ -366,6 +370,9 @@ export class KLineChartController {
     // 默认值语义（v1.7.1）：options.period 为 undefined（父组件未传）→ ''（不设置，
     // init 守卫跳过，与 symbol 空值守卫一致）；显式传具体周期 → 按该周期加载。
     this.period = options.period ?? ''
+    // v1.7.1：最后价线显隐（默认 true；组件 props.priceLineVisible 透传，
+    // setPriceLineVisible 可运行时切换）
+    this.setPriceLineVisible(options.priceLineVisible ?? true)
     // v1.7.1：构造即应用分时交互（默认周期为分时时 setPeriod 不触发 →
     // 平移禁用必须在此生效，否则分时仍可拖拽平移）
     this.applyTimeshareInteractions()
@@ -463,6 +470,9 @@ export class KLineChartController {
       getTimeshareHalf: () => this.timeshareManager.half,
       getScaleValues: () => this.timeshareManager.fixedValues,
       getHorizontalCount: () => this.timeshareManager.horizontalCount,
+      // 视口探针（v1.7.1 调试）：直接委托 chart.timeScale()
+      getVisibleLogicalRange: () => this.chart.timeScale().getVisibleLogicalRange(),
+      getVisibleRange: () => this.chart.timeScale().getVisibleRange(),
     })
   }
 
@@ -542,6 +552,10 @@ export class KLineChartController {
         ...resolveBarColors(bar, barPalette),
       }))
     )
+    // v1.7.1 最后价虚线：库 priceLine 已关闭（改由 PriceLinePrimitive 自绘，见
+    // paneFactory），此处 applyOptions 保持关闭状态并强制 invalidate —— 周期切换
+    // （setData + setVisibleLogicalRange 时序）后触发一次重绘，自绘线随之现取刷新。
+    this.klineSeries.applyOptions({ priceLineVisible: false })
     // 分时双线清空（K 线周期不显示分时线）
     this.timesharePriceSeries?.setData([])
     this.timeshareAvgSeries?.setData([])
@@ -809,12 +823,45 @@ export class KLineChartController {
     }
     if (last && time > normalizeChartTime(last.time)!) {
       this.bars.push({ ...point, time })
+      // v1.7.1 priceLine 修复：实时追加新 bar 后最后 bar 的 logical index 变大，
+      // 视口若仍固定在旧 120 根范围 → 最后 bar 逐渐移出视口 → 库 priceLine
+      // （画在最后 bar 位置）随之消失（"不操作，一会这条线就没有了"）。
+      // 仅当视口右边缘贴近最后 bar（用户未左滑看历史）时跟随——保持最后 120 根
+      // 可视 + 价格线恒在视口；用户左滑查看更早数据时不抢回视口。
+      this.followLastBarIfTracking()
     } else {
       const index = this.bars.findIndex(bar => normalizeChartTime(bar.time) === time)
       if (index >= 0) this.bars[index] = { ...point, time }
     }
     // 实时增量维护 tooltip 索引（O(1)；批量场景走 rebuildBarIndex）
     this.barIndex.set(time, { ...point, time })
+  }
+
+  /**
+   * 实时视口跟随（v1.7.1 priceLine 修复）：K 线模式实时追加新 bar 后，
+   * 若视口右边缘贴近最后 bar（用户未左滑查看更早历史），将视口重新定位到
+   * 最后 VISIBLE_BAR_COUNT 根——最后 bar（及库 priceLine）恒在视口内；
+   * 用户左滑看历史（右边缘远离最后 bar）时不抢回视口。
+   * 分时模式：视口由 fitContent 固定（整日数据无追加），直接跳过。
+   * 非动画实现（setVisibleLogicalRange），避免 scrollToRealTime 的 400ms 滚动动画
+   * 在 60ms 实时 flush 下连续触发导致的闪烁。
+   */
+  private followLastBarIfTracking = (): void => {
+    if (this.timeshareManager.isTimeshare || this.bars.length === 0) return
+    const range = this.chart.timeScale().getVisibleLogicalRange()
+    if (!range) return
+    const lastIndex = this.bars.length - 1
+    // 仅当视口右缘与最后 bar 相差不足 1 根（贴住数据末尾、未主动平移 / 越界）时跟随；
+    // lightweight-charts 允许逻辑范围越出数据右缘（拖拽后 to 可 > lastIndex），
+    // 此时若用宽松条件（to >= lastIndex - 1）会在下一次实时推送把视口拽回最后 120 根
+    // （"右移 10 多条后一段时间复原" v1.7.1 修复）——越界（to > lastIndex）或
+    // 看历史（to < lastIndex - 1）均视为用户已脱离跟踪，实时追加不再抢回视口。
+    if (Math.abs(range.to - lastIndex) < 1) {
+      this.chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(lastIndex + 1 - VISIBLE_BAR_COUNT, 0),
+        to: lastIndex,
+      })
+    }
   }
 
   /**
@@ -1009,15 +1056,15 @@ export class KLineChartController {
   zoomOut = (): void => viewportZoomOut(this.chart)
 
   /**
-   * 左移（视口向左平移 30 根K线，看更早数据）。
+   * 左移（视口向左平移 60 根K线，看更早数据）。
    * 用逻辑范围平移替代 scrollToPosition（后者距右边缘不足一屏时减幅变负被 clamp，
    * 直接跳到最新数据末尾）；逻辑范围平移到达最左自然停止，无跳变。
    */
-  /** 左移（视口向左平移 30 根K线）：委托 viewport.shiftLeft */
+  /** 左移（视口向左平移 60 根K线）：委托 viewport.shiftLeft */
   shiftLeft = (): void => viewportShiftLeft(this.chart)
 
-  /** 右移（视口向右平移 30 根K线，看更晚数据；到达最右自然停止，不跳变） */
-  /** 右移（视口向右平移 30 根K线）：委托 viewport.shiftRight */
+  /** 右移（视口向右平移 60 根K线，看更晚数据；到达最右自然停止，不跳变） */
+  /** 右移（视口向右平移 60 根K线）：委托 viewport.shiftRight */
   shiftRight = (): void => viewportShiftRight(this.chart)
 
   /** 设置主图指标（互斥单选；转发至指标管理器，null = 关闭） */
@@ -1058,6 +1105,16 @@ export class KLineChartController {
     if (this.showRightScale === visible) return
     this.showRightScale = visible
     this.applyPriceScaleVisible('right', visible)
+  }
+
+  /** 最后价线显隐（v1.7.1）：切换自绘 priceLine（幂等）。
+   *  变化时对 klineSeries 同值 applyOptions 强制 invalidate 立即生效
+   *  （库 priceLine 保持关闭，重绘由自绘 primitive 现取 visible）；
+   *  分时模式无 kline 点天然不绘制，调用无副作用。 */
+  setPriceLineVisible = (visible: boolean): void => {
+    if (!this.priceLinePrimitive) return
+    this.priceLinePrimitive.setVisible(visible)
+    this.klineSeries.applyOptions({ priceLineVisible: false })
   }
 
   /** 刻度区统一应用（左右宽度一致）：逐个 Pane 设置 price scale 显隐与最小宽度。

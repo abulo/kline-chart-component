@@ -130,7 +130,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     lowMarkerColor: '#2962FF',
     sarUp: '#FF0000',
     sarDown: '#008000',
-     volMa5: '#FFD54F',
+    volMa5: '#FFD54F',
     volMa10: '#F06292',
     // 分时双线：深系价格线白（醒目）、均价线亮黄
     timesharePriceColor: '#FFFFFF',

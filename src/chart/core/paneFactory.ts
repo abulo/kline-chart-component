@@ -32,6 +32,7 @@ import { GridPrimitive } from '../grid/gridPrimitive'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import { CrosshairLineCapPrimitive } from '../crosshair/crosshairLineCapPrimitive'
+import { findLastKlineBar, PriceLinePrimitive } from '../overlay/priceLinePrimitive'
 import { TimeshareManager } from './timeshareManager'
 import type { IndicatorManager } from './indicatorManager'
 import type { CrosshairManager } from './crosshairManager'
@@ -71,6 +72,8 @@ export interface PaneBundle {
   volumeSeries: ISeriesApi<'Histogram'>
   /** pane1 SAR 圆点自绘 primitive（初始隐藏） */
   sarMarkerPrimitive: SarMarkerPrimitive
+  /** pane1 最后价线自绘 primitive（v1.7.1：priceLineVisible 参数控制显隐） */
+  priceLinePrimitive: PriceLinePrimitive
   /** pane1 主图指标线自绘 primitive（top canvas，十字星之上） */
   indicatorLinePrimitive: IndicatorLinePrimitive
   /** pane3 成交量均量线 VOL MA5/MA10 自绘 primitive */
@@ -120,6 +123,8 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
       borderDownColor: initialThemeColors.downColor,
       wickUpColor: initialThemeColors.upColor, // 上涨影线红色
       wickDownColor: initialThemeColors.downColor,
+      // v1.7.1：最后价虚线改为 PriceLinePrimitive 自绘（真实最后 bar 价格 +
+      // 横贯全宽始终可见），库 priceLine 关闭避免重复渲染
       priceLineVisible: false,
       lastValueVisible: false,
       // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
@@ -285,6 +290,27 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
       getBackColor: () => themeColors(getTheme()).crosshairLabelBackground,
     }),
   )
+  // v1.7.1 最后价虚线（自绘）：价格 = 真实最后 K 线 bar 的 close（最新价），
+  // 横虚线横贯 pane1 全宽 —— 周期切换 / 实时更新 / 左移看历史任何视口位置
+  // 都持续可见（库原生 LastBar/LastVisible 无法同时满足"最新价 + 始终可见"）。
+  // 颜色 = 原生涨跌语义（最后 bar close vs preClose：红涨 / 绿跌 / 平盘
+  // 深系白·浅系黑）；分时模式 klineSeries 隐藏且 getBars 无 kline 点 → 自动不绘制。
+  const priceLinePrimitive = new PriceLinePrimitive({
+    series: klineSeries,
+    getLastClose: () => findLastKlineBar(getBars())?.close ?? null,
+    // 原生涨跌色：最后 bar close vs preClose —— 大于红 / 小于绿 / 等于平盘色
+    getColor: () => {
+      const theme = themeColors(getTheme())
+      const bar = findLastKlineBar(getBars())
+      if (!bar) return theme.flatColor
+      return bar.close > bar.preClose
+        ? theme.upColor
+        : bar.close < bar.preClose
+          ? theme.downColor
+          : theme.flatColor
+    },
+  })
+  klineSeries.attachPrimitive(priceLinePrimitive)
   // pane1 SAR 圆点：SarMarkerPrimitive 自绘（多头红 / 空头绿，zOrder normal 不遮十字星）；
   // 初始隐藏，由主图指标按钮开启（setMainIndicator('sar') 时 setVisible(true) + 重算数据）；
   // 数据源 = 指标管理器 SAR 缓存，显隐 / 换色由管理器统一控制（registerSarMarker）
@@ -419,6 +445,7 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
     pane2InfoSeries,
     volumeSeries,
     sarMarkerPrimitive,
+    priceLinePrimitive: priceLinePrimitive, // v1.7.1：显隐由 controller 参数控制
     indicatorLinePrimitive,
     volumeMaPrimitive,
   }

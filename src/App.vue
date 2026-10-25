@@ -87,6 +87,8 @@ const activeSubIndicator = ref<SubIndicatorType | null>("macd")
  */
 const showLeftScale = ref(true)
 const showRightScale = ref(isTimesharePeriod(activePeriod.value))
+/** 最后价线显隐（v1.7.1：K 线主图自绘 priceLine 开关，默认开） */
+const showPriceLine = ref(true)
 /** 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关） */
 const activeMainIndicator = ref<MainIndicatorType | null>("ma")
 
@@ -141,6 +143,11 @@ const toggleRightScale = (): void => {
   showRightScale.value = !showRightScale.value
 }
 
+/** 最后价线开关（v1.7.1）：仅维护状态（图表由 KLineChart.vue 的 priceLineVisible Props watch 驱动） */
+const togglePriceLine = (): void => {
+  showPriceLine.value = !showPriceLine.value
+}
+
 /** 放大 / 缩小 / 左移 / 右移（X 轴全局） */
 const zoomIn = (): void => chartRef.value?.controller?.zoomIn()
 const zoomOut = (): void => chartRef.value?.controller?.zoomOut()
@@ -181,6 +188,9 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       <button class="btn" :class="{ active: showRightScale }" @click="toggleRightScale">
         右刻度{{ showRightScale ? '开' : '关' }}
       </button>
+      <button class="btn" :class="{ active: showPriceLine }" @click="togglePriceLine">
+        价格线{{ showPriceLine ? '开' : '关' }}
+      </button>
       <!-- 平移 / 缩放（分时周期不可用：分时按时间轴自然滚动，无平移缩放语义，v1.7.0） -->
       <button v-if="!isTimeshare" class="btn" @click="shiftLeft">左移</button>
       <button v-if="!isTimeshare" class="btn" @click="shiftRight">右移</button>
@@ -201,6 +211,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         :time-axis="showTimeAxis"
         :left-scale="showLeftScale"
         :right-scale="showRightScale"
+        :price-line-visible="showPriceLine"
         :theme="theme"
         :main-indicator="activeMainIndicator ?? ''"
         :sub-indicator="activeSubIndicator ?? ''"

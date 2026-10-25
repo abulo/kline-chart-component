@@ -34,7 +34,7 @@ export const zoomOut = (
 }
 
 /**
- * 左移（视口向左平移 30 根K线，看更早数据）。
+ * 左移（视口向左平移 60 根K线，看更早数据）。
  * 用逻辑范围平移替代 scrollToPosition（后者距右边缘不足一屏时减幅变负被 clamp，
  * 直接跳到最新数据末尾）；逻辑范围平移到达最左自然停止，无跳变。
  */
@@ -50,7 +50,7 @@ export const shiftLeft = (
   })
 }
 
-/** 右移（视口向右平移 30 根K线，看更晚数据；到达最右自然停止，不跳变） */
+/** 右移（视口向右平移 60 根K线，看更晚数据；到达最右自然停止，不跳变） */
 export const shiftRight = (
   chart: ReturnType<typeof import('lightweight-charts').createChart>,
 ): void => {
@@ -122,6 +122,9 @@ export interface DebugApiAccessors {
   getTimeshareHalf: () => number
   getScaleValues: () => (number | undefined)[] | null
   getHorizontalCount: () => number
+  /** 视口探针（v1.7.1 调试）：逻辑范围 / 时间范围（null = 尚未布局） */
+  getVisibleLogicalRange: () => { from: number; to: number } | null
+  getVisibleRange: () => import('lightweight-charts').IRange<import('lightweight-charts').Time> | null
 }
 
 /** 调试数据暴露（仅开发用）：挂 window.__klineChart，控制台实时查看
@@ -154,6 +157,9 @@ export const exposeDebugApi = (accessors: DebugApiAccessors): void => {
   define('timeshareHalf', () => accessors.getTimeshareHalf())
   define('scaleValues', () => accessors.getScaleValues())
   define('horizontalCount', () => accessors.getHorizontalCount())
+  // 视口探针（v1.7.1 调试）：getVisibleLogicalRange / getVisibleRange（null = 尚未布局）
+  define('logicalRange', () => accessors.getVisibleLogicalRange())
+  define('visibleRange', () => accessors.getVisibleRange())
   // 遍历全部 bar 返回最高 / 最低价（price / avgPrice 极值）
   debug.getMaxMin = (): { maxPrice: number; minPrice: number } => {
     let maxPrice = Number.NEGATIVE_INFINITY

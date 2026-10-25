@@ -81,6 +81,8 @@ const props = withDefaults(
     data?: ChartDataPoint[];
     /** 时间格式模板（v1.6.9）：如 'YYYY-MM-DD' / 'YYYY-MM-DD HH:mm'；缺省按周期自动 */
     format?: string;
+    /** 最后价线显隐（v1.7.1）：默认 true 显示 K 线主图 priceLine；false 隐藏 */
+    priceLineVisible?: boolean;
     /** 全屏（v1.7.1）：true 时组件铺满浏览器视口（fixed 覆盖），false 保持父容器布局 */
     fullscreen?: boolean;
   }>(),
@@ -94,6 +96,7 @@ const props = withDefaults(
     mainIndicator: "",
     subIndicator: "",
     period: "",
+    priceLineVisible: true,
     fullscreen: false,
   },
 );
@@ -149,6 +152,8 @@ onMounted(() => {
       loadStatus.value = status;
       emit("status-change", status);
     },
+    // v1.7.1：最后价线显隐（构造即应用；watch 负责运行时切换）
+    priceLineVisible: props.priceLineVisible,
   });
   // 创建后立即应用全部 Props 初始值（与控制器构造默认值一致时幂等无副作用）
   controller.value.applyTheme(props.theme as ChartThemeName);
@@ -215,6 +220,11 @@ watch(
     controller.value?.setSubIndicator(
       value ? (value as SubIndicatorType) : null,
     ),
+);
+/** 最后价线显隐（v1.7.1）：运行时切换 priceLine（构造时已透传初始值） */
+watch(
+  () => props.priceLineVisible,
+  (value) => controller.value?.setPriceLineVisible(!!value),
 );
 /** 外部自定义数据变化 → 直接注入渲染（v1.6.28；data 模式不走 service） */
 watch(
