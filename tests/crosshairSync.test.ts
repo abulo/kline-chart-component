@@ -11,13 +11,12 @@
  *  - overlayTime 立即同步（cap 竖线同帧对齐）；
  *  - tooltip 立即收到目标 bar / 时间文本（无 rAF 延迟）；
  *  - 左刻度指示值：仅 pane1 注入（键盘横线在主 series 的 close/price 价），其余 pane 清除；
- *  - 从无十字星状态键盘激活：默认左进入方向；
- *  - 鼠标 / 键盘 x 优先级（window mousemove 记录 vs 键盘注入）。
+ *  - 从无十字星状态键盘激活：默认左进入方向。
  *
- * @vitest-environment jsdom —— 需要真实 window 触发 mousemove 事件
- * （node 环境无 window；jsdom 已随项目依赖安装）。
+ * 注：v1.7.1 曾为"两条竖线"修复在 CrosshairManager 增加 window mousemove /
+ * 拖拽状态跟踪与键盘 x 注入，随 cap 竖线（CrosshairLineCapPrimitive）删除，
+ * 相关用例一并移除（见 README "竖线清理"）。
  */
-// @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 import { CrosshairManager } from '../src/chart/core/crosshairManager'
 import type { ChartDataPoint } from '../src/types/chart'
@@ -64,9 +63,6 @@ interface ManagerWithProbe {
 
 const makeManager = (): ManagerWithProbe => {
   const tooltip = { show: vi.fn(), hide: vi.fn(), isHovered: false }
-  // getContainer mock：getBoundingClientRect 返回固定 rect（left=0），
-  // window mousemove 坐标换算仅依赖 rect.left
-  const container = { getBoundingClientRect: () => ({ left: 0 }) } as never
   const manager = new CrosshairManager({
     chart: makeChartMock() as never,
     tooltip: tooltip as never,
@@ -74,7 +70,6 @@ const makeManager = (): ManagerWithProbe => {
     getPaneTop: (_paneIndex: number): number => 0,
     getTimeText: (time: number): string => String(time),
     getWidth: (): number => 800,
-    getContainer: () => container,
     getTooltipBounds: () => ({
       left: 20,
       top: 20,
@@ -131,36 +126,4 @@ describe('CrosshairManager.syncKeyboardMove（键盘移动十字星全链路同�
     expect(manager.getOverlayTime()).toBe(77)
   })
 
-  it('键盘定位 x 注入：键盘移动后 cap 跟随键盘目标（isKeyboardRecent=true）', () => {
-    const { manager } = makeManager()
-    // 初始无鼠标移动 → lastMouseAt=0；键盘注入后键盘优先
-    manager.setKeyboardX(123)
-    expect(manager.isKeyboardRecent()).toBe(true)
-    expect(manager.getKeyboardX()).toBe(123)
-    // 键盘 x 注入为 null（目标 bar 移出视口）→ 键盘仍优先但返回 null（回退 overlayTime）
-    manager.setKeyboardX(null)
-    expect(manager.isKeyboardRecent()).toBe(true)
-    expect(manager.getKeyboardX()).toBeNull()
-  })
-
-  it('鼠标移动恢复鼠标优先：window mousemove 记录坐标后 isKeyboardRecent=false', () => {
-    const { manager } = makeManager()
-    manager.setKeyboardX(123)
-    expect(manager.isKeyboardRecent()).toBe(true)
-    // 模拟 window mousemove（记录相对容器 x；容器 rect.left=0 → 坐标即 clientX）
-    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 456 }))
-    expect(manager.getLastMouseX()).toBe(456)
-    expect(manager.isKeyboardRecent()).toBe(false) // 鼠标晚于键盘 → 鼠标优先
-  })
-
-  it('拖拽状态跟踪：mousedown 进入拖拽、mouseup 退出（cap 据此忽略浮层悬停回退）', () => {
-    const { manager } = makeManager()
-    expect(manager.isDragging()).toBe(false)
-    // 按下 → 拖拽中（拖拽平移穿过 tooltip 浮层时 cap 仍用鼠标实时反查）
-    window.dispatchEvent(new MouseEvent('mousedown'))
-    expect(manager.isDragging()).toBe(true)
-    // 松开 → 恢复（浮层悬停回退语义重新生效）
-    window.dispatchEvent(new MouseEvent('mouseup'))
-    expect(manager.isDragging()).toBe(false)
-  })
 })

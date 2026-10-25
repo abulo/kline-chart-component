@@ -91,10 +91,7 @@
   控制器在 `setCrosshairPosition` 后同步调用 `CrosshairManager.setOverlayTimeByKeyboard(time)` 立即对齐（cap 竖线与库竖线同帧重叠，随后的 rAF 事件写入相同值无副作用）；
   **同步修复"tooltip 更新延迟"（v1.7.1）**：数据浮层同样经 rAF 事件链路（下一帧才 `tooltip.show` 新 bar），键盘连发时持续滞后——
   控制器改为同步调用 `CrosshairManager.syncKeyboardMove(bar, time, pane1LocalY)` 全链路对齐（overlayTime + tooltip 数据 + 左刻度指示值，指示值仅注入 pane1：键盘横线在主 series 的 close/price 价）；
-  **修复"拖拽平移两条竖线"（v1.7.1）**：拖拽时库进入 pan 手势，crosshairMove 事件稀疏 / 暂停 → overlayTime 滞后于鼠标 → cap 竖线与库竖线错开（慢速拖拽差 1 根 bar）。修复：`CrosshairManager` 监听 `window.mousemove`（passive，仅记录坐标），cap 竖线 x 改为**鼠标实时反查**（`getCrosshairX`：鼠标 x 扣左刻度宽 → 数据区精确 x，键盘定位用时间戳优先 + `setKeyboardX` 注入目标 x；鼠标离开图表 / 浮层悬停回退 overlayTime）；实测拖拽中 cap 与库竖线同帧重叠；
-  **"两条竖线"二次修复（v1.7.1 实测定位）**：
-  1. **拖拽路径穿过 tooltip 浮层**（`tooltip.isHovered=true`）时，cap 走"浮层悬停回退 overlayTime"冻结在旧 bar，与库竖线错开——新增 `CrosshairManager` 拖拽状态（window mousedown/mouseup 跟踪 `isDragging`），按住时忽略浮层回退，cap 始终用鼠标实时 x；
-  2. **cap 竖线吸附 bar 中心**（`coordinateToTime→timeToCoordinate` round trip）而库竖线（`CrosshairMode.Normal`）精确跟随鼠标，两者差半个 bar（≈barSpacing/2）——cap 鼠标路径改为直接返回数据区精确 x，与库竖线完全同坐标（拖拽中像素实测两线重叠，峰值亮度翻倍为一条）；
+  **"两条竖线"最终方案：删除自绘 cap 竖线（v1.7.1）**：多次对齐修复（window mousemove 鼠标反查 / 拖拽状态忽略浮层回退 / 精确数据区 x）后仍有边界场景错位（拖拽路径穿 tooltip 浮层、bar 中心吸附 vs 库精确跟随）——直接**删除自绘细竖线**（`CrosshairLineCapPrimitive` / `CrosshairLineCapPaneView`，pane1~5 五处挂载全部移除），**只保留库竖线**（`CrosshairMode.Normal` 精确跟随鼠标，键盘移动由 `setCrosshairPosition` 驱动）。同步清理：`CrosshairManager` 的 window mousemove / mousedown / mouseup 跟踪与键盘 x 注入、controller `getCrosshairX`、IndicatorManager / SubIndicatorPaneManager 透传、调试探针（capX / lastMouseX / keyboardX 等）。键盘十字星导航保留（`syncKeyboardMove` 对齐 overlayTime / tooltip / 左刻度指示值），实测 hover / 键盘 / 拖拽均为**单条竖线**；
 - **十字星细虚线**（`CrosshairLineCapPrimitive` + `CrosshairLineCapPaneView`，v1.4.101）：竖线在 top 层重绘为 0.75 CSS px 亚像素细虚线（虚线周期 [1,1] 物理 px（最密）），底部补齐实线保证"到底"；横竖线颜色 `crosshairLineColor` 透明度 0.25（深浅系区分，theme.ts），视觉更细更淡；库横竖线本体仍保留（时间轴时间 label 依赖库绘制）；
 - **指标叠加绘图在十字星之上**（`IndicatorLinePrimitive`，zOrder 'top' top canvas 自绘）：主图指标线（MA / EXPMA / BOLL / BBI）与成交量均量线（VOL MA5 / MA10）自绘折线，绘制在十字星之上 —— 十字星横线穿过时指标线完整可见（库十字星画在 top canvas 的 series 之上，LineSeries 必被横线压住，故改自绘）；坐标 = timeScale.timeToCoordinate × anchorSeries.priceToCoordinate，按可视时间范围裁剪，坐标缺失断开路径；
 - **内容 Pane 边框**（`PaneBorderPrimitive`）：pane1 / pane3 / pane5 自绘 1px 直角矩形边框，颜色随主题；bitmap 物理像素绘制（缩放时始终贴住画布最右边缘，无亚像素缝隙）；

@@ -30,7 +30,6 @@ import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
 import { GridPrimitive } from '../grid/gridPrimitive'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
-import { CrosshairLineCapPrimitive } from '../crosshair/crosshairLineCapPrimitive'
 import { calcSubIndicator, type SubIndicatorType } from '../indicator'
 import { formatAxisSmart } from '../util/format'
 import { subIndicatorLabels } from './indicatorMeta'
@@ -69,8 +68,6 @@ export interface SubIndicatorPaneManagerDeps {
   getTheme: () => ChartThemeName
   /** 十字星当前时间（null = 未命中 → 显示最新 bar；CrosshairManager 提供） */
   getOverlayTime: () => number | null
-  /** 十字星竖线实时 x（数据区坐标，v1.7.1；Controller 提供，pane4/5 cap 竖线共用） */
-  getCrosshairX: () => number | null
   /** 十字星指示值注册表（CrosshairManager；pane5 的注册 / 移除走这里） */
   crosshairRegistry: CrosshairPrimitiveRegistry
   /** 当前周期是否为分时（v1.7.0）：MACD 红绿柱改库直方图 / 附图指标无 CR /
@@ -108,8 +105,6 @@ export class SubIndicatorPaneManager {
   private readonly getBars: SubIndicatorPaneManagerDeps['getBars']
   private readonly getTheme: SubIndicatorPaneManagerDeps['getTheme']
   private readonly getOverlayTime: SubIndicatorPaneManagerDeps['getOverlayTime']
-  /** 十字星竖线实时 x（pane4/5 cap 竖线共用，v1.7.1） */
-  private readonly getCrosshairX: SubIndicatorPaneManagerDeps['getCrosshairX']
   private readonly crosshairRegistry: CrosshairPrimitiveRegistry
   /** 当前周期是否为分时（v1.7.0，deps 注入） */
   private readonly getIsTimeshare: SubIndicatorPaneManagerDeps['getIsTimeshare']
@@ -155,7 +150,6 @@ export class SubIndicatorPaneManager {
     this.getBars = deps.getBars
     this.getTheme = deps.getTheme
     this.getOverlayTime = deps.getOverlayTime
-    this.getCrosshairX = deps.getCrosshairX
     this.crosshairRegistry = deps.crosshairRegistry
     this.getIsTimeshare = deps.getIsTimeshare
     this.getVerticalCount = deps.getVerticalCount
@@ -217,8 +211,6 @@ export class SubIndicatorPaneManager {
       // 数值 = buildInfoSegments 现取（label + 线色，随十字星命中 bar / 最新 bar）
       new InfoLabelPrimitive(() => this.buildInfoSegments()),
     )
-    // pane4 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-    pane4InfoSeries.attachPrimitive(this.createCrosshairLineCap())
 
     /* pane5：附图指标（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR，互斥单选，高度与 pane3 一致）
      * 通用结构：
@@ -341,23 +333,7 @@ export class SubIndicatorPaneManager {
       }),
     )
     this.indicatorsBarSeries.attachPrimitive(this.subIndicatorLinePrimitive)
-    // pane5 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-    this.indicatorsBarSeries.attachPrimitive(this.createCrosshairLineCap())
   }
-
-  /**
-   * 十字星竖线底部补齐 primitive（pane4 / pane5 各挂一个）：
-   * 填库 LargeDashed 竖线因 pane 高度非虚线周期整数倍产生的底部空白段，
-   * 使竖线视觉到底（见 CrosshairLineCapPrimitive 头注释）。
-   * 颜色 / 时间 / x 全部动态获取（主题切换、十字星移动即时生效）。
-   */
-  private createCrosshairLineCap = (): CrosshairLineCapPrimitive =>
-    new CrosshairLineCapPrimitive({
-      getOverlayTime: this.getOverlayTime,
-      getCrosshairX: () => this.getCrosshairX(),
-      getTimeScale: () => this.chart.timeScale(),
-      getLineColor: () => themeColors(this.getTheme()).crosshairLineColor,
-    })
 
   /** 关闭指标层：移除 pane4 / pane5 并清空相关 series 引用（防内存泄漏）。
    *  库 removePane 从 panes 数组 splice，pane 上 series（含 primitive）的强引用

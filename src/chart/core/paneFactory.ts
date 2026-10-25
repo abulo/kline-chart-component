@@ -31,7 +31,6 @@ import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
 import { GridPrimitive } from '../grid/gridPrimitive'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
-import { CrosshairLineCapPrimitive } from '../crosshair/crosshairLineCapPrimitive'
 import { findLastKlineBar, PriceLinePrimitive } from '../overlay/priceLinePrimitive'
 import { TimeshareManager } from './timeshareManager'
 import type { IndicatorManager } from './indicatorManager'
@@ -53,7 +52,6 @@ export interface PaneFactoryDeps {
   /** 十字星管理器（指示值 primitive 注册，move 回调注入 y） */
   crosshairManager: CrosshairManager
   /** 十字星竖线底部补齐 primitive（controller 统一创建，防泄漏由 controller destroy 管理） */
-  createCrosshairLineCap: () => CrosshairLineCapPrimitive
 }
 
 /** 构建结果：controller 保存引用的全部 series 与自绘 primitive */
@@ -333,8 +331,6 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
     }),
   )
   klineSeries.attachPrimitive(indicatorLinePrimitive)
-  // pane1 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-  klineSeries.attachPrimitive(deps.createCrosshairLineCap())
 
   /* ---------- 5. pane2：成交量信息行（自绘分段文字，设置与 pane0 一致） ----------
    * 显示 "成交量: x  MA5: x  MA10: x"（数值随十字星命中 bar / 最新 bar）；
@@ -354,8 +350,6 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
   pane2InfoSeries.attachPrimitive(
     new InfoLabelPrimitive(() => indicatorManager.buildVolumeInfoSegments()),
   )
-  // pane2 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-  pane2InfoSeries.attachPrimitive(deps.createCrosshairLineCap())
 
   /* ---------- 6. pane3：成交量（自绘柱体，视觉与 pane1 完全一致） ----------
    * HistogramSeries 仅作数据锚点：color = 背景色（不可见），
@@ -434,8 +428,6 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
     }),
   )
   volumeSeries.attachPrimitive(volumeMaPrimitive)
-  // pane3 十字星竖线底部补齐（见 CrosshairLineCapPrimitive：填虚线最后空白段）
-  volumeSeries.attachPrimitive(deps.createCrosshairLineCap())
 
   return {
     klineSeries,

@@ -149,15 +149,6 @@ export interface DebugApiAccessors {  /** 静态字段（构造时固定） */
   getVisibleRange: () => import('lightweight-charts').IRange<import('lightweight-charts').Time> | null
   /** 十字星当前命中 bar 时间探针（v1.7.1 调试）：拖拽 / 键盘移动时 overlayTime 是否实时跟随 */
   getOverlayTime: () => number | null
-  /** 拖拽"两条竖线"探针（v1.7.1）：cap 竖线 x 数据源实时值
-   *  - lastMouseX：window mousemove 记录的容器相对 x（null = 无记录）
-   *  - capX：getCrosshairX 最终返回值（cap 竖线绘制 x，null = 回退 overlayTime）
-   *  - leftScaleWidth：左刻度区宽（cap 坐标换算基准） */
-  getLastMouseX: () => number | null
-  getKeyboardX: () => number | null
-  getKeyboardRecent: () => boolean
-  getCapX: () => number | null
-  getLeftScaleWidth: () => number
 }
 
 /** 调试数据暴露（仅开发用）：挂 window.__klineChart，控制台实时查看
@@ -195,12 +186,6 @@ export const exposeDebugApi = (accessors: DebugApiAccessors): void => {
   define('visibleRange', () => accessors.getVisibleRange())
   // 十字星命中 time 探针（v1.7.1 调试）：拖拽 / 键盘移动时实时查看 overlayTime 是否跟随
   define('overlayTime', () => accessors.getOverlayTime())
-  // 拖拽"两条竖线"探针（v1.7.1）：cap 竖线 x 数据源实时值
-  define('lastMouseX', () => accessors.getLastMouseX())
-  define('keyboardX', () => accessors.getKeyboardX())
-  define('keyboardRecent', () => accessors.getKeyboardRecent())
-  define('capX', () => accessors.getCapX())
-  define('leftScaleWidth', () => accessors.getLeftScaleWidth())
   // 遍历全部 bar 返回最高 / 最低价（price / avgPrice 极值）
   debug.getMaxMin = (): { maxPrice: number; minPrice: number } => {
     let maxPrice = Number.NEGATIVE_INFINITY

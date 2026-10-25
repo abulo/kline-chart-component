@@ -55,8 +55,6 @@ export interface IndicatorManagerDeps {
   getTheme: () => ChartThemeName
   /** 十字星当前时间（null = 未命中 → 显示最新 bar；CrosshairManager 提供） */
   getOverlayTime: () => number | null
-  /** 十字星竖线实时 x（数据区坐标，v1.7.1；Controller 提供，pane4/5 cap 竖线共用） */
-  getCrosshairX: () => number | null
   /** 股票名称（pane0 首段） */
   getName: () => string
   /** 股票代码（pane0 首段） */
@@ -131,7 +129,6 @@ export class IndicatorManager {
       getBars: deps.getBars,
       getTheme: deps.getTheme,
       getOverlayTime: deps.getOverlayTime,
-      getCrosshairX: deps.getCrosshairX,
       crosshairRegistry: deps.crosshairRegistry,
       // v1.7.0：分时模式判定 + 竖向栅格份数（分时按周期 / K 线恒 4）
       getIsTimeshare: () => isTimesharePeriod(deps.getPeriod()),

@@ -32,8 +32,6 @@ export interface CrosshairManagerDeps {
   getTimeText: (time: number) => string
   /** 图表容器宽度（px；进入方向判定：鼠标 x < 宽/2 → 左进入，v1.6.36） */
   getWidth: () => number
-  /** 图表容器元素（window mousemove 坐标换算基准；v1.7.1 拖拽实时跟随） */
-  getContainer: () => HTMLElement
   /** pane1~pane5 可移动 / 可拖动区域（相对容器；默认位置与拖动 clamp 边界，
    *  扣除左右刻度区宽，刻度开关变化时随每次 show 重新注入，v1.6.58） */
   getTooltipBounds: () => TooltipBounds
@@ -55,28 +53,6 @@ export class CrosshairManager {
   /** 上一帧是否命中（false → 本次为"再次进入"，按鼠标 x 重判进入方向） */
   private wasHit = false
 
-  /* ---------- 鼠标实时坐标（v1.7.1 拖拽跟随） ----------
-   * 拖拽平移时库进入 pan 手势，crosshairMove 事件暂停 / 稀疏触发 → overlayTime
-   * 滞后于鼠标 → cap 竖线与库竖线错位成"两条竖线"。window mousemove 监听仅记录
-   * 鼠标相对图表容器的 x（passive，无重绘开销），cap 竖线 draw 时用鼠标 x 实时
-   * 反查 bar（coordinateToTime → timeToCoordinate），与库竖线同帧对齐。
-   */
-  /** 鼠标最近 x（相对图表容器左缘，含左刻度区；null = 尚未移动） */
-  private lastMouseX: number | null = null
-  /** 最近一次鼠标移动时间戳（与键盘定位比较，决定 x 来源优先级） */
-  private lastMouseAt = 0
-  /** 键盘定位 x 缓存（moveCrosshairBy 注入；键盘后鼠标未动时 cap 跟随键盘目标） */
-  private lastKeyboardX: number | null = null
-  /** 最近一次键盘定位时间戳 */
-  private lastKeyboardAt = 0
-  /** 图表容器元素（window mousemove 坐标换算基准） */
-  private readonly container: HTMLElement
-  /** 鼠标是否按住（window mousedown / mouseup 跟踪，v1.7.1）：
-   *  拖拽平移中鼠标可能穿过 tooltip 浮层 DOM（isHovered=true），此时 cap 竖线
-   *  若走"浮层悬停回退 overlayTime"会冻结在旧 bar 与库竖线错开成"两条竖线"。
-   *  按住状态下忽略 isHovered 回退，cap 始终用鼠标实时反查。 */
-  private dragging = false
-
   /* ---------- 十字星 move rAF 节流（性能，v1.5.9） ----------
    * 拖拽平移 / 快速 mousemove 时 crosshairMove 触发频率可能远高于帧率，
    * 每次回调 setCrosshairY → requestUpdate → 库 fullUpdate 全图重绘 → 卡顿。
@@ -90,31 +66,8 @@ export class CrosshairManager {
   constructor(deps: CrosshairManagerDeps) {
     this.deps = deps
     this.chart = deps.chart
-    this.container = deps.getContainer()
     this.chart.subscribeCrosshairMove(this.handleCrosshairMove)
-    // window mousemove：拖拽中库 pan 手势暂停 crosshairMove 事件时，
-    // cap 竖线仍可实时跟随鼠标（仅记录坐标，无重绘开销）。
-    // typeof 守卫：node 测试环境无 window（图表组件仅在浏览器运行）
-    if (typeof window !== 'undefined') {
-      window.addEventListener('mousemove', this.handleWindowMouseMove, { passive: true })
-      // 拖拽状态跟踪（按住 = 拖拽平移）：拖拽中 cap 忽略 tooltip 浮层悬停回退
-      window.addEventListener('mousedown', this.handleWindowMouseDown)
-      window.addEventListener('mouseup', this.handleWindowMouseUp)
-    }
   }
-
-  /** window mousedown：进入拖拽状态（按住移动 = 拖拽平移 / 十字星拖动） */
-  private handleWindowMouseDown = (): void => {
-    this.dragging = true
-  }
-
-  /** window mouseup：退出拖拽状态（松手后恢复浮层悬停回退语义） */
-  private handleWindowMouseUp = (): void => {
-    this.dragging = false
-  }
-
-  /** 当前是否处于拖拽（按住）状态（controller.getCrosshairX 判定 cap 数据源） */
-  isDragging = (): boolean => this.dragging
 
   /** 注册十字星指示值 primitive（pane1 / pane3 由控制器、pane5 由 IndicatorManager 调用） */
   registerPrimitive = (primitive: CrosshairAxisLabelPrimitive): void => {
@@ -127,32 +80,6 @@ export class CrosshairManager {
       (primitive) => primitive.config.getPaneIndex() !== paneIndex,
     )
   }
-
-  /* ---------- 鼠标实时坐标（v1.7.1 拖拽跟随） ---------- */
-
-  /** window mousemove：记录鼠标相对图表容器的 x（passive；拖拽 pan 手势中
-   *  crosshairMove 事件暂停时，cap 竖线仍可实时跟随鼠标） */
-  private handleWindowMouseMove = (e: MouseEvent): void => {
-    const rect = this.container.getBoundingClientRect()
-    this.lastMouseX = e.clientX - rect.left
-    this.lastMouseAt = Date.now()
-  }
-
-  /** 键盘定位 x 注入（controller.moveCrosshairBy 调用：目标 bar 的数据区 x）：
-   *  键盘后鼠标未动时 cap 竖线跟随键盘目标；鼠标再移动自动恢复鼠标实时跟随 */
-  setKeyboardX = (x: number | null): void => {
-    this.lastKeyboardX = x
-    this.lastKeyboardAt = Date.now()
-  }
-
-  /** 是否键盘定位优先（键盘移动晚于鼠标移动 → cap 跟随键盘；鼠标再动恢复鼠标） */
-  isKeyboardRecent = (): boolean => this.lastKeyboardAt > this.lastMouseAt
-
-  /** 鼠标最近 x（相对图表容器，含左刻度区；null = 尚未移动） */
-  getLastMouseX = (): number | null => this.lastMouseX
-
-  /** 键盘定位 x（moveCrosshairBy 注入的目标 bar 数据区 x） */
-  getKeyboardX = (): number | null => this.lastKeyboardX
 
   /** 十字星当前时间（null = 未命中；IndicatorManager 构建 pane0/2/4 信息行取值） */
   getOverlayTime = (): number | null => this.overlayTime
@@ -199,9 +126,8 @@ export class CrosshairManager {
   /** 十字星移动订阅入口：rAF 节流合并（每帧最多处理一次，防拖拽平移卡顿） */
   private handleCrosshairMove = (param: MouseEventParams): void => {
     // v1.7.1 同步先更新 overlayTime（廉价字段赋值，不触发重绘）：库十字星 time
-    // 变化（键盘 / 拖拽平移 / 缩放）时，CrosshairLineCapPrimitive 竖线 draw 与库竖线
-    // **同帧**取到新 time —— 消除 rAF 节流导致的一帧错位（"两条竖线"：
-    // 拖拽中 cap 竖线仍画上一帧 overlayTime 的 bar，与库竖线错开一根）。
+    // 变化（键盘 / 拖拽平移 / 缩放）时，pane0 信息行 / 左刻度指示值 / tooltip 数据
+    // **同帧**取到新 time —— 消除 rAF 节流导致的一帧延迟（pane0 时间 / 指示值滞后）。
     // 与 applyCrosshairMove 同口径：pane0 / 未命中 → null；
     // 鼠标悬停在数据浮层上（tooltip.isHovered，浮层上选中文字期间）保持原值不清除。
     if (param.point && param.paneIndex !== undefined && param.paneIndex !== 0) {
@@ -305,11 +231,6 @@ export class CrosshairManager {
   /** 销毁：退订十字星监听 + 取消待处理帧 + 清空指示值 primitive 引用（防内存泄漏） */
   destroy = (): void => {
     this.chart.unsubscribeCrosshairMove(this.handleCrosshairMove)
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('mousemove', this.handleWindowMouseMove)
-      window.removeEventListener('mousedown', this.handleWindowMouseDown)
-      window.removeEventListener('mouseup', this.handleWindowMouseUp)
-    }
     this.pendingParam = null
     this.frameScheduled = false
     this.crosshairAxisLabelPrimitives = []

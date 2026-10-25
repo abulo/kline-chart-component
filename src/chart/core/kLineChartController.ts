@@ -84,7 +84,6 @@ import {
 import { normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock } from '../util/format'
 import { type PeriodValueOrEmpty } from '../periods'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
-import { CrosshairLineCapPrimitive } from '../crosshair/crosshairLineCapPrimitive'
 import { CrosshairTooltip, type TooltipBounds } from '../crosshair/crosshairTooltip'
 import { IndicatorManager } from './indicatorManager'
 import { CrosshairManager } from './crosshairManager'
@@ -295,7 +294,6 @@ export class KLineChartController {
       getBars: () => this.bars,
       getTheme: () => this.theme,
       getOverlayTime: () => this.crosshairManager.getOverlayTime(),
-      getCrosshairX: () => this.getCrosshairX(),
       getName: () => this.name,
       getSymbol: () => this.symbol,
       crosshairRegistry: this.crosshairManagerRegistry,
@@ -323,8 +321,6 @@ export class KLineChartController {
       getPaneTop: this.getPaneTop,
       getTimeText: this.getTimeText,
       getWidth: () => this.container.clientWidth,
-      // v1.7.1：window mousemove 坐标换算基准（拖拽实时跟随）
-      getContainer: () => this.container,
       getTooltipBounds: (): TooltipBounds => ({
         // X：pane1~pane5 数据区左右缘（扣除左 / 右刻度区宽，开关打开时收窄）
         left: this.showLeftScale ? PRICE_SCALE_MIN_WIDTH : 0,
@@ -348,7 +344,6 @@ export class KLineChartController {
       indicatorManager: this.indicatorManager,
       timeshareManager: this.timeshareManager,
       crosshairManager: this.crosshairManager,
-      createCrosshairLineCap: this.createCrosshairLineCap,
     })
     this.klineSeries = panes.klineSeries
     this.timesharePriceSeries = panes.timesharePriceSeries
@@ -426,55 +421,6 @@ export class KLineChartController {
     },
   }
 
-  /**
-   * 十字星竖线底部补齐 primitive（pane1/2/3/4/5 各挂一个）：
-   * 填库 LargeDashed 竖线因 pane 高度非虚线周期整数倍产生的底部空白段，
-   * 使竖线视觉到底（见 CrosshairLineCapPrimitive 头注释）。
-   * 颜色 / 时间 / x 全部动态获取（主题切换、十字星移动即时生效）。
-   */
-  private createCrosshairLineCap = (): CrosshairLineCapPrimitive =>
-    new CrosshairLineCapPrimitive({
-      getOverlayTime: () => this.crosshairManager.getOverlayTime(),
-      getCrosshairX: () => this.getCrosshairX(),
-      getTimeScale: () => this.chart.timeScale(),
-      getLineColor: () => themeColors(this.theme).crosshairLineColor,
-    })
-
-  /**
-   * 十字星竖线实时 x（数据区坐标，v1.7.1）：cap 竖线 draw 优先使用本值，
-   * 消除拖拽平移时 crosshairMove 事件空窗导致的 cap 竖线滞后（"两条竖线"）。
-   *  - 键盘定位优先（键盘移动晚于鼠标）：moveCrosshairBy 注入的目标 x；
-   *  - 鼠标 hover / 拖拽平移：鼠标 x 实时反查（coordinateToTime → timeToCoordinate），
-   *    window mousemove 记录鼠标位置（CrosshairManager），pan 手势中事件暂停也能跟随；
-   *  - 鼠标离开图表 / 数据浮层悬停（tooltip.isHovered 保持原十字星状态）：返回 null
-   *    → cap 回退 timeToCoordinate(overlayTime)。
-   * pane1 / pane2 / pane3 / pane4 / pane5 各 cap 实例共用本方法（Controller 单点提供）。
-   */
-  private getCrosshairX = (): number | null => {
-    if (this.crosshairManager.isKeyboardRecent()) {
-      return this.crosshairManager.getKeyboardX()
-    }
-    const mouseX = this.crosshairManager.getLastMouseX()
-    if (mouseX === null) return null
-    // 鼠标悬停在数据浮层上（浮层选中文字期间十字星状态不被动清除）→ 回退 overlayTime。
-    // 但拖拽（鼠标按住）中不适用：拖拽平移时鼠标会穿过 tooltip 浮层 DOM（isHovered=true），
-    // 若仍回退会导致 cap 冻结在旧 bar 与库竖线错开成"两条竖线"（v1.7.1 实测）。
-    if (this.tooltip.isHovered && !this.crosshairManager.isDragging()) return null
-    const ts = this.chart.timeScale()
-    // 容器 x → 数据区 x：扣除左刻度区宽（开关打开时收窄）
-    const leftScaleWidth = this.showLeftScale
-      ? this.chart.priceScale('left').width()
-      : 0
-    const dataX = mouseX - leftScaleWidth
-    // 数据区边界外（鼠标离开图表）→ 不绘制（回退 overlayTime 由 cap 处理）
-    if (dataX < 0 || dataX > ts.width()) return null
-    // 直接返回鼠标精确数据区 x（v1.7.1 实测修复）：
-    // 库 crosshairMode=Normal，竖线精确跟随鼠标（不吸附 bar 中心）；
-    // 若此处做 coordinateToTime→timeToCoordinate round trip（bar 中心吸附），
-    // 与库竖线相差半个 bar 宽（≈barSpacing/2），拖拽平移时肉眼可见"两根竖线"。
-    return dataX
-  }
-
   /* ===================== 布局 ===================== */
 
   /**
@@ -515,16 +461,6 @@ export class KLineChartController {
       getVisibleRange: () => this.chart.timeScale().getVisibleRange(),
       // 十字星命中 time 探针（v1.7.1 调试）：拖拽 / 键盘移动时实时查看 overlayTime 是否跟随
       getOverlayTime: () => this.crosshairManager.getOverlayTime(),
-      // 拖拽"两条竖线"探针（v1.7.1）：cap 竖线 x 数据源实时值
-      //  - lastMouseX：window mousemove 记录的容器相对 x（null = 无记录）
-      //  - capX：getCrosshairX 最终返回值（cap 竖线绘制 x，null = 回退 overlayTime）
-      getLastMouseX: () => this.crosshairManager.getLastMouseX(),
-      getKeyboardX: () => this.crosshairManager.getKeyboardX(),
-      getKeyboardRecent: () => this.crosshairManager.isKeyboardRecent(),
-      getCapX: () => this.getCrosshairX(),
-      // 左刻度区宽（cap 坐标换算基准）
-      getLeftScaleWidth: () =>
-        this.showLeftScale ? this.chart.priceScale('left').width() : 0,
     })
   }
 
@@ -1200,14 +1136,10 @@ export class KLineChartController {
       : (bar.close ?? 0)
     this.chart.setCrosshairPosition(price, time as UTCTimestamp, series)
     // 全链路同步（v1.7.1）：setCrosshairPosition 触发的 crosshairMove 事件经 rAF
-    // 节流**下一帧**才处理 —— 同帧内 cap 竖线仍画旧位置（"两条竖线"）、tooltip
-    // 数据浮层仍显示旧 bar（更新延迟）。此处同步对齐 overlayTime / tooltip /
-    // 左刻度指示值，随后的 rAF 事件写入相同值无副作用（见 CrosshairManager.syncKeyboardMove）。
+    // 节流**下一帧**才处理 —— tooltip 数据浮层仍显示旧 bar（更新延迟）、pane0 时间 /
+    // 左刻度指示值滞后。此处同步对齐 overlayTime / tooltip / 左刻度指示值，
+    // 随后的 rAF 事件写入相同值无副作用（见 CrosshairManager.syncKeyboardMove）。
     this.crosshairManager.syncKeyboardMove(bar, time, series.priceToCoordinate(price) ?? null)
-    // 键盘定位 x 注入：键盘后鼠标未动时 cap 竖线跟随键盘目标（时间戳优先于鼠标）
-    this.crosshairManager.setKeyboardX(
-      this.chart.timeScale().timeToCoordinate(time as Time) ?? null,
-    )
   }
 
   /** 刻度区统一应用（左右宽度一致）：逐个 Pane 设置 price scale 显隐与最小宽度。
