@@ -332,6 +332,49 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
   )
   klineSeries.attachPrimitive(indicatorLinePrimitive)
 
+  /* ---------- 5/6. pane2 + pane3（成交量组，v1.7.2 抽取） ----------
+   * 由 createVolumePanes 创建：pane2 成交量信息行 + pane3 成交量锚点 / 柱 /
+   * 均量线；controller 关闭成交量组时销毁整组（仿 pane4/5 创建/移除式开关）。
+   */
+  const volume = createVolumePanes(deps)
+  return {
+    klineSeries,
+    timesharePriceSeries,
+    timeshareAvgSeries,
+    timeshareRightAxisSeries,
+    pane2InfoSeries: volume.pane2InfoSeries,
+    volumeSeries: volume.volumeSeries,
+    sarMarkerPrimitive,
+    priceLinePrimitive: priceLinePrimitive, // v1.7.1：显隐由 controller 参数控制
+    indicatorLinePrimitive,
+    volumeMaPrimitive: volume.volumeMaPrimitive,
+  }
+}
+
+/** 成交量组构建依赖（PaneFactoryDeps 子集；controller 重建 pane2/3 时注入） */
+export type VolumePaneDeps = PaneFactoryDeps
+
+/** 成交量组构建结果（controller 保存引用；关闭时整组销毁） */
+export interface VolumePaneBundle {
+  /** pane2 成交量信息行（自绘分段文字，设置与 pane0 一致） */
+  pane2InfoSeries: ISeriesApi<'Line'>
+  /** pane3 成交量锚点（Histogram，color=背景不可见，仅建 Y 轴） */
+  volumeSeries: ISeriesApi<'Histogram'>
+  /** pane3 成交量均量线 VOL MA5/MA10 自绘 primitive */
+  volumeMaPrimitive: IndicatorLinePrimitive
+}
+
+/**
+ * 创建成交量组 Pane（pane2 成交量信息行 + pane3 成交量图，v1.7.2 自 createPanes 抽取）。
+ * 独立导出供 controller 在"关闭成交量组"后按需重建（仿 pane4/5 创建/移除式开关）：
+ *  - 可见柱体由 VolumeBarPrimitive 自绘（红涨空心 / 绿跌实心，宽与 pane1 一致）；
+ *  - 均量线 VOL MA5/MA10 由 IndicatorLinePrimitive 自绘（数据 = rebuildVolumeData 缓存现取）；
+ *  - 十字星左刻度指示值（pane3CrosshairLabel）注册进 crosshairManager
+ *    （controller 移除整组时按 paneIndex 3 注销）。
+ */
+export const createVolumePanes = (deps: VolumePaneDeps): VolumePaneBundle => {
+  const { chart, getTheme, getBars, getPeriod, indicatorManager, timeshareManager, crosshairManager } = deps
+  const initialThemeColors = themeColors(getTheme())
   /* ---------- 5. pane2：成交量信息行（自绘分段文字，设置与 pane0 一致） ----------
    * 显示 "成交量: x  MA5: x  MA10: x"（数值随十字星命中 bar / 最新 bar）；
    * 用 InfoLabelPrimitive（**不填背景**）—— 十字星竖线需贯穿 pane2，
@@ -429,16 +472,6 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
   )
   volumeSeries.attachPrimitive(volumeMaPrimitive)
 
-  return {
-    klineSeries,
-    timesharePriceSeries,
-    timeshareAvgSeries,
-    timeshareRightAxisSeries,
-    pane2InfoSeries,
-    volumeSeries,
-    sarMarkerPrimitive,
-    priceLinePrimitive: priceLinePrimitive, // v1.7.1：显隐由 controller 参数控制
-    indicatorLinePrimitive,
-    volumeMaPrimitive,
-  }
+
+  return { pane2InfoSeries, volumeSeries, volumeMaPrimitive }
 }

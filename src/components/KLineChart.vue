@@ -83,6 +83,8 @@ const props = withDefaults(
     format?: string;
     /** 最后价线显隐（v1.7.1）：默认 true 显示 K 线主图 priceLine；false 隐藏 */
     priceLineVisible?: boolean;
+    /** 成交量组显隐（v1.7.2）：默认 true（pane2 信息行 + pane3 成交量图）；false 隐藏 */
+    volumeVisible?: boolean;
     /** 全屏（v1.7.1）：true 时组件铺满浏览器视口（fixed 覆盖），false 保持父容器布局 */
     fullscreen?: boolean;
   }>(),
@@ -97,6 +99,7 @@ const props = withDefaults(
     subIndicator: "",
     period: "",
     priceLineVisible: true,
+    volumeVisible: true,
     fullscreen: false,
   },
 );
@@ -214,6 +217,8 @@ onMounted(() => {
     },
     // v1.7.1：最后价线显隐（构造即应用；watch 负责运行时切换）
     priceLineVisible: props.priceLineVisible,
+    // v1.7.2：成交量组显隐（构造即应用；watch 负责运行时切换）
+    volumeVisible: props.volumeVisible,
   });
   // 创建后立即应用全部 Props 初始值（与控制器构造默认值一致时幂等无副作用）
   controller.value.applyTheme(props.theme as ChartThemeName);
@@ -292,6 +297,11 @@ watch(
 watch(
   () => props.priceLineVisible,
   (value) => controller.value?.setPriceLineVisible(!!value),
+);
+/** 成交量组显隐（v1.7.2）：关闭销毁 pane2/3、开启重建 + 数据回放（构造时已透传初始值） */
+watch(
+  () => props.volumeVisible,
+  (value) => controller.value?.setVolumeVisible(!!value),
 );
 /** 外部自定义数据变化 → 直接注入渲染（v1.6.28；data 模式不走 service） */
 watch(

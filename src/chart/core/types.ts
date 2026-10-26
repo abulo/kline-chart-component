@@ -42,6 +42,10 @@ export interface KLineChartOptions {
   /** 最后价线显隐（v1.7.1）：默认 true 显示（K 线主图自绘 priceLine）；
    *  传 false 隐藏。可通过 controller.setPriceLineVisible 运行时切换 */
   priceLineVisible?: boolean
+  /** 成交量组显隐（v1.7.2）：默认 true（pane2 成交量信息行 + pane3 成交量图）；
+   *  传 false 隐藏（仿 pane4/5 移除式：销毁整组 + 布局重算）。
+   *  可通过 controller.setVolumeVisible 运行时切换 */
+  volumeVisible?: boolean
 }
 
 /** 加载状态（controller 统一管理：init 拉最新页 → 'loading'；左滑分页 → 'loading-older'；

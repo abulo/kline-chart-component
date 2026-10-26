@@ -22,6 +22,15 @@
 
 指标**关闭**（4 Pane，`main : volume = 80 : 20`）：去掉 pane4 / pane5，pane1 / pane3 比例变为 80 : 20。
 
+成交量组开关（v1.7.2，工具栏「成交量」按钮，仿 pane4/5 创建/移除式）与指标开关组合出**四态布局**：
+
+| 成交量组 | 附图指标 | Pane 数 | 内容比例 |
+|---|---|---|---|
+| 开 | 开 | 6 | main : volume : indicator = 60 : 20 : 20 |
+| 开 | 关 | 4 | main : volume = 80 : 20 |
+| 关 | 开 | 4 | main : indicator = 80 : 20（与 indicator 关闭时的 80:20 对称） |
+| 关 | 关 | 2 | main = 100%（仅 K 线） |
+
 高度分配（时间轴开 / 关一致，仅库可用高度不同）：
 - 空 Pane 固定 `topPaneHeight = 22px`（同一 stretchFactor，绝对相等）；
 - 剩余高度按组比例分配（`calcPaneHeights` 纯函数，见 `chart/core/layout.ts`）；
@@ -134,7 +143,7 @@ src/
 │   │   ├── subIndicatorPaneManager.ts # 附图指标 Pane 管理器（pane4 指标信息行 + pane5 指标图：创建/销毁/数据/信息行/主题；v1.4.89 拆分）
 │   │   ├── crosshairManager.ts # 十字星管理器（十字星移动联动 + overlayTime + 左刻度指示值注册表）
 │   │   ├── timeshareManager.ts # 分时计算管理器（v1.7.1 拆分：isTimeshare / preClose / 对称半幅 / 等差刻度 / 三态着色 / 固定价格范围）
-│   │   ├── paneFactory.ts      # Pane 构建工厂（v1.7.1 拆分：pane0~pane3 全部 series / primitive 创建装配）
+│   │   ├── paneFactory.ts      # Pane 构建工厂（v1.7.1 拆分：pane0~pane3 全部 series / primitive 创建装配；v1.7.2 抽 createVolumePanes 供成交量组重建）
 │   │   ├── paneLayout.ts       # Pane 高度分配工具（v1.7.1 拆分：固定空 Pane 等高等分 + 组比例；paneTop 累加定位）
 │   │   ├── chartDataBridge.ts   # 数据 IO 桥（v1.7.2 拆分：历史首载 / 更早翻页 / 实时订阅生命周期 / 加载状态，竞态守卫与退订清理集中于此）
 │   │   ├── realtimePipeline.ts  # 实时增量管线（v1.7.2 拆分：节流入队 → 批量消费 → series/bars/barIndex 增量更新 → 指标重建 + priceLine 视口跟随）
@@ -242,6 +251,8 @@ tests/
 | `service` | `ChartDataService` | `MockChartDataService` 单例 | 数据服务实现（接入真实行情传 `HttpChartDataService` 实例，组件零改动） |
 | `data` | `ChartDataPoint[]` | `undefined` | 外部自定义数据（提供时优先渲染 data，跳过 service 拉取 / 分页 / 实时，v1.6.28） |
 | `format` | `string` | `''` | 时间格式模板（如 `'YYYY-MM-DD'` / `'YYYY-MM-DD HH:mm'`）；缺省按周期自动（v1.6.9） |
+| `priceLineVisible` | `boolean` | `true` | 最后价线显隐（K 线主图自绘 priceLine，v1.7.1） |
+| `volumeVisible` | `boolean` | `true` | 成交量组显隐（pane2 信息行 + pane3 成交量图；关闭销毁整组 + 布局重算，v1.7.2） |
 
 > 已移除参数：`dataCount / total / size / pageSize`（每页条数，v1.6.27 改由 `new MockChartDataService({ fetchLimit })` 注入）、`periodWhitelist`（周期白名单，v1.6.34 删除，周期栏由父组件全量控制）。
 

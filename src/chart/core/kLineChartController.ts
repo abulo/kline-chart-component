@@ -69,7 +69,7 @@ import { IndicatorLinePrimitive } from '../overlay/indicatorLinePrimitive'
 import { SarMarkerPrimitive } from '../indicator/sarMarkerPrimitive'
 import { PriceLinePrimitive } from '../overlay/priceLinePrimitive'
 import { TimeshareManager } from './timeshareManager'
-import { createPanes } from './paneFactory'
+import { createPanes, createVolumePanes } from './paneFactory'
 import { applyPaneStretchFactors, calcPaneTop } from './paneLayout'
 import {
   zoomIn as viewportZoomIn,
@@ -154,8 +154,9 @@ export class KLineChartController {
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心） */
   private klineSeries: ISeriesApi<'Candlestick'>
   /** pane2 成交量信息行 series（InfoLabelPrimitive 挂载；竖线补齐 primitive 也挂这里） */
-  /** 成交量 series（pane3；Histogram 仅作 scale 锚点，可见柱体由 primitive 自绘） */
-  private volumeSeries: ISeriesApi<'Histogram'>
+  /** 成交量 series（pane3；Histogram 仅作 scale 锚点，可见柱体由 primitive 自绘）。
+   *  v1.7.2：成交量组开关关闭时置 null（整组销毁，仿 pane4/5） */
+  private volumeSeries: ISeriesApi<'Histogram'> | null
 
   /** 当前主题（深系 / 浅系） */
   private theme: ChartThemeName
@@ -180,6 +181,8 @@ export class KLineChartController {
   private indicatorLinePrimitive: IndicatorLinePrimitive | null = null
   /** pane1 最后价线 primitive（PriceLinePrimitive 自绘；priceLineVisible 参数控制显隐） */
   private priceLinePrimitive: PriceLinePrimitive | null = null
+  /** 成交量组显隐（v1.7.2：pane2 信息行 + pane3 成交量，默认开；App 按钮 / props 驱动） */
+  private volumeVisible = true
   /** pane3 成交量均量线 primitive（IndicatorLinePrimitive，top 层自绘） */
   private volumeMaPrimitive: IndicatorLinePrimitive | null = null
 
@@ -217,7 +220,7 @@ export class KLineChartController {
       getIsTimeshare: () => this.timeshareManager.isTimeshare,
       getTheme: () => this.theme,
       getKlineSeries: () => this.klineSeries,
-      getVolumeSeries: () => this.volumeSeries,
+      getVolumeSeries: () => this.volumeSeries ?? undefined,
       getTimesharePriceSeries: () => this.timesharePriceSeries ?? undefined,
       getTimeshareAvgSeries: () => this.timeshareAvgSeries ?? undefined,
       getTimeshareRightAxisSeries: () => this.timeshareRightAxisSeries ?? undefined,
@@ -406,6 +409,8 @@ export class KLineChartController {
     this.applyTimeshareInteractions()
 
     this.applyStretchFactors()
+    // v1.7.2：成交量组显隐（默认开；props.volumeVisible=false → 移除 pane2/3 + 布局重算）
+    this.setVolumeVisible(options.volumeVisible ?? true)
 
     /* ---------- 9. 数据 + 首绘 ----------
      * 数据由组件经 ChartDataService 拉取后 setKlineData 注入（v1.6.16：
@@ -461,6 +466,7 @@ export class KLineChartController {
     applyPaneStretchFactors({
       chart: this.chart,
       container: this.container,
+      getShowVolume: () => this.volumeVisible,
       getShowIndicator: () => this.indicatorManager.getShowIndicator(),
       onHeights: heights => {
         this.paneHeights = heights
@@ -495,12 +501,41 @@ export class KLineChartController {
 
   /* ===================== 数据 ===================== */
 
+  /**
+   * bars 归一化（v1.7.2 抽取）：统一 time 为数字秒、过滤非法条。
+   * applyData / applyVolumeData 共用同一数据源语义（series.setData 前必须归一化）。
+   */
+  private getNormalizedBars = (): { bar: ChartDataPoint; time: number }[] =>
+    this.bars
+      .map(bar => ({ bar, time: normalizeChartTime(bar.time) }))
+      .filter(
+        (entry): entry is { bar: ChartDataPoint; time: number } => entry.time !== null,
+      )
+
+  /**
+   * 成交量锚点数据回放（v1.7.2）：volumeSeries 重建后重放当前周期数据 +
+   * 均量线 / pane2 信息行缓存重建（IndicatorManager.rebuildVolumeData）。
+   * 分时 = Histogram 直方图锚点（1px 细柱自绘）、K 线 = 透明锚点（柱体自绘）；
+   * 成交量组关闭时（volumeSeries = null）为空操作。
+   */
+  private applyVolumeData = (): void => {
+    if (!this.volumeSeries) return
+    const normalized = this.getNormalizedBars()
+    this.volumeSeries.setData(
+      normalized.map(({ bar, time }) => ({
+        time: time as UTCTimestamp,
+        value: bar.volume ?? 0, // pointType='timeshare' / 'kline' 均含 volume
+      }))
+    )
+    // 成交量均量线 VOL MA5 / MA10 + pane2 信息行缓存（IndicatorManager 构建）
+    this.indicatorManager.rebuildVolumeData()
+  }
+
   /** K 线 / 成交量 / 指标数据写入（series 锚点 + 各 primitive 数据缓存重建） */
   private applyData = (): void => {
-    // v1.6.10：setData 前统一归一化 time（非法条过滤），series 同步
-    const normalized = this.bars
-      .map(bar => ({ bar, time: normalizeChartTime(bar.time) }))
-      .filter(entry => entry.time !== null)
+    // v1.6.10：setData 前统一归一化 time（非法条过滤），series 同步；
+    // v1.7.2 抽取为 getNormalizedBars（applyData / applyVolumeData 共用）
+    const normalized = this.getNormalizedBars()
 
     // —— 分时周期（v1.7.0）：pane1 双线 + pane3 直方图 ——
     if (this.timeshareManager.isTimeshare) {
@@ -528,17 +563,10 @@ export class KLineChartController {
           value: bar.price ?? 0,
         }))
       )
-      // 成交量（分时，v1.7.0）：Histogram 透明锚点（仅建 scale 值域），
-      // 可见 1px 细柱由 VolumeBarPrimitive 自绘（红绿按 price vs preClose 三态，
-      // 与 K 线柱同一判定基准）；主题切换时由 applyTheme 同步锚点色
-      this.volumeSeries.setData(
-        normalized.map(({ bar, time }) => ({
-          time: time as UTCTimestamp,
-          value: bar.volume ?? 0, // pointType='timeshare' 必含 volume
-        }))
-      )
+      // 成交量锚点数据回放（v1.7.2：成交量组开启时回放 + 均量 / 信息行缓存重建，
+      // 关闭时 volumeSeries 为 null 跳过；可见 1px 细柱由 VolumeBarPrimitive 自绘）
+      this.applyVolumeData()
       // 指标缓存重建（分时：成交量均量 / 附图指标 / 主图指标见 indicatorManager 守卫）
-      this.indicatorManager.rebuildVolumeData()
       this.indicatorManager.rebuildIndicatorData()
       this.indicatorManager.refreshMainIndicatorData()
       // 分时 pane1 价格范围：以首根 preClose 为对称中心（v1.7.1，左右刻度中间对齐）
@@ -585,16 +613,9 @@ export class KLineChartController {
         value: bar.close ?? 0,
       }))
     )
-    // 成交量：Histogram 仅作 scale 锚点，颜色统一走 options.color（背景色，不可见），
-    // 主题切换时由 applyTheme 同步更新；可见柱体由 VolumeBarPrimitive 按 bars 自绘
-    this.volumeSeries.setData(
-      normalized.map(({ bar, time }) => ({
-        time: time as UTCTimestamp,
-        value: bar.volume!, // pointType='kline' 必含 volume
-      }))
-    )
-    // 成交量均量线 VOL MA5 / MA10 + pane2 信息行缓存（IndicatorManager 构建）
-    this.indicatorManager.rebuildVolumeData()
+    // 成交量锚点数据回放 + 均量 / 信息行缓存（v1.7.2：成交量组开启时回放，关闭时跳过；
+    // 可见柱体由 VolumeBarPrimitive 按 bars 自绘）
+    this.applyVolumeData()
     // 附图指标：指标层开启时按当前选中指标全量重建
     // （pane5 线 / 柱 / Y 轴锚点 + pane4 信息行值；数据变化时重算，series 关闭时跳过）
     this.indicatorManager.rebuildIndicatorData()
@@ -818,7 +839,7 @@ export class KLineChartController {
     this.timesharePriceSeries?.applyOptions({ color: themeColorSet.timesharePriceColor })
     this.timeshareAvgSeries?.applyOptions({ color: themeColorSet.timeshareAvgColor })
     // 成交量锚点色跟随背景（保持不可见）；可见柱体由 primitive 动态取新主题色
-    this.volumeSeries.applyOptions({ color: themeColorSet.background })
+    this.volumeSeries?.applyOptions({ color: themeColorSet.background })
     // 指标相关颜色（MACD 锚点 / SAR 圆点 / 成交量均量线）由指标管理器统一同步
     this.indicatorManager.updateThemeColors(themeColorSet)
     // K 线逐根三态色基于主题 palette（红/绿/平盘），主题切换后重设数据刷新（v1.6.57）；
@@ -897,6 +918,83 @@ export class KLineChartController {
    *  变化时对 klineSeries 同值 applyOptions 强制 invalidate 立即生效
    *  （库 priceLine 保持关闭，重绘由自绘 primitive 现取 visible）；
    *  分时模式无 kline 点天然不绘制，调用无副作用。 */
+  /**
+   * 成交量组显隐开关（v1.7.2：pane2 成交量信息行 + pane3 成交量图，仿 pane4/5
+   * 创建/移除式开关）。由 App.vue 按钮 / 组件 props.volumeVisible 驱动：
+   *  - 关：销毁 pane2/3（含十字星指示值注销）→ 布局重算（指标开 80:20 / 全关仅 K 线）；
+   *  - 开：重建 pane2/3 + 应用左右刻度显隐 + 重放成交量数据 → 布局重算。
+   * ★ 顺序守卫：先更新 volumeVisible 再操作 pane（布局重算读取最新开关状态，
+   *   与附图指标开关同一范式——状态赋值必须先于 Pane 组重建）。
+   */
+  setVolumeVisible = (visible: boolean): void => {
+    if (this.volumeVisible === visible) return
+    this.volumeVisible = visible
+    if (visible) {
+      // v1.7.2 协调：vol 关闭期间指标组顺移 pane2/3；重开 vol 前先临时移除
+      // 指标组（2/3 → 仅 K 线 2 Pane），volume 追加 2/3 后指标组重建回末尾
+      // 4/5 —— 否则 addSeries(2) 会与顺移的指标组共享 pane（指标层关闭标记
+      // 由 setSubIndicator 内部维护，activeSubIndicator 状态保留可恢复）
+      const showIndicator = this.indicatorManager.getShowIndicator()
+      const activeIndicator = this.indicatorManager.getActiveSubIndicator()
+      if (showIndicator && activeIndicator) {
+        this.indicatorManager.setSubIndicator(null)
+      }
+      this.createVolumePanes()
+      // 重放成交量锚点数据 + 均量 / 信息行缓存
+      this.applyVolumeData()
+      if (showIndicator && activeIndicator) {
+        this.indicatorManager.setSubIndicator(activeIndicator)
+      }
+      // 新 pane 应用左右刻度显隐（构造时 pane 已建，这里仅对重建组生效）
+      this.applyPriceScaleVisible('left', this.showLeftScale)
+      this.applyPriceScaleVisible('right', this.showRightScale)
+    } else {
+      this.removeVolumePanes()
+    }
+    // 高度按最新开关组合重算（四态：6 / 4 / 4 / 2 Pane）
+    this.applyStretchFactors()
+  }
+
+  /** 重建成交量组 Pane（pane2/3）：复用 paneFactory.createVolumePanes（v1.7.2） */
+  private createVolumePanes = (): void => {
+    const bundle = createVolumePanes({
+      chart: this.chart,
+      getTheme: () => this.theme,
+      getBars: () => this.bars,
+      getPeriod: () => this.period,
+      indicatorManager: this.indicatorManager,
+      timeshareManager: this.timeshareManager,
+      crosshairManager: this.crosshairManager,
+    })
+    // pane2InfoSeries 由 paneFactory 创建并挂载（pane 级移除，无需控制器保存引用）
+    this.volumeSeries = bundle.volumeSeries
+    this.volumeMaPrimitive = bundle.volumeMaPrimitive
+  }
+
+  /**
+   * 移除成交量组 Pane（pane2/3）：与 SubIndicatorPaneManager.removePanes 同一范式——
+   * 库 removePane 从 panes 数组 splice：删 pane2 后原 pane3 顺移到 index 2，
+   * 再删一次即移除整组；pane 上 series（含 primitive）强引用随之断开可被 GC，
+   * 本控制器再置 null 解除自身引用，保证反复开 / 关无泄漏。
+   * 十字星指示值：pane3 的 CrosshairAxisLabelPrimitive 在 crosshairManager
+   * 注册表中按 paneIndex 3 移除；pane2 InfoLabelPrimitive 未注册，随 pane 销毁。
+   */
+  private removeVolumePanes = (): void => {
+    // 移除前显式卸载均量线 primitive（防泄漏语义与 destroy 一致）
+    if (this.volumeMaPrimitive && this.volumeSeries) {
+      this.volumeSeries.detachPrimitive(this.volumeMaPrimitive)
+    }
+    // ★ 顺序守卫（v1.7.2 质量收尾）：十字星指示值注销必须先于 removePane——
+    // removePane 后指标组顺移（4/5 → 2/3），其 CrosshairAxisLabelPrimitive 的
+    // getPaneIndex() 动态变为 3，此时再 removeByPaneIndex(3) 会误删指标组的
+    // 指示值。先注销（此时指标组仍在 4/5，getPaneIndex()=5 ≠ 3）只删 volume 的
+    this.crosshairManager.removeByPaneIndex(3)
+    this.chart.removePane(2)
+    this.chart.removePane(2)
+    this.volumeSeries = null
+    this.volumeMaPrimitive = null
+  }
+
   setPriceLineVisible = (visible: boolean): void => {
     if (!this.priceLinePrimitive) return
     this.priceLinePrimitive.setVisible(visible)
@@ -983,11 +1081,11 @@ export class KLineChartController {
       this.klineSeries.detachPrimitive(this.indicatorLinePrimitive)
       this.indicatorLinePrimitive = null
     }
-    // 卸载成交量均量线 primitive（挂在 volumeSeries 上）
-    if (this.volumeMaPrimitive) {
+    // 卸载成交量均量线 primitive（挂在 volumeSeries 上；成交量组关闭时 series 为 null 跳过）
+    if (this.volumeMaPrimitive && this.volumeSeries) {
       this.volumeSeries.detachPrimitive(this.volumeMaPrimitive)
-      this.volumeMaPrimitive = null
     }
+    this.volumeMaPrimitive = null
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     this.chart.timeScale().unsubscribeVisibleLogicalRangeChange(this.handleVisibleLogicalRangeChange)

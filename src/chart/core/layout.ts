@@ -59,6 +59,28 @@ export const groupRatiosWithoutIndicator = {
   indicator: 0,
 } as const
 
+/** 组高度比例（成交量关闭 + 指标开启）：main : indicator = 80 : 20
+ *  （与 indicator 关闭时的 main : volume = 80 : 20 对称——主图占比恒定 80，
+ *  附图组 / 成交量组占 20，v1.7.2 调整：60:40 → 80:20） */
+export const groupRatiosWithoutVolume = {
+  /** main 组（pane0 + pane1，K 线主图）占比 */
+  main: 0.8,
+  /** volume 组：恒 0（未创建，仅作类型对齐占位） */
+  volume: 0,
+  /** indicator 组（pane4 + pane5，指标）占比 */
+  indicator: 0.2,
+} as const
+
+/** 组高度比例（成交量关闭 + 指标关闭）：仅 main = 100%（2 Pane：pane0 + pane1） */
+export const groupRatiosKlineOnly = {
+  /** main 组（pane0 + pane1，K 线主图）占比 */
+  main: 1,
+  /** volume 组：恒 0（未创建） */
+  volume: 0,
+  /** indicator 组：恒 0（未创建） */
+  indicator: 0,
+} as const
+
 /** 组比例结构（main / volume / indicator） */
 export interface GroupRatios {
   /** main 组占比 */
@@ -94,12 +116,11 @@ export const calcPaneHeights = (
   if (remaining <= 0) {
     return new Array<number>(fixedCount * 2).fill(1)
   }
-  const paneHeights: number[] = [
-    fixedHeight,
-    remaining * ratios.main,
-    fixedHeight,
-    remaining * ratios.volume,
-  ]
+  const paneHeights: number[] = [fixedHeight, remaining * ratios.main]
+  // 成交量开启（volume > 0）时追加 volume 组的空 Pane + 内容 Pane
+  if (ratios.volume > 0) {
+    paneHeights.push(fixedHeight, remaining * ratios.volume)
+  }
   // 指标开启（indicator > 0）时追加 indicator 组的空 Pane + 内容 Pane
   if (ratios.indicator > 0) {
     paneHeights.push(fixedHeight, remaining * ratios.indicator)

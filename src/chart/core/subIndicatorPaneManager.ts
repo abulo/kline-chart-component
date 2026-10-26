@@ -160,6 +160,9 @@ export class SubIndicatorPaneManager {
   /** 指标层开关状态（controller 布局 / 栅格横线等分数使用） */
   getShowIndicator = (): boolean => this.showIndicator
 
+  /** 当前选中附图指标（v1.7.2：volume 开关协调需在临时移除 / 重建指标组时恢复） */
+  getActiveSubIndicator = (): SubIndicatorType | null => this.activeSubIndicator
+
   /**
    * 设置附图指标（互斥单选）：
    *  - name = null：关闭指标层（移除 pane4 / pane5，布局 80:20）；
@@ -187,13 +190,17 @@ export class SubIndicatorPaneManager {
     this.rebuildData()
   }
 
-  /** 创建指标组 Pane（pane4 指标信息行 + pane5 附图指标）。
-   *  注意库 addSeries 行为：指定的 paneIndex 超出当前 pane 数量时，库自动
-   *  创建中间缺失的 pane（pane4 / pane5 一次性补齐）。 */
+  /** 创建指标组 Pane（指标信息行 + 附图指标，恒位于图表末尾）。
+   *  v1.7.2 动态化：paneIndex 用追加语义（panes.length 起步）——成交量组关闭时
+   *  指标组顺移 pane2/3、仅 K 线时末尾追加，固定 4/5 会与 volume 共享 pane /
+   *  产生空白中间 pane。追加式 addSeries：paneIndex == 当前 pane 数 → 库建新
+   *  pane 于末尾（无空白），顺序恒为 main → volume → indicator。 */
   private createPanes = (): void => {
     // 指标层开启标记：pane 数量变化后布局按 6 Pane / 60:20:20 分配高度，
     // 且 pane1 栅格横线等分数（6）随指标开状态同步
     this.showIndicator = true
+    // 指标组首 Pane 索引 = 末尾追加（当前 pane 数，非 length-2）
+    const startIndex = this.chart.panes().length
     // pane4：指标信息行空 Pane（自绘所选附图指标各线数值，设置与 pane0 一致，
     // 高度 topPaneHeight 绝对相等）
     const pane4InfoSeries = this.chart.addSeries(
@@ -204,7 +211,7 @@ export class SubIndicatorPaneManager {
         lastValueVisible: false,
         crosshairMarkerVisible: false,
       },
-      4,
+      startIndex,
     )
     pane4InfoSeries.attachPrimitive(
       // 用 InfoLabelPrimitive（不填背景）——十字星竖线贯穿 pane4（与 pane2 一致）；
@@ -237,7 +244,7 @@ export class SubIndicatorPaneManager {
           formatter: () => '',
         },
       },
-      5,
+      startIndex + 1,
     )
     // pane5 左刻度对称边距：库 priceScale.scaleMargins 默认 { top: 0.2, bottom: 0.1 }
     // —— 上下边距不对称。首尾刻度（内嵌 AXIS_LABEL_PAD=8px）经 coordinateToPrice 反推
@@ -245,7 +252,7 @@ export class SubIndicatorPaneManager {
     // 显示刻度的最大值 / 最小值绝对值仍不相等（如 MACD 顶部约 +1.5A / 底部约 -1.2A）。
     // 改为 top = bottom = 0.1：数据映射上下镜像对称，首尾刻度反推值绝对值严格相等，
     // 同时柱体上下各留 10% 边距（不贴边、视觉更均匀）。
-    this.chart.priceScale('left', 5).applyOptions({
+    this.chart.priceScale('left', startIndex + 1).applyOptions({
       scaleMargins: { top: 0.1, bottom: 0.1 },
     })
     // pane5 刻度对称锚点 series（不可见）：全部时间点交替 ±absMax，
@@ -266,7 +273,7 @@ export class SubIndicatorPaneManager {
           formatter: () => '',
         },
       },
-      5,
+      startIndex + 1,
     )
     // MACD 红绿柱自绘（仅激活 MACD 时有数据；柱体 > 0 空心红 / < 0 绿实心）。
     // v1.7.0 分时抽取：分时周期柱宽自适应（getIsTimeshare 注入 MacdBarPrimitive，v1.7.1 加宽），
@@ -295,7 +302,7 @@ export class SubIndicatorPaneManager {
     this.indicatorsBarSeries.attachPrimitive(
       new AxisLabelPrimitive({
         series: this.indicatorsBarSeries,
-        getPaneIndex: () => 5,
+        getPaneIndex: () => this.chart.panes().length - 1,
         getHorizontalCount: () => 2,
         getColor: () => themeColors(this.getTheme()).textColor,
         getBackColor: () => themeColors(this.getTheme()).background,
@@ -314,7 +321,7 @@ export class SubIndicatorPaneManager {
     // pane5 十字星左刻度指示值：十字星横线所在指标值（大数缩写 / 自适应小数）
     const pane5CrosshairLabel = new CrosshairAxisLabelPrimitive({
       series: this.indicatorsBarSeries,
-      getPaneIndex: () => 5,
+      getPaneIndex: () => this.chart.panes().length - 1,
       getColor: () => themeColors(this.getTheme()).crosshairLabelText,
       getBackColor: () => themeColors(this.getTheme()).crosshairLabelBackground,
       getFont: () => chartFont,
@@ -343,15 +350,21 @@ export class SubIndicatorPaneManager {
     // 指标层关闭标记：先置 false 再移除 Pane，布局按 4 Pane / 80:20 分配，
     // 避免 Pane 移除瞬间仍按 6 Pane 布局计算
     this.showIndicator = false
-    this.chart.removePane(4)
-    this.chart.removePane(4)
+    // v1.7.2 动态索引：指标组恒在末尾两位（成交量开 4/5、成交量关 2/3）。
+    // 固定 removePane(4) 在成交量组关闭后越界（库断言 Invalid pane index），
+    // 改为按实际 Pane 数计算；删 startIndex 两次（删后末尾顺移补位）
+    const startIndex = Math.max(2, this.chart.panes().length - 2)
+    // ★ 顺序守卫（v1.7.2 质量收尾）：十字星指示值注销必须先于 removePane——
+    // removePane 后成交量组 getPaneIndex()=3 不变、但指标组顺移后动态值变化，
+    // 后置注销会误删/漏删；先注销（此时各 primitive 仍在原位，getPaneIndex()
+    // 取当前真实 pane 索引）只删指标组指示值
+    this.crosshairRegistry.removeByPaneIndex(startIndex + 1)
+    this.chart.removePane(startIndex)
+    this.chart.removePane(startIndex)
     this.indicatorsBarSeries = null
     this.indicatorScaleAnchorSeries = null
     this.macdBarPrimitive = null
     this.subIndicatorLinePrimitive = null
-    // 移除 pane5 十字星指示值 primitive 引用（series 已销毁，清引用防泄漏 /
-    // 避免 handleCrosshairMove 继续对已销毁 series 注入）
-    this.crosshairRegistry.removeByPaneIndex(5)
   }
 
   /**

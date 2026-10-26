@@ -14,6 +14,8 @@ import {
   topPaneHeight,
   groupRatios,
   groupRatiosWithoutIndicator,
+  groupRatiosWithoutVolume,
+  groupRatiosKlineOnly,
   calcPaneHeights,
 } from '../src/chart/core/layout'
 import { genMockBars } from '../src/chart/core/mock'
@@ -43,6 +45,13 @@ describe('布局常量', () => {
     expect(groupRatiosWithoutIndicator.main).toBe(0.8)
     expect(groupRatiosWithoutIndicator.volume).toBe(0.2)
     expect(groupRatiosWithoutIndicator.indicator).toBe(0)
+    // v1.7.2 成交量开关组合：vol关+ind开 80:20（与 ind 关 80:20 对称）/ vol关+ind关 100
+    expect(groupRatiosWithoutVolume.main).toBe(0.8)
+    expect(groupRatiosWithoutVolume.volume).toBe(0)
+    expect(groupRatiosWithoutVolume.indicator).toBe(0.2)
+    expect(groupRatiosKlineOnly.main).toBe(1)
+    expect(groupRatiosKlineOnly.volume).toBe(0)
+    expect(groupRatiosKlineOnly.indicator).toBe(0)
   })
 })
 
@@ -96,6 +105,40 @@ describe('calcPaneHeights（分组像素高度）', () => {
     const contentRatio = (heights: number[]): number => heights[1] / heights[3]
     expect(contentRatio(withAxis)).toBeCloseTo(3, 6)
     expect(contentRatio(withoutAxis)).toBeCloseTo(3, 6)
+  })
+
+  it('v1.7.2 成交量关闭 + 指标开启：4 项（main 80 / indicator 20）', () => {
+    // 可用高度 600：固定 48，剩余 552
+    // pane1 = 0.8×552 = 441.6、pane5 = 0.2×552 = 110.4
+    const heights = calcPaneHeights(600, 24, 2, groupRatiosWithoutVolume)
+    expect(heights).toHaveLength(4)
+    expect(heights[0]).toBe(24)
+    expect(heights[2]).toBe(24)
+    expect(heights[1]).toBeCloseTo(0.8 * 552, 6)
+    expect(heights[3]).toBeCloseTo(0.2 * 552, 6)
+    // 内容比例 main : indicator = 4 : 1
+    expect(heights[1]).toBeCloseTo(4 * heights[3], 6)
+  })
+
+  it('v1.7.2 成交量关闭 + 指标关闭：仅 2 项（main 100%）', () => {
+    // 可用高度 600：固定 24，剩余 576；pane1 = 1×576 = 576
+    const heights = calcPaneHeights(600, 24, 1, groupRatiosKlineOnly)
+    expect(heights).toHaveLength(2)
+    expect(heights[0]).toBe(24)
+    expect(heights[1]).toBeCloseTo(576, 6)
+  })
+
+  it('v1.7.2 四态布局高度总和守恒（完全铺满）', () => {
+    for (const total of [400, 500, 600, 777]) {
+      const volInd = calcPaneHeights(total, 24, 3, groupRatios)
+      const volOnly = calcPaneHeights(total, 24, 2, groupRatiosWithoutIndicator)
+      const indOnly = calcPaneHeights(total, 24, 2, groupRatiosWithoutVolume)
+      const klineOnly = calcPaneHeights(total, 24, 1, groupRatiosKlineOnly)
+      expect(volInd.reduce((sum, h) => sum + h, 0)).toBeCloseTo(total, 6)
+      expect(volOnly.reduce((sum, h) => sum + h, 0)).toBeCloseTo(total, 6)
+      expect(indOnly.reduce((sum, h) => sum + h, 0)).toBeCloseTo(total, 6)
+      expect(klineOnly.reduce((sum, h) => sum + h, 0)).toBeCloseTo(total, 6)
+    }
   })
 
   it('可用高度不足时兜底返回 1（避免负高度）', () => {

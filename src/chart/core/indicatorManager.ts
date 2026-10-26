@@ -150,6 +150,10 @@ export class IndicatorManager {
   /** 指标层开关状态（controller 布局 / 栅格横线等分数使用；转发 SubIndicatorPaneManager） */
   getShowIndicator = (): boolean => this.subIndicatorPane.getShowIndicator()
 
+  /** 当前选中附图指标（v1.7.2 转发：volume 开关临时移除 / 重建指标组时恢复选中） */
+  getActiveSubIndicator = (): SubIndicatorType | null =>
+    this.subIndicatorPane.getActiveSubIndicator()
+
   /** 注册 SAR 圆点 primitive（控制器在 pane1 构建时创建并 attach 后调用） */
   registerSarMarker = (primitive: SarMarkerPrimitive): void => {
     this.sarMarkerPrimitive = primitive
