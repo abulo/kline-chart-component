@@ -4,7 +4,7 @@
  * 覆盖：各周期 OHLC 自洽、数量量级、日 K 趋势波段（状态机）、分钟 K 与日 K 跨周期自洽。
  */
 import { describe, expect, it } from 'vitest'
-import { MockChartDataService } from '../src/services/mockDataGenerator'
+import { MockChartDataService } from '../src/services/mockChartDataService'
 
 const createService = (): MockChartDataService => new MockChartDataService({ fetchLimit: 200 })
 

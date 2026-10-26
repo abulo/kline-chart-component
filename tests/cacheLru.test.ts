@@ -8,7 +8,7 @@
  *  - 空 Map / 上限 1 等边界
  */
 import { describe, expect, it } from 'vitest'
-import { touchCache } from '../src/services/mockDataGenerator'
+import { touchCache } from '../src/services/mockChartDataService'
 
 describe('touchCache（LRU 缓存管理，v1.7.1）', () => {
   it('未命中：factory 生成并写入', () => {
