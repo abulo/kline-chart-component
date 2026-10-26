@@ -17,7 +17,7 @@ import { themeColors, type ChartThemeName } from './chart/core/theme'
 import { MainIndicatorOptions, SubIndicatorOptions } from './chart/indicator/options'
 import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
 import { Periods, isTimesharePeriod, type PeriodValueOrEmpty } from './chart/periods'
-import { MockChartDataService } from './services/chartDataService'
+import { MockChartDataService } from './services/mockDataGenerator'
 
 /** 图表组件 ref（访问控制器） */
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)

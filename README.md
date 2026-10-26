@@ -6,7 +6,16 @@
 
 ## 版本记录
 
-- **v1.7.15（当前）**：修复"日K → 成交量关 → 成交量开 → 1日分时 底部时间轴
+- **v1.7.16（当前）**：services 层重构——`chartDataService.ts` 只保留接口定义
+  （`HistoryQuery` / `RealtimeHandler` / `ChartDataService`），Mock 实现整体迁出：
+  `MockChartDataService` 类 + `touchCache`（LRU 缓存管理）+ `MockChartDataServiceOptions`
+  移至 `mockDataGenerator.ts`（数据生成与 Mock 服务同文件聚合，接口类型自
+  `chartDataService.ts` 导入，无循环依赖）。引用点同步更新：
+  `App.vue` / `KLineChart.vue` / `tests/timeshare.test.ts` / `tests/cacheLru.test.ts` /
+  `tests/mockRealistic.test.ts` / `tests/chartDataService.test.ts`。验证：tsc 0 错误、
+  vitest 27 文件 257 tests 全绿。
+
+- **v1.7.15**：修复"日K → 成交量关 → 成交量开 → 1日分时 底部时间轴
   不对，主图和指标图被压缩"——与 v1.7.14 同根因的**指标组版本**：`vol` 重开时
   `setVolumeVisible(true)` 走"临时移除指标组（`setSubIndicator(null)`）→ 重建
   指标组（`setSubIndicator(active)`）"协调流程，`SubIndicatorPaneManager.removePanes`

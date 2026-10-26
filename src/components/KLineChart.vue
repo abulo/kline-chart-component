@@ -33,7 +33,7 @@ import { isTimesharePeriod } from "../chart/periods";
 import type { ChartDataService } from "../services/chartDataService";
 import type { ChartDataPoint } from "../types/chart";
 import type { ChartLoadStatus } from "../chart/core/types";
-import { MockChartDataService } from "../services/chartDataService";
+import { MockChartDataService } from "../services/mockDataGenerator";
 import { debounce } from "../chart/util/timing";
 import { SWITCH_DEBOUNCE_MS } from "../chart/core/constants";
 

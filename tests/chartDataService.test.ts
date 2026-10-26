@@ -10,7 +10,7 @@
  * 不覆盖 HttpChartDataService（依赖 fetch / WebSocket / EventSource 网络环境）。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MockChartDataService } from '../src/services/chartDataService'
+import { MockChartDataService } from '../src/services/mockDataGenerator'
 import type { ChartDataPoint } from '../src/types/chart'
 
 /** 新建独立服务实例（每测试独立池，互不污染） */

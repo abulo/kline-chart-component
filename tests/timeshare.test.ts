@@ -12,7 +12,7 @@
  *    price / avgPrice / volume。
  */
 import { describe, expect, it } from 'vitest'
-import { MockChartDataService } from '../src/services/chartDataService'
+import { MockChartDataService } from '../src/services/mockDataGenerator'
 import { timesharePatternPath } from '../src/services/mockDataGenerator'
 import { isTimesharePeriod, timeshareVerticalCount } from '../src/chart/periods'
 import type { ChartDataPoint } from '../src/types/chart'
