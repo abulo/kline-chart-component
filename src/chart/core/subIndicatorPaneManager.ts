@@ -30,6 +30,7 @@ import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
 import { GridPrimitive } from '../grid/gridPrimitive'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+import { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive'
 import { calcSubIndicator, type SubIndicatorType } from '../indicator'
 import { formatAxisSmart } from '../util/format'
 import { subIndicatorLabels } from './indicatorMeta'
@@ -138,6 +139,10 @@ export class SubIndicatorPaneManager {
   private subIndicatorLines: IndicatorLineSpec[] = []
   /** pane5 附图指标线自绘 primitive（挂 indicatorsBarSeries，zOrder 'top'） */
   private subIndicatorLinePrimitive: IndicatorLinePrimitive | null = null
+  /** pane4 十字星竖线自绘 primitive（v1.7.6，挂 pane4InfoSeries） */
+  private pane4LinePrimitive: CrosshairLinePrimitive | null = null
+  /** pane5 十字星竖线自绘 primitive（v1.7.6，挂 indicatorsBarSeries，指标线之上） */
+  private pane5LinePrimitive: CrosshairLinePrimitive | null = null
   /** pane5 MACD 柱自绘 primitive（非 MACD 时 macdPoints 为空不绘制） */
   private macdBarPrimitive: MacdBarPrimitive | null = null
   /** pane4 指标信息行值缓存（label + 线色 + time→value Map，现取 O(1)） */
@@ -340,6 +345,17 @@ export class SubIndicatorPaneManager {
       }),
     )
     this.indicatorsBarSeries.attachPrimitive(this.subIndicatorLinePrimitive)
+    // pane4 / pane5 十字星竖线自绘（v1.7.6）：信息行 + 指标 Pane 各挂一条，
+    // **最后挂载**（zOrder 'top' 同层内后绘制在上 → 竖线在 MACD 柱 / 指标线 /
+    // 信息行文字之上，贯穿 pane 全高，逐刻度移动无缺失 / 无被柱体盖住）
+    const pane4LinePrimitive = new CrosshairLinePrimitive(4)
+    pane4InfoSeries.attachPrimitive(pane4LinePrimitive)
+    this.crosshairRegistry.registerLinePrimitive(pane4LinePrimitive)
+    this.pane4LinePrimitive = pane4LinePrimitive
+    const pane5LinePrimitive = new CrosshairLinePrimitive(5)
+    this.indicatorsBarSeries.attachPrimitive(pane5LinePrimitive)
+    this.crosshairRegistry.registerLinePrimitive(pane5LinePrimitive)
+    this.pane5LinePrimitive = pane5LinePrimitive
   }
 
   /** 关闭指标层：移除 pane4 / pane5 并清空相关 series 引用（防内存泄漏）。
@@ -359,6 +375,30 @@ export class SubIndicatorPaneManager {
     // 后置注销会误删/漏删；先注销（此时各 primitive 仍在原位，getPaneIndex()
     // 取当前真实 pane 索引）只删指标组指示值
     this.crosshairRegistry.removeByPaneIndex(startIndex + 1)
+    // v1.7.6：注销指标组自绘竖线 primitive（防泄漏 / 防对已销毁 series 注入）
+    if (this.pane4LinePrimitive !== null) {
+      this.crosshairRegistry.unregisterLinePrimitive(this.pane4LinePrimitive)
+      this.pane4LinePrimitive = null
+    }
+    if (this.pane5LinePrimitive !== null) {
+      this.crosshairRegistry.unregisterLinePrimitive(this.pane5LinePrimitive)
+      this.pane5LinePrimitive = null
+    }
+    // ★ v1.7.14 修复（指标组版）：先清空指标组（startIndex / startIndex+1）所有
+    // series 数据再移除 pane——库 removePane 只从 panes 数组 splice，被移除
+    // series 的 points 仍残留挂 timeScale（K 线 ~400 点残留 → 切分时 fitContent
+    // 视口被撑到 1.5 年，时间轴错乱 / 主图指标被压缩）。触发路径："日K → 成交量
+    // 关 → 成交量开 → 1日分时"（vol 重开时指标组 setSubIndicator(null) 移除重建，
+    // 旧指标 series 数据残留 timeScale；fresh 路径指标组从不移除重建故无残留）。
+    // 与 removeVolumePanes 同一范式；清空后重建（createPanes）新 series 空载，
+    // 由 rebuildData 按当前数据全量写入。
+    const indicatorPanes = this.chart.panes()
+    for (const paneIndex of [startIndex, startIndex + 1]) {
+      const indicatorPane = indicatorPanes[paneIndex]
+      if (indicatorPane) {
+        indicatorPane.getSeries().forEach((series) => series.setData([]))
+      }
+    }
     this.chart.removePane(startIndex)
     this.chart.removePane(startIndex)
     this.indicatorsBarSeries = null

@@ -70,6 +70,8 @@ const makeManager = (): ManagerWithProbe => {
     getPaneTop: (_paneIndex: number): number => 0,
     getTimeText: (time: number): string => String(time),
     getWidth: (): number => 800,
+    getShowVolume: (): boolean => true,
+    getShowAvg: (): boolean => true,
     getTooltipBounds: () => ({
       left: 20,
       top: 20,

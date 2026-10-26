@@ -55,6 +55,7 @@ import {
   createChart,
   ColorType,
   CrosshairMode,
+  LineStyle,
   type ISeriesApi,
   type UTCTimestamp,
   type LogicalRange,
@@ -85,6 +86,7 @@ import {
 import { normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock } from '../util/format'
 import { type PeriodValueOrEmpty } from '../periods'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+import { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive'
 import { CrosshairTooltip, type TooltipBounds } from '../crosshair/crosshairTooltip'
 import { IndicatorManager } from './indicatorManager'
 import { ChartDataBridge } from './chartDataBridge'
@@ -183,8 +185,13 @@ export class KLineChartController {
   private priceLinePrimitive: PriceLinePrimitive | null = null
   /** 成交量组显隐（v1.7.2：pane2 信息行 + pane3 成交量，默认开；App 按钮 / props 驱动） */
   private volumeVisible = true
+  /** 分时均价线显隐（v1.7.4：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏） */
+  private avgLineVisible = true
   /** pane3 成交量均量线 primitive（IndicatorLinePrimitive，top 层自绘） */
   private volumeMaPrimitive: IndicatorLinePrimitive | null = null
+  /** 成交量组自绘竖线实例（v1.7.7：volume 关闭时注销，防注册表残留泄漏） */
+  private volumePane2LinePrimitive: CrosshairLinePrimitive | null = null
+  private volumePane3LinePrimitive: CrosshairLinePrimitive | null = null
 
   constructor(options: KLineChartOptions) {
     this.container = options.container
@@ -262,17 +269,25 @@ export class KLineChartController {
       // 十字星：Normal 模式 = 横竖线自由跟随鼠标（不吸附数据点）
       crosshair: {
         mode: CrosshairMode.Normal,
-        // 横 / 竖线：半透明虚线（crosshairLineColor，深浅系区分）——
-        // 穿过 MACD 红绿柱 / K 线 / 成交量柱时柱体透出，不被不透明线遮盖；
+        // 竖线：v1.7.6 改为自绘（CrosshairLinePrimitive，zOrder 'top' 最后挂载，
+        // 贯穿 pane 全高、画在所有指标内容之上）→ 库竖线关闭（visible: false），
+        // 避免双竖线；自绘竖线颜色跟随 crosshairLineColor（不透明，深浅系区分）。
+        // v1.7.8：横线也改为自绘（与价格线一致 [6,4] 虚线；库 horzLine 的 dash
+        // 由线宽派生 [2w,2w]，无法表达该样式）→ 库横线一并关闭（visible: false），
+        // 避免库实线横线与自绘虚线叠加成实线；横线仅命中 pane 绘制（自绘同语义）。
         // 时间轴（X 轴）十字星指示值标签背景跟随深浅系 crosshairLabelBackground
         // （文字颜色由库按背景亮度自动对比：深背景白字 / 浅背景黑字）
         vertLine: {
           color: initialThemeColors.crosshairLineColor,
           labelBackgroundColor: initialThemeColors.crosshairLabelBackground,
+          style: LineStyle.Solid,
+          visible: false,
         },
         horzLine: {
           color: initialThemeColors.crosshairLineColor,
           labelBackgroundColor: initialThemeColors.crosshairLabelBackground,
+          style: LineStyle.Solid,
+          visible: false,
         },
       },
       // 栅格化关闭：纵向 / 横向栅格线全部隐藏（栅格由 GridPrimitive 自绘）
@@ -333,6 +348,10 @@ export class KLineChartController {
       // v1.6.9：pane0 信息行时间格式（format 模板优先，缺省按周期自动）
       getTimeFormat: () => this.timeFormat,
       getPeriod: () => this.period,
+      // v1.7.3：成交量组显隐（pane0 分时信息行隐藏 成交量 / 成交额 段）
+      getShowVolume: () => this.volumeVisible,
+      // v1.7.4：均价线显隐（pane0 分时信息行隐藏 均价 段）
+      getShowAvg: () => this.avgLineVisible,
     })
     // 分时（1d~5d）计算管理器（v1.7.1 拆分）：刻度 / 值域 / 等分计算全部收敛于此，
     // controller 只负责调用与数据写入；依赖 chart / bars / indicatorManager（惰性读取）
@@ -353,6 +372,8 @@ export class KLineChartController {
       getPaneTop: this.getPaneTop,
       getTimeText: this.getTimeText,
       getWidth: () => this.container.clientWidth,
+      getShowVolume: () => this.volumeVisible,
+      getShowAvg: () => this.avgLineVisible,
       getTooltipBounds: (): TooltipBounds => ({
         // X：pane1~pane5 数据区左右缘（扣除左 / 右刻度区宽，开关打开时收窄）
         left: this.showLeftScale ? PRICE_SCALE_MIN_WIDTH : 0,
@@ -386,6 +407,8 @@ export class KLineChartController {
     this.priceLinePrimitive = panes.priceLinePrimitive
     this.indicatorLinePrimitive = panes.indicatorLinePrimitive
     this.volumeMaPrimitive = panes.volumeMaPrimitive
+    this.volumePane2LinePrimitive = panes.pane2LinePrimitive
+    this.volumePane3LinePrimitive = panes.pane3LinePrimitive
 
     /* ---------- 7. pane4 / pane5：指标组（初始关闭） ----------
      * 指标层初始关闭（4 Pane：pane0..pane3，main : volume = 80 : 20）；
@@ -411,6 +434,8 @@ export class KLineChartController {
     this.applyStretchFactors()
     // v1.7.2：成交量组显隐（默认开；props.volumeVisible=false → 移除 pane2/3 + 布局重算）
     this.setVolumeVisible(options.volumeVisible ?? true)
+    // v1.7.4：分时均价线显隐（默认渲染；props.avgLineVisible=false → 隐藏均价线 + 信息行 / tooltip 同步）
+    this.setAvgLineVisible(options.avgLineVisible ?? true)
 
     /* ---------- 9. 数据 + 首绘 ----------
      * 数据由组件经 ChartDataService 拉取后 setKlineData 注入（v1.6.16：
@@ -452,6 +477,13 @@ export class KLineChartController {
     },
     removeByPaneIndex: (paneIndex: number): void => {
       this.crosshairManager.removeByPaneIndex(paneIndex)
+    },
+    // v1.7.6：自绘十字星竖线 primitive 注册 / 注销（指标层 pane4/5 使用）
+    registerLinePrimitive: (primitive: CrosshairLinePrimitive): void => {
+      this.crosshairManager.registerLinePrimitive(primitive)
+    },
+    unregisterLinePrimitive: (primitive: CrosshairLinePrimitive): void => {
+      this.crosshairManager.unregisterLinePrimitive(primitive)
     },
   }
 
@@ -496,6 +528,10 @@ export class KLineChartController {
       getVisibleRange: () => this.chart.timeScale().getVisibleRange(),
       // 十字星命中 time 探针（v1.7.1 调试）：拖拽 / 键盘移动时实时查看 overlayTime 是否跟随
       getOverlayTime: () => this.crosshairManager.getOverlayTime(),
+      // 自绘竖线 x 探针（v1.7.8 调试）：高频移动帧级采样（null = 未命中 / pane0）
+      getLineX: () => this.crosshairManager.getLineX(),
+      // 竖线同步判定探针（v1.7.10 调试）：pixel / snap / none（速度自适应验证）
+      getSyncMode: () => this.crosshairManager.debugLastSync.mode,
     })
   }
 
@@ -814,18 +850,26 @@ export class KLineChartController {
         horzLines: { visible: false },
       },
       // 十字星线颜色 + 指示值标签背景跟随主题（半透明线深浅系区分；
-      // 时间轴 + 价格轴标签文字颜色库自动黑白对比）
+      // 实线 LineStyle.Solid 与初始配置一致：v1.7.4 修复 pane3/pane5 底部暗段缺失；
+      // 竖线 / 横线均自绘（v1.7.6 / v1.7.8）：库横竖线关闭（visible: false），
+      // 自绘颜色下方同步；时间轴 + 价格轴标签文字颜色库自动黑白对比）
       crosshair: {
         vertLine: {
           color: themeColorSet.crosshairLineColor,
           labelBackgroundColor: themeColorSet.crosshairLabelBackground,
+          style: LineStyle.Solid,
+          visible: false,
         },
         horzLine: {
           color: themeColorSet.crosshairLineColor,
           labelBackgroundColor: themeColorSet.crosshairLabelBackground,
+          style: LineStyle.Solid,
+          visible: false,
         },
       },
     })
+    // v1.7.6：自绘十字星竖线颜色同步主题（与库横线同色，深浅系区分）
+    this.crosshairManager.setAllLineColor(themeColorSet.crosshairLineColor)
     // K 线换色（上涨柱体填充跟随背景色保持空心）
     this.klineSeries.applyOptions({
       upColor: themeColorSet.background, // 空心填充 = 新主题背景色
@@ -919,6 +963,18 @@ export class KLineChartController {
    *  （库 priceLine 保持关闭，重绘由自绘 primitive 现取 visible）；
    *  分时模式无 kline 点天然不绘制，调用无副作用。 */
   /**
+   * 分时均价线显隐（v1.7.4）：默认渲染；关闭时均价线不渲染，
+   * pane0 信息行 / tooltip 同步隐藏均价（依赖注入 getter 即时反映，无需通知）。
+   * 由 App.vue 按钮 / 组件 props.avgLineVisible 驱动：
+   *  - 开关 true → applyOptions lineVisible: true（恢复渲染）
+   *  - 开关 false → applyOptions lineVisible: false（不渲染，series 保留避免重建）
+   */
+  setAvgLineVisible(visible: boolean): void {
+    this.avgLineVisible = visible
+    this.timeshareAvgSeries?.applyOptions({ lineVisible: visible })
+  }
+
+  /**
    * 成交量组显隐开关（v1.7.2：pane2 成交量信息行 + pane3 成交量图，仿 pane4/5
    * 创建/移除式开关）。由 App.vue 按钮 / 组件 props.volumeVisible 驱动：
    *  - 关：销毁 pane2/3（含十字星指示值注销）→ 布局重算（指标开 80:20 / 全关仅 K 线）；
@@ -969,6 +1025,8 @@ export class KLineChartController {
     // pane2InfoSeries 由 paneFactory 创建并挂载（pane 级移除，无需控制器保存引用）
     this.volumeSeries = bundle.volumeSeries
     this.volumeMaPrimitive = bundle.volumeMaPrimitive
+    this.volumePane2LinePrimitive = bundle.pane2LinePrimitive
+    this.volumePane3LinePrimitive = bundle.pane3LinePrimitive
   }
 
   /**
@@ -989,6 +1047,28 @@ export class KLineChartController {
     // getPaneIndex() 动态变为 3，此时再 removeByPaneIndex(3) 会误删指标组的
     // 指示值。先注销（此时指标组仍在 4/5，getPaneIndex()=5 ≠ 3）只删 volume 的
     this.crosshairManager.removeByPaneIndex(3)
+    // v1.7.7：注销成交量组自绘竖线 primitive（防注册表持有已销毁实例 → 泄漏）
+    if (this.volumePane2LinePrimitive !== null) {
+      this.crosshairManager.unregisterLinePrimitive(this.volumePane2LinePrimitive)
+      this.volumePane2LinePrimitive = null
+    }
+    if (this.volumePane3LinePrimitive !== null) {
+      this.crosshairManager.unregisterLinePrimitive(this.volumePane3LinePrimitive)
+      this.volumePane3LinePrimitive = null
+    }
+    // ★ v1.7.14 修复：先清空成交量组（pane2/3）所有 series 数据再移除 pane——
+    // 库 removePane 只从 panes 数组 splice，被移除 series 的 points 仍残留挂
+    // timeScale（K 线周期 400 点残留 → 切分时后 fitContent 视口被撑到 1.5 年，
+    // 时间轴错乱 / 主图指标被压缩："日K → 成交量关 → 1日分时 底部时间轴不对"）。
+    // 清空时指标组仍在 pane4/5（volume 关前未顺移），pane2/3 恰为 volume 组，无副作用；
+    // 数据由 VolumeBarPrimitive 自绘，清空 series 不影响日K 量柱显示。
+    const volumePanes = this.chart.panes()
+    for (const paneIndex of [2, 3]) {
+      const volumePane = volumePanes[paneIndex]
+      if (volumePane) {
+        volumePane.getSeries().forEach((series) => series.setData([]))
+      }
+    }
     this.chart.removePane(2)
     this.chart.removePane(2)
     this.volumeSeries = null

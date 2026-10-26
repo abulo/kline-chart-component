@@ -171,6 +171,10 @@ export interface DebugApiAccessors {  /** 静态字段（构造时固定） */
   getVisibleRange: () => import('lightweight-charts').IRange<import('lightweight-charts').Time> | null
   /** 十字星当前命中 bar 时间探针（v1.7.1 调试）：拖拽 / 键盘移动时 overlayTime 是否实时跟随 */
   getOverlayTime: () => number | null
+  /** 自绘竖线 x 探针（v1.7.8 调试）：高频移动帧级采样用（null = 未命中） */
+  getLineX: () => number | null
+  /** 竖线同步判定探针（v1.7.10 调试）：'pixel' | 'snap' | 'none'（速度自适应验证） */
+  getSyncMode: () => string
 }
 
 /** 调试数据暴露（仅开发用）：挂 window.__klineChart，控制台实时查看
@@ -208,6 +212,10 @@ export const exposeDebugApi = (accessors: DebugApiAccessors): void => {
   define('visibleRange', () => accessors.getVisibleRange())
   // 十字星命中 time 探针（v1.7.1 调试）：拖拽 / 键盘移动时实时查看 overlayTime 是否跟随
   define('overlayTime', () => accessors.getOverlayTime())
+  // 自绘竖线 x 探针（v1.7.8 调试）：高频移动帧级采样（null = 未命中 / pane0）
+  define('lineX', () => accessors.getLineX())
+  define('syncMode', () => accessors.getSyncMode())
+
   // 遍历全部 bar 返回最高 / 最低价（price / avgPrice 极值）
   debug.getMaxMin = (): { maxPrice: number; minPrice: number } => {
     let maxPrice = Number.NEGATIVE_INFINITY

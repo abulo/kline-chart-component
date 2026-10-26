@@ -4,6 +4,125 @@
 
 ---
 
+## 版本记录
+
+- **v1.7.15（当前）**：修复"日K → 成交量关 → 成交量开 → 1日分时 底部时间轴
+  不对，主图和指标图被压缩"——与 v1.7.14 同根因的**指标组版本**：`vol` 重开时
+  `setVolumeVisible(true)` 走"临时移除指标组（`setSubIndicator(null)`）→ 重建
+  指标组（`setSubIndicator(active)`）"协调流程，`SubIndicatorPaneManager.removePanes`
+  直接 `removePane` 移除指标组，被移除的 MACD series（K 线 ~400 点）同样
+  **残留挂载 timeScale**（库 `_private__points` 长度 641 = 残留 400 + 分时 241）。
+  修复：removePane **前**先清空指标组 pane（startIndex / startIndex+1）所有
+  series 数据再移除——与 `removeVolumePanes` 同一范式；全仓 grep 确认仅这两处
+  removePane 调用点，均已覆盖。验证：浏览器——路径B 逻辑 0-240、时间轴
+  09:30~15:00 正常；同页往返 / vol 关路径 / 日K 视口（280-399）均正常无污染。
+  tsc 0 错误、vitest 28 文件 / 258 tests 全绿。
+- **v1.7.14**：修复"日K → 成交量关 → 1日分时 底部时间轴不对，
+  主图和指标图被压缩"——`removeVolumePanes` 直接 `removePane(2)` 移除成交量
+  组，被移除 series 的 K 线数据（~400 点）**残留挂载 timeScale**：切分时后
+  `fitContent` 视口被撑到 1.5 年（逻辑 0-640），时间轴混入 K 线日期 / 08:00
+  标签，分时 1 天数据被压扁。修复：removePane **前**先清空 pane2/3 上所有
+  series 数据（`setData([])`）再移除——timeScale 无残留（逻辑恢复 0-240）。
+  清空时指标组仍在 pane4/5 未顺移，无副作用；K 线量柱由 VolumeBarPrimitive
+  自绘，清空 series 不影响显示。验证：浏览器——volume 关 → 1日分时逻辑
+  0-240、时间轴 09:30~15:00 恢复正常；重开 volume / 日K→分时往返均正常。
+  tsc 0 错误、vitest 28 文件 / 258 tests 全绿。
+- **v1.7.13**：修复"日K 放大 5 次等待 10 秒后图像复原"——实时视口
+  跟随（`followLastBarIfTracking`）原用 `setVisibleLogicalRange` **固定拉回最后
+  120 根**（为 priceLine 恒在视口而加），放大后视口宽 ~38 也被强制重置回 120 根。
+  改用 `scrollToPosition(0, false)`（右偏移置 0）——**barSpacing / 视口宽度
+  完全不变**，仅右缘贴数据末尾；同时消除 setVisibleLogicalRange 重算 barSpacing
+  的每帧 -1px 宽度漂移。验证：浏览器——放大 5 次宽 38.32 → 等 10 秒宽 38.32
+  零漂移且右缘跟随新 bar；缩小 5 次宽 365.2 保持；左移看历史不抢回视口
+  （v1.7.1 语义保持）；右移越界为库 rightOffset 联动（内容不变，非复原）。
+  tsc 0 错误、vitest 28 文件 / 258 tests 全绿。
+- **v1.7.12**：十字星竖线**中心对齐柱体中心**修复——用户例证："柱体宽 11、
+  竖线宽 3 时，吸附应让竖线覆盖柱体中心列 (5,6,7)，这才是柱体中间"。根因：
+  竖线绘制 `Math.round(x)+0.5` 使 bar 中心 291.57 被取整偏移到 292.5（整体
+  右偏，线宽越大偏差越大——宽 3px 时中心偏右 1.5px）。修复：竖线以 bar 中心
+  **浮点 x 为几何中心**绘制（不再取整偏移），竖线中心与柱体中心精确对齐；
+  横线（贴鼠标，无中心语义）保留亚像素对齐。验证：tsc 0 错误、vitest 28 文件 /
+  258 tests 全绿、浏览器像素扫描——日K 吸附 bar 中心 291.57 → 竖线像素列
+  [291,292] 中心 291.5（偏差 0.07px 亚像素）/ 分时 bar 中心 292.61 → 竖线列
+  [292,293] 中心 292.5。
+- **v1.7.11**：十字星**停驻吸附**修复——用户报"竖线在成交量 / K线柱体上
+  不在吸附的中间位置"。根因：快速移动急停后鼠标不再产生事件（最后事件速度仍
+  高于阈值 → 像素级），竖线停在像素位置（可能偏离柱体中心 ≤4px），且停止后
+  无事件触发吸附。修复：命中分支新增**停驻定时器**——鼠标静止 120ms（`STOP_SNAP_DELAY_MS`）
+  后以最近命中 param 的整数 logical 重新吸附（竖线精确回到 bar / 柱体中心，与
+  volumeBarPaneView 同一 logicalToCoordinate 格点）；新事件到达即重置定时器；
+  未命中 / pane0 / destroy 时取消。验证：tsc 0 错误、vitest 28 文件 / 258 tests
+  全绿、浏览器——快速横扫 pixel（贴鼠标）→ 急停 50ms 仍 pixel → 停驻 450ms
+  snap（日K 回跳 3px 至格点 474.97 / 分时回跳 0.9px 至格点）→ 再次快速恢复
+  pixel。新增 `window.__klineChart.syncMode` 探针（pixel / snap / none）。
+- **v1.7.10**：十字星**速度自适应混合**——"全程跟手"与"磁吸吸附"两者兼得。
+  背景：v1.7.9 竖线像素级跟手后用户确认"可以了"，但指出**失去了吸附效果**
+  （竖线不再停在 bar 中心）。修复：`syncLineX` 增加 **40ms 滑动窗口平均速度**
+  判定——快速移动（窗口平均 ≥ 0.5px/ms）用像素级（平滑跟手、零偏差、无跳格）；
+  慢速 / 停驻用吸附（竖线稳定在 bar 中心，保留十字星磁吸感）。速度状态机
+  只在 handleCrosshairMove 同步段更新（唯一竖线设置点），applyCrosshairMove
+  （rAF）不再重复设置竖线（避免覆盖为错误模式）；键盘移动仍恒为吸附（逐 bar 语义）。
+  验证：tsc 0 错误、vitest 28 文件 / 258 tests 全绿、浏览器分段帧级采样——
+  快速（3.75px/ms）日K 31 帧 / 分时 28 帧 **全像素级零偏差**；慢速（0.09px/ms）
+  72 帧全吸附 bar 中心（偏差 ≤ bar 半宽，磁吸正常）。
+- **v1.7.9**：十字星**竖线像素级跟随鼠标**（用户三报"快速移动延迟"，帧级采样定位到
+  竖线吸附 bar 中心的跳格偏差：120 条数据下 bar 间距 ~8.6px，快速移动时竖线每帧
+  在 bar 中心间跳 ±4.3px）。修复：命中分支竖线 x 改取 `param.point.x`（鼠标相对
+  数据区坐标，像素级）——与横线（同样贴鼠标）完全一致，任何速度**零偏差**跟手；
+  键盘移动（逐 bar 语义）保持 logicalToCoordinate 吸附 bar 中心。新增
+  `window.__klineChart.lineX` 调试探针（主图竖线当前 x，帧级采样用）。
+  验证：tsc 0 错误、vitest 28 文件 / 258 tests 全绿、浏览器 CDP 高频移动 +
+  页面 rAF 帧级采样（2ms/步横扫 300→1250，含 tooltip 覆盖区）——日K / 分时
+  全部帧竖线偏差 **0.00px**、0 冻结帧、帧间隔稳定 16.6ms。
+- **v1.7.8**：十字星**横竖线统一虚线**（与最后价线一致，6px 线 / 4px 空）。
+  背景：库 crosshair 横线（horzLine）默认实线，其 dash 由线宽派生（`Dashed=[2w,2w]`），
+  无法表达价格线 [6,4] 样式。方案：横线也改为自绘（v1.7.6 竖线同款
+  `CrosshairLinePrimitive`，构造注入 paneIndex、每 pane 独立实例）——横竖线统一
+  `setLineDash([6,4])`；横线仅在**十字星命中的 pane** 绘制（与库 horzLine 语义一致，
+  y 为命中 pane 本地坐标），竖线仍贯穿全部 pane；库横线一并关闭（visible:false，
+  避免库实线横线与自绘虚线叠加成实线）。y 分发与竖线同链路**提前到 rAF 之前当帧
+  同步**（快速移动横线同帧跟手）；键盘移动横线注入 pane1（与左刻度指示值同口径）。
+  验证：tsc 0 错误、vitest 28 文件 / 258 tests 全绿、浏览器像素差分——日K / 分时
+  横竖线亮段均 6px（6 线 / 4 空）、横线仅命中 pane（pane3 无横线）、快速移动横扫
+  tooltip 全程跟手、键盘移动横竖线正常、深浅系截图正常。
+- **v1.7.7**：十字星**快速移动跟随延迟**彻底修复（v1.7.6 自绘竖线回归后收尾）。
+  两阶段根因与修复：
+  ① **竖线更新链路滞后**（初版）：竖线同步走 rAF 节流（+1 帧）+ 强制 invalidate（+1 帧），
+  快速移动时累计滞后约 2 帧（~33ms）拖尾。修复：竖线 x 计算与 `setX`（廉价操作）
+  **提前到 rAF 之前当帧同步执行**，重活（tooltip / 指示值）仍走 rAF 合并防拖拽卡顿；
+  重绘触发不再依赖 `requestUpdate`（库 ChartApi 无此方法，v1.7.7 初版该调用为 no-op）——
+  库在派发 crosshairMove 前已用新位置重绘横线，series 级竖线当帧 setX 即可跟手。
+  ② **tooltip 固定区域遮挡**（用户复测"延迟仍存在"的真正卡点）：tooltip 浮层
+  （zIndex 9999，固定 pane1 角落）覆盖在库的 mousemove 监听目标（各 Pane top canvas，
+  style.zIndex='2'）之上，鼠标快速横扫经过浮层时事件进不了 canvas 事件流，
+  且移入浮层触发 canvas mouseleave → 库清除十字星（竖线消失）→ 感知为"延迟/断"。
+  修复（**事件转发**）：浮层内 `mousemove` 时把事件**转发**到鼠标所在 Pane 的 top canvas——
+  先合成 `mouseenter`（库 mouseEnterHandler 重挂 mousemove 监听）再合成 `mousemove`
+  （按坐标驱动十字星），浮层既有功能（角落定位 / 文字选中 / 按下即拖）全部保留，
+  十字星全程跟手；拖动 / 选中冻结期间不转发；pane 重建（成交量 / 指标开关）后
+  canvas 失效时 `ensureTopCanvases` 惰性刷新集合，无残留无泄漏。
+  验证：tsc 0 错误、vitest 28 文件 / 258 tests 全绿、浏览器逐帧（16ms/步）横扫
+  tooltip 固定区（x≈1139~1258）——日K / 分时竖线单列跟手（偏差 ≤4px）、
+  tooltip 保持显示、MACD / 成交量开关组合下同样全程正常。
+- **v1.7.6**：十字星竖线**自绘 primitive**（v1.7.5 实线方案被验收否决，根因确认为"竖线被柱体盖住"）。
+  方案：新建 `CrosshairLinePrimitive`（zOrder 'top'、各 pane 代表 series 最后挂载）自绘竖线，贯穿 pane 全高，
+  画在 K 线 / 成交量柱 / MACD 柱 / 指标线之上——逐刻度移动任何位置都完整可见、无缺口、无被覆盖；
+  同时关闭库竖线（`vertLine.visible = false`）避免双竖线；颜色跟随主题 `crosshairLineColor`（不透明，
+  alpha 1.0，深浅系区分），横线仍由库绘制（Solid）。
+  修复配套：竖线 x 分发收敛到 `CrosshairManager`（鼠标 logical → 坐标、键盘 timeToIndex → 坐标）；
+  **分时模式下无实时帧循环、crosshairMove 后库不自动重绘** → `syncLineX` / `syncKeyboardMove` 触发重绘，
+  竖线即时上屏；
+  指标层 / 成交量组开关移除 Pane 时注销竖线 primitive（防泄漏）。
+  验证：tsc 0 错误、vitest 28 文件 / 257 tests 全绿、canvas 级像素验证——
+  深系日K 多 bar 位置 pane1/3/5 竖线均 100% 贯穿（285/95/95px）、分时模式 pane1/3/5 100% 贯穿（327/109/109px）、
+  无残留双竖线（库竖线已关闭）、成交量 / 指标开关后竖线仍正常。
+- **v1.7.5**：十字星竖线修复——横 / 竖线由库默认虚线（6px 亮 / 6px 暗）改为**实线（LineStyle.Solid）**，
+  修复副图 pane3/pane5（高 95px）底部竖线缺失问题（虚线周期 12px 不整除 95px，底部 5px 落在暗段）；
+  同时 `crosshairLineColor` 透明度由 0.25 提升至 **0.6**（深浅系一致），竖线在 K 线 / 成交量 / MACD 柱间隙处更清晰。
+  （该版本验收未通过，v1.7.6 改为自绘竖线方案）
+- **v1.7.4**：分时均价线开关 `avgLineVisible`（默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价）。
+- **v1.7.3**：成交量组（pane2 信息行 / pane3）关闭时，tooltip 与 main 信息行的 成交量 / 成交额 同步隐藏。
+
 ## 一、布局结构
 
 指标**开启**（6 Pane，`main : volume : indicator = 60 : 20 : 20`）：
@@ -30,6 +149,16 @@
 | 开 | 关 | 4 | main : volume = 80 : 20 |
 | 关 | 开 | 4 | main : indicator = 80 : 20（与 indicator 关闭时的 80:20 对称） |
 | 关 | 关 | 2 | main = 100%（仅 K 线） |
+
+**分时均价线开关（v1.7.4，工具栏「均价」按钮，仅分时周期显示）**：
+- 默认渲染均价线（pane1 黄色均价线）；关闭时均价线不渲染（`lineVisible: false`，series 保留避免重建）；
+- 关闭时 pane0 信息行「均价」段与 tooltip「均价」行同步隐藏；
+- 实现：controller `setAvgLineVisible` + `getShowAvg` 依赖注入（CrosshairManager / IndicatorManager），与 `getShowVolume` 同一注入范式。
+
+**成交量组关闭时数据面联动（v1.7.3）**：
+- **tooltip**：隐藏「成交量 / 成交额」两行（K 线 9 行 → 7 行；分时 7 行 → 5 行）；
+- **pane0 信息行**：分时状态下隐藏「成交量 / 成交额」段（K 线状态量额本就位于 pane2 成交量信息行，随成交量组一并移除）；
+- 实现：`buildTooltipRows` 第 4 参 `showVolume`（默认 true）+ `IndicatorManager.buildInfoSegments` 分时量额守卫，开关状态经 `getShowVolume` 依赖注入透传（controller → CrosshairManager / IndicatorManager）。
 
 高度分配（时间轴开 / 关一致，仅库可用高度不同）：
 - 空 Pane 固定 `topPaneHeight = 22px`（同一 stretchFactor，绝对相等）；
@@ -252,7 +381,8 @@ tests/
 | `data` | `ChartDataPoint[]` | `undefined` | 外部自定义数据（提供时优先渲染 data，跳过 service 拉取 / 分页 / 实时，v1.6.28） |
 | `format` | `string` | `''` | 时间格式模板（如 `'YYYY-MM-DD'` / `'YYYY-MM-DD HH:mm'`）；缺省按周期自动（v1.6.9） |
 | `priceLineVisible` | `boolean` | `true` | 最后价线显隐（K 线主图自绘 priceLine，v1.7.1） |
-| `volumeVisible` | `boolean` | `true` | 成交量组显隐（pane2 信息行 + pane3 成交量图；关闭销毁整组 + 布局重算，v1.7.2） |
+| `volumeVisible` | `boolean` | `true` | 成交量组显隐（pane2 信息行 + pane3 成交量图；关闭销毁整组 + 布局重算，v1.7.2；关闭时 tooltip 与 pane0 信息行隐藏量额，v1.7.3） |
+| `avgLineVisible` | `boolean` | `true` | 分时均价线显隐（v1.7.4）：关闭时均价线不渲染，pane0 信息行与 tooltip 同步隐藏均价（K 线周期无均价线，开关仅分时生效） |
 
 > 已移除参数：`dataCount / total / size / pageSize`（每页条数，v1.6.27 改由 `new MockChartDataService({ fetchLimit })` 注入）、`periodWhitelist`（周期白名单，v1.6.34 删除，周期栏由父组件全量控制）。
 

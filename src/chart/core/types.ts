@@ -11,6 +11,7 @@
  *  ../indicator/types.ts 定义（指标公共类型单一来源）。
  */
 import type { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+import type { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive'
 import type { ChartDataPoint } from '../../types/chart'
 import type { ChartDataService } from '../../services/chartDataService'
 import type { PeriodValueOrEmpty } from '../periods'
@@ -46,6 +47,10 @@ export interface KLineChartOptions {
    *  传 false 隐藏（仿 pane4/5 移除式：销毁整组 + 布局重算）。
    *  可通过 controller.setVolumeVisible 运行时切换 */
   volumeVisible?: boolean
+  /** 分时均价线显隐（v1.7.4）：默认 true（渲染）；传 false 时均价线不渲染，
+   *  且 pane0 信息行 / tooltip 同步隐藏均价。K 线周期无均价线，开关仅分时生效。
+   *  可通过 controller.setAvgLineVisible 运行时切换 */
+  avgLineVisible?: boolean
 }
 
 /** 加载状态（controller 统一管理：init 拉最新页 → 'loading'；左滑分页 → 'loading-older'；
@@ -70,6 +75,10 @@ export interface CrosshairPrimitiveRegistry {
   registerPrimitive: (primitive: CrosshairAxisLabelPrimitive) => void
   /** 按 pane 下标移除（指标层关闭时移除 pane5 的指示值 primitive） */
   removeByPaneIndex: (paneIndex: number) => void
+  /** v1.7.6：自绘十字星竖线 primitive 注册（pane1/2/3 由 paneFactory，pane4/5 由指标管理器） */
+  registerLinePrimitive: (primitive: CrosshairLinePrimitive) => void
+  /** v1.7.6：自绘十字星竖线 primitive 注销（指标层 / 成交量组关闭移除 pane 时） */
+  unregisterLinePrimitive: (primitive: CrosshairLinePrimitive) => void
 }
 
 /** 信息行指标值缓存项（label + 线色 + time→value Map，现取 O(1)） */

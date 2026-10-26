@@ -5,7 +5,7 @@
  *  - 节流入队（enqueueRealtimePoint）：WS / SSE / 轮询高频推送合并为
  *    REALTIME_FLUSH_MS 窗口内一次批量消费，避免数据争抢与逐点重建开销；
  *  - 单点应用（applyRealtimePoint）：series 增量更新 + bars/barIndex 维护；
- *  - 视口跟随（followLastBarIfTracking）：实时追加后保持最后 VISIBLE_BAR_COUNT 根
+ *  - 视口跟随（followLastBarIfTracking）：实时追加后保持当前视口宽度（放大/缩小状态不变）
  *    可视（priceLine 恒在视口，用户左滑看历史时不抢回视口）；
  *  - 指标缓存重建（rebuildRealtimeIndicators）：批量窗口统一重建一次。
  *
@@ -18,7 +18,7 @@ import type { ChartDataPoint } from '../../types/chart'
 import { normalizeChartTime } from '../util/format'
 import { resolveBarColors } from './resolveBarColors'
 import { themeColors, type ChartThemeName } from './theme'
-import { REALTIME_FLUSH_MS, VISIBLE_BAR_COUNT } from './constants'
+import { REALTIME_FLUSH_MS } from './constants'
 import { throttle, type Throttled } from '../util/timing'
 
 /** RealtimePipeline 依赖（controller 注入；series 均可空——构造前未建 / 周期切换残留） */
@@ -144,12 +144,12 @@ export class RealtimePipeline {
 
   /**
    * 实时视口跟随（v1.7.1 priceLine 修复）：K 线模式实时追加新 bar 后，
-   * 若视口右边缘贴近最后 bar（用户未左滑查看更早历史），将视口重新定位到
-   * 最后 VISIBLE_BAR_COUNT 根——最后 bar（及库 priceLine）恒在视口内；
-   * 用户左滑看历史（右边缘远离最后 bar）时不抢回视口。
+   * 若视口右边缘贴近最后 bar（用户未左滑查看更早历史），将右缘重新贴到
+   * 数据末尾——最后 bar（及库 priceLine）恒在视口内；用户左滑看历史
+   * （右边缘远离最后 bar）时不抢回视口。
    * 分时模式：视口由 fitContent 固定（整日数据无追加），直接跳过。
-   * 非动画实现（setVisibleLogicalRange），避免 scrollToRealTime 的 400ms 滚动动画
-   * 在 60ms 实时 flush 下连续触发导致的闪烁。
+   * v1.7.12：改用 scrollToPosition(0,false)（右偏移置 0），barSpacing /
+   * 视口宽度保持——放大 / 缩小状态不被实时推送重置（"放大后复原" bug）。
    */
   private followLastBarIfTracking = (): void => {
     const bars = this.deps.getBars()
@@ -163,10 +163,12 @@ export class RealtimePipeline {
     // （"右移 10 多条后一段时间复原" v1.7.1 修复）——越界（to > lastIndex）或
     // 看历史（to < lastIndex - 1）均视为用户已脱离跟踪，实时追加不再抢回视口。
     if (Math.abs(range.to - lastIndex) < 1) {
-      this.deps.getChart().timeScale().setVisibleLogicalRange({
-        from: Math.max(lastIndex + 1 - VISIBLE_BAR_COUNT, 0),
-        to: lastIndex,
-      })
+      // v1.7.12 修复：scrollToPosition(0, false) 直接设置右偏移 0（右缘贴数据末尾），
+      // barSpacing / 视口宽度**完全不变**（用户放大 / 缩小状态不被实时推送重置）——
+      // 原实现 setVisibleLogicalRange 固定拉回最后 VISIBLE_BAR_COUNT 根（"放大 5
+      // 次等待 10 秒后图像复原" bug）；且 setVisibleLogicalRange 会按目标范围重算
+      // barSpacing（每帧 -1px 宽度漂移），scrollToPosition 无此副作用。
+      this.deps.getChart().timeScale().scrollToPosition(0, false)
     }
   }
 

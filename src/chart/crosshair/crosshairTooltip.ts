@@ -19,16 +19,20 @@
  *  - 鼠标离开图表再进入 → 按新进入方向重新定位。
  *
  * 防闪 / 防抖（v1.6.40）：
- *  - **挂载 document.body**（position: fixed）—— 脱离图表 DOM 树 / canvas 层级 /
- *    overflow 裁剪，pointer-events: auto 明确拦截：鼠标在浮层上时图表收不到事件，
- *    十字星冻结、内容不被每帧更新破坏，文字选区稳定；
+ *  - **挂载图表容器内**（position: absolute，v1.7.7 自 document.body/fixed 迁移）——
+ *    ① 鼠标在浮层上时 mousemove 冒泡到图表容器 → 库继续收到事件，十字星持续
+ *    跟手（修复"鼠标快速移动经过 tooltip 固定区域时十字星消失/延迟"：旧实现挂
+ *    body，浮层钉在数据区右上角，指针移入浮层即脱离图表 DOM 树，库触发
+ *    mouseleave → 十字星清空，横扫图表时竖线断开）；
+ *    ② 浮层随容器滚动 / 位移天然锚定，不再需要 scroll 补偿（旧 v1.7.1
+ *    handleScroll 平移逻辑删除）；
  *  - **幂等显示**：show 仅在 hidden → visible 时置 display / 测量尺寸 / 定位；
  *    已显示时只更新文本，不再每帧重置 left/top、不再每帧强制 reflow；
  *  - **等宽数字（v1.6.41）**：font-feature-settings "tnum"，九行数值按位对齐；
  *  - **第一行时间直显（v1.6.44）**：首行不显示"时间"汉字标签，时间顶格直显；
  *  - **选中冻结（v1.6.46）**：mousedown → mouseup 期间暂停 show 内容更新，
  *    文字选区不被 textContent 变更破坏（兼容 Safari -webkit-user-select）；
- *  - **阻止 document 冒泡（v1.6.47）**：浮层按下时 stopPropagation——库在 document
+ *  - **阻止容器冒泡（v1.6.47）**：浮层按下时 stopPropagation——库在 document
  *    级监听 mousedown（点击图表外 → 清十字星 → tooltip 隐藏），拦截后选中不再被中断。
  */
 import { formatPrice, formatVolume } from '../util/format'
@@ -63,6 +67,8 @@ export const buildTooltipRows = (
   bar: ChartDataPoint,
   timeText: string,
   colors: TooltipColors,
+  showVolume = true, // v1.7.3：成交量组关闭（volumeVisible=false）时隐藏 成交量 / 成交额 两行
+  showAvg = true, // v1.7.4：均价线关闭（avgLineVisible=false）时隐藏 均价 行（分时专用）
 ): TooltipRow[] => {
   // 涨跌基准 = 昨收（preClose 缺失时回退开盘点 / 价格，兜底不抛错）
   const isTimeshare = bar.pointType === 'timeshare'
@@ -81,18 +87,29 @@ export const buildTooltipRows = (
   }
   // 第一行时间直显（label 置空，show 时该行 label 列不占位，v1.6.44）
   if (isTimeshare) {
-    // 分时：价格（着色）+ 均价（均价线同色 timeshareAvgColor）+ 涨跌 / 涨幅（着色）+ 量额
-    return [
+    // 分时：价格（着色）+ 均价（均价线同色 timeshareAvgColor）+ 涨跌 / 涨幅（着色）；
+    // v1.7.3：成交量组关闭（showVolume=false）时隐藏 成交量 / 成交额 两行；
+    // v1.7.4：均价线关闭（showAvg=false）时隐藏 均价 行（顺序：价格 / 均价 / 涨跌 / 涨幅）
+    const rows: TooltipRow[] = [
       { label: '', value: timeText },
       { label: '价格', value: formatPrice(bar.price), color: colorByPreClose(bar.price) },
-      { label: '均价', value: formatPrice(bar.avgPrice), color: colors.avg },
+    ]
+    if (showAvg) {
+      rows.push({ label: '均价', value: formatPrice(bar.avgPrice), color: colors.avg })
+    }
+    rows.push(
       { label: '涨跌', value: `${sign}${formatPrice(Math.abs(change))}`, color: changeColor },
       { label: '涨幅', value: `${sign}${Math.abs(changePct).toFixed(2)}%`, color: changeColor },
-      { label: '成交量', value: formatVolume(bar.volume) },
-      { label: '成交额', value: formatVolume(bar.amount) },
-    ]
+    )
+    if (showVolume) {
+      rows.push(
+        { label: '成交量', value: formatVolume(bar.volume) },
+        { label: '成交额', value: formatVolume(bar.amount) },
+      )
+    }
+    return rows
   }
-  return [
+  const rows: TooltipRow[] = [
     { label: '', value: timeText },
     { label: '开盘', value: formatPrice(bar.open), color: colorByPreClose(bar.open) },
     { label: '收盘', value: formatPrice(bar.close), color: colorByPreClose(bar.close) },
@@ -100,9 +117,14 @@ export const buildTooltipRows = (
     { label: '最低', value: formatPrice(bar.low), color: colorByPreClose(bar.low) },
     { label: '涨跌', value: `${sign}${formatPrice(Math.abs(change))}`, color: changeColor },
     { label: '涨幅', value: `${sign}${Math.abs(changePct).toFixed(2)}%`, color: changeColor },
-    { label: '成交量', value: formatVolume(bar.volume) },
-    { label: '成交额', value: formatVolume(bar.amount) },
   ]
+  if (showVolume) {
+    rows.push(
+      { label: '成交量', value: formatVolume(bar.volume) },
+      { label: '成交额', value: formatVolume(bar.amount) },
+    )
+  }
+  return rows
 }
 
 /** 浮层定位参数（纯函数输入，可单测） */
@@ -164,35 +186,32 @@ export const resolveTooltipPosition = (
   return { left: params.paneLeft + PANE_EDGE_OFFSET, top }
 }
 
-/** 拖动位置 clamp 参数（纯函数输入，可单测） */
+/** 拖动位置 clamp 参数（纯函数输入，可单测；v1.7.7：容器坐标，浮层 absolute 挂容器内） */
 export interface TooltipClampParams {
-  /** 期望位置（body 坐标，鼠标跟随结果） */
+  /** 期望位置（容器坐标，鼠标跟随结果） */
   left: number
   top: number
   /** pane1~pane5 可移动 / 可拖动区域（相对容器） */
   bounds: TooltipBounds
-  /** 图表容器 body 坐标原点（getBoundingClientRect 一次，拖动帧复用） */
-  containerLeft: number
-  containerTop: number
   /** 浮层宽 / 高（px） */
   width: number
   height: number
 }
 
 /**
- * 拖动位置 clamp（纯函数，v1.6.59）：把浮层限制在 pane1~pane5 数据区内
- * （body 坐标，由容器原点 + TooltipBounds 换算）：
+ * 拖动位置 clamp（纯函数，v1.6.59；v1.7.7 改容器坐标——浮层 absolute 挂容器内，
+ * left/top 即容器坐标，直接对 bounds 求 clamp，不再叠加容器视口原点）：
  *  - X ∈ [bounds.left + 2, bounds.right - width - 2]（不越左右刻度区）；
  *  - Y ∈ [bounds.top + 2, bounds.bottom - height - 2]（不越 pane1 顶 / pane5 底）；
  *  - 数据区比浮层小（极端）时取最小边界（left/top），保证不出界。
  */
 export const clampTooltipPosition = (
-  params: TooltipClampParams,
+  params: Omit<TooltipClampParams, 'containerLeft' | 'containerTop'>,
 ): { left: number; top: number } => {
-  const minLeft = params.containerLeft + params.bounds.left + PANE_EDGE_OFFSET
-  const maxLeft = params.containerLeft + params.bounds.right - params.width - PANE_EDGE_OFFSET
-  const minTop = params.containerTop + params.bounds.top + PANE_EDGE_OFFSET
-  const maxTop = params.containerTop + params.bounds.bottom - params.height - PANE_EDGE_OFFSET
+  const minLeft = params.bounds.left + PANE_EDGE_OFFSET
+  const maxLeft = params.bounds.right - params.width - PANE_EDGE_OFFSET
+  const minTop = params.bounds.top + PANE_EDGE_OFFSET
+  const maxTop = params.bounds.bottom - params.height - PANE_EDGE_OFFSET
   return {
     left: Math.min(Math.max(params.left, minLeft), Math.max(minLeft, maxLeft)),
     top: Math.min(Math.max(params.top, minTop), Math.max(minTop, maxTop)),
@@ -211,6 +230,10 @@ export interface CrosshairTooltipShowParams {
   bar: ChartDataPoint
   /** 时间文本（已按 pane0 信息行格式格式化） */
   timeText: string
+  /** 成交量组是否可见（v1.7.3：关闭时隐藏 成交量 / 成交额 两行） */
+  showVolume: boolean
+  /** 均价线是否可见（v1.7.4：关闭时隐藏 均价 行，分时专用） */
+  showAvg: boolean
 }
 
 /** 行高（px） */
@@ -258,25 +281,43 @@ export class CrosshairTooltip {
   /** 拖动开始时的容器 body 坐标原点（缓存一次，拖动帧复用——避免每帧
    *  getBoundingClientRect 强制 reflow，v1.6.59 性能优化） */
   private dragRect: { left: number; top: number } | null = null
-  /** 拖动后的固定位置（body 坐标；hide 时清除 → 下次进入重新角落定位） */
+  /** 拖动后的固定位置（容器坐标；hide 时清除 → 下次进入重新角落定位） */
   private fixedPos: { left: number; top: number } | null = null
   /** pane1~pane5 可移动 / 可拖动区域（相对容器；每次 show 注入，默认定位 + 拖动 clamp 用） */
   private bounds: TooltipBounds | null = null
-  /** 最近一次容器视口坐标原点（滚动跟随基准，v1.7.1：页面 / 容器滚动、resize 时
-   *  对比求 delta → 浮层平移，避免浏览器有滚动条时 tooltip 脱离 pane 区域"越界"） */
-  private lastContainerRect: { left: number; top: number } | null = null
+  /**
+   * v1.7.7 事件转发（修复"鼠标快速移动经过 tooltip 时十字星消失/延迟"）：
+   * lightweight-charts 的十字星 mousemove 监听挂在各 Pane 的 top canvas
+   * （style.zIndex = '2'，图表内容层），tooltip 浮层（zIndex 9999）覆盖在其上时，
+   * 指针在浮层上的 mousemove 不会进入 canvas 事件流，且移入浮层触发 canvas
+   * mouseleave → 库清除十字星（竖线消失）。修复：浮层内 mousemove 时把事件
+   * **转发**到鼠标所在 Pane 的 top canvas（合成 mouseenter 先重挂库的 mousemove
+   * 监听，再合成 mousemove 驱动十字星按坐标更新）——浮层全部既有功能
+   * （角落定位 / 文字选中 / 按下即拖）保持不变，十字星全程跟手。
+   */
+  private topCanvases: HTMLCanvasElement[] = []
+  /** 当前已转发 mouseenter 的 canvas（目标切换时重新合成 enter 重挂库监听） */
+  private forwardedCanvas: HTMLCanvasElement | null = null
 
   constructor(container: HTMLElement, theme: ChartThemeColors) {
     this.theme = theme
     this.container = container
+    // v1.7.7：容器作为定位原点（absolute 子元素需要 positioned 祖先；
+    // 库容器默认无 position，显式置 relative，不干扰库内部布局）
+    if (getComputedStyle(container).position === 'static') {
+      container.style.position = 'relative'
+    }
+    // v1.7.7：收集内容 Pane 的 top canvas（库 mousemove 监听目标；后续 show 时
+    // 惰性刷新——pane 重建（成交量 / 指标开关）后旧 canvas 被移除，isConnected 判失效）
+    this.ensureTopCanvases()
     const root = document.createElement('div')
-    root.style.position = 'fixed'
+    root.style.position = 'absolute' // v1.7.7：挂容器内（旧实现 fixed + body）
     root.style.display = 'none'
-    root.style.pointerEvents = 'auto' // 拦截自身区域：浮层上鼠标事件不穿透到图表
+    root.style.pointerEvents = 'auto' // 拦截自身区域按下（拖动 / 选词）；mousemove 冒泡到容器 → 十字星持续跟手
     root.style.userSelect = 'text' // 允许选中 / 复制文字
     root.style.webkitUserSelect = 'text' // Safari 兼容（v1.6.46）
     root.style.cursor = 'grab' // 按下即拖（v1.6.53）：全容器任意位置可拖动
-    root.style.zIndex = '9999' // 脱离图表层级，永远置顶
+    root.style.zIndex = '9999' // 容器内层级：盖住全部 canvas
     root.style.boxSizing = 'border-box'
     root.style.borderRadius = '4px'
     root.style.padding = '5px 5px'
@@ -301,18 +342,17 @@ export class CrosshairTooltip {
       root.appendChild(row)
       this.rowNodes.push({ label, value })
     }
-    // 挂载到 body（脱离图表 DOM 树，杜绝层级 / 事件拦截不确定性）
-    document.body.appendChild(root)
+    // v1.7.7：挂载到图表容器内（absolute 随容器滚动 / 位移天然锚定，
+    // 鼠标在浮层上 mousemove 冒泡到容器 → 十字星不冻结）
+    container.appendChild(root)
     this.root = root
     // 选中冻结：按下（开始文本选择）→ 冻结 show；松开（window 级，拖选移出浮层也能恢复）
     root.addEventListener('mousedown', this.handleMouseDown)
+    // v1.7.7：浮层内 mousemove → 转发到命中 Pane 的 top canvas（十字星持续跟手）
+    root.addEventListener('mousemove', this.handleTooltipMove)
     // 悬停态监听（v1.6.48）：进入/离开浮层更新 hovered，未命中分支据此保持浮层
     root.addEventListener('mouseenter', this.handleMouseEnter)
     root.addEventListener('mouseleave', this.handleMouseLeave)
-    // 滚动跟随（v1.7.1）：页面 / 容器滚动、窗口 resize 时浮层随图表容器平移
-    //（capture 捕获文档内所有滚动事件，含页面滚动条与容器自身滚动）
-    window.addEventListener('scroll', this.handleScroll, true)
-    window.addEventListener('resize', this.handleScroll)
     this.applyTheme(theme)
   }
 
@@ -324,13 +364,21 @@ export class CrosshairTooltip {
   show = (params: CrosshairTooltipShowParams): void => {
     // 选中文字期间冻结内容更新（textContent 变更会破坏正在进行的文字选区）
     if (this.frozen) return
+    // v1.7.7：惰性刷新 top canvas 集合（pane 重建后旧 canvas 失效 → 重新收集）
+    this.ensureTopCanvases()
     // 每次显示注入最新可移动 / 可拖动区域（刻度开关变化后角落定位与拖动边界即时生效）
     this.bounds = params.bounds
-    const rows = buildTooltipRows(params.bar, params.timeText, {
-      up: this.theme.upColor,
-      down: this.theme.downColor,
-      avg: this.theme.timeshareAvgColor,
-    })
+    const rows = buildTooltipRows(
+      params.bar,
+      params.timeText,
+      {
+        up: this.theme.upColor,
+        down: this.theme.downColor,
+        avg: this.theme.timeshareAvgColor,
+      },
+      params.showVolume, // v1.7.3：成交量组关闭 → 隐藏量额两行
+      params.showAvg, // v1.7.4：均价线关闭 → 隐藏均价行
+    )
     this.rowNodes.forEach((node, index) => {
       const row = rows[index]
       // 分时（7 行）比 K 线（9 行）少：多余节点清空，避免残留上一周期文本（v1.7.0）
@@ -380,13 +428,14 @@ export class CrosshairTooltip {
   /** 销毁：移除浮层节点 + 清理冻结监听（防泄漏） */
   destroy = (): void => {
     this.root.removeEventListener('mousedown', this.handleMouseDown)
+    this.root.removeEventListener('mousemove', this.handleTooltipMove)
     this.root.removeEventListener('mouseenter', this.handleMouseEnter)
     this.root.removeEventListener('mouseleave', this.handleMouseLeave)
     window.removeEventListener('mousemove', this.handleMouseMove)
     window.removeEventListener('mouseup', this.handleMouseUp)
-    window.removeEventListener('scroll', this.handleScroll, true)
-    window.removeEventListener('resize', this.handleScroll)
     this.root.remove()
+    this.topCanvases = []
+    this.forwardedCanvas = null
   }
 
   /** 应用主题样式（背景 / 边框 / 文字） */
@@ -414,36 +463,62 @@ export class CrosshairTooltip {
     this.hovered = true
   }
 
-  /** 鼠标离开浮层：清除悬停态（之后按正常未命中逻辑处理） */
+  /** 鼠标离开浮层：清除悬停态（之后按正常未命中逻辑处理）；重置转发目标 */
   private handleMouseLeave = (): void => {
     this.hovered = false
+    this.forwardedCanvas = null
   }
 
   /**
-   * 页面 / 容器滚动、窗口 resize（v1.7.1 修复"滚动越界"）：
-   * 浮层挂 body（position: fixed，left/top 为视口坐标），显示时按容器 rect 一次性
-   * 写入——浏览器有滚动条时，滚动后图表容器移动而浮层仍钉在旧视口位置，脱离 pane
-   * 区域。此处对比容器 rect 前后差值（delta），把浮层整体平移相同位移，让 tooltip
-   * 始终锚定图表；拖动中同步刷新拖动边界基准（dragRect），clamp 跟随滚动后容器。
+   * v1.7.7：浮层内 mousemove → 转发到鼠标所在 Pane 的 top canvas：
+   *  - 命中测试：遍历内容 Pane top canvas（zIndex=2）的 rect，找到含鼠标点的目标；
+   *  - 目标切换 / 首次进入：先合成 mouseenter（库 mouseEnterHandler 会重挂
+   *    mousemove 监听——移入浮层时真实 mouseleave 已把它卸载），再合成 mousemove；
+   *  - 拖动（dragging）或选中冻结（frozen）期间不转发：十字星冻结在当前位置，
+   *    避免拖拽浮层时十字星跳动（未命中分支由 isHovered 守卫保持浮层）。
    */
-  private handleScroll = (): void => {
-    if (!this.visible) return
-    const rect = this.container.getBoundingClientRect()
-    if (this.lastContainerRect) {
-      const dx = rect.left - this.lastContainerRect.left
-      const dy = rect.top - this.lastContainerRect.top
-      if (dx !== 0 || dy !== 0) {
-        const left = parseFloat(this.root.style.left)
-        const top = parseFloat(this.root.style.top)
-        this.root.style.left = `${left + dx}px`
-        this.root.style.top = `${top + dy}px`
-        // 拖动中：边界基准跟随滚动（clamp 用新容器原点，避免越界）
-        if (this.dragging && this.dragRect) {
-          this.dragRect = { left: rect.left, top: rect.top }
-        }
+  private handleTooltipMove = (event: MouseEvent): void => {
+    if (this.dragging || this.frozen) return
+    const cv = this.hitTopCanvas(event.clientX, event.clientY)
+    if (!cv) return
+    if (cv !== this.forwardedCanvas) {
+      cv.dispatchEvent(
+        new MouseEvent('mouseenter', {
+          clientX: event.clientX,
+          clientY: event.clientY,
+          bubbles: false,
+        }),
+      )
+      this.forwardedCanvas = cv
+    }
+    cv.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: event.clientX, clientY: event.clientY, bubbles: true }),
+    )
+  }
+
+  /** 命中测试：返回包含鼠标点（视口坐标）的内容 Pane top canvas（无命中 → null） */
+  private hitTopCanvas = (clientX: number, clientY: number): HTMLCanvasElement | null => {
+    for (const cv of this.topCanvases) {
+      const r = cv.getBoundingClientRect()
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+        return cv
       }
     }
-    this.lastContainerRect = { left: rect.left, top: rect.top }
+    return null
+  }
+
+  /**
+   * 收集 / 刷新内容 Pane top canvas 集合（v1.7.7）：
+   * 库十字星 mousemove 监听挂在这些 canvas（style.zIndex='2'）。pane 重建
+   * （成交量 / 指标开关移除重建）后旧 canvas 从 DOM 移除（isConnected=false），
+   * 此处惰性重新收集，避免转发到已销毁元素（无效果 / 泄漏）。
+   */
+  private ensureTopCanvases = (): void => {
+    if (this.topCanvases.length > 0 && this.topCanvases.every((c) => c.isConnected)) return
+    this.topCanvases = [...this.container.querySelectorAll('canvas')].filter(
+      (c) => getComputedStyle(c).zIndex === '2',
+    )
+    this.forwardedCanvas = null
   }
 
   private handleMouseDown = (event: MouseEvent): void => {
@@ -460,9 +535,9 @@ export class CrosshairTooltip {
    *  - 位移 < DRAG_THRESHOLD：算点击（双击 / 三击选词可用，不移动浮层）；
    *  - 首次超过阈值：进入拖动（禁用文字选择，防止拖出选区）+ 记录按下点相对
    *    浮层左上角的偏移；
-   *  - 拖动中：浮层跟随鼠标（clientX/Y 即 body 坐标，position: fixed 直接用），
-   *    **位置 clamp 在 pane1~pane5 数据区内**（v1.6.58）：X 不越左右刻度区，
-   *    Y 不越 pane1 顶 / pane5 底（刻度开关打开时拖动区域随之收窄）。
+   *  - 拖动中：浮层跟随鼠标（**容器坐标** = clientX/Y - 容器视口原点，v1.7.7
+   *    absolute 挂容器内），位置 clamp 在 pane1~pane5 数据区内（v1.6.58）：
+   *    X 不越左右刻度区，Y 不越 pane1 顶 / pane5 底。
    */
   private handleMouseMove = (event: MouseEvent): void => {
     if (!this.dragStart) return
@@ -474,25 +549,25 @@ export class CrosshairTooltip {
       this.root.style.userSelect = 'none'
       this.root.style.webkitUserSelect = 'none'
       this.root.style.cursor = 'grabbing'
-      this.dragOffset = {
-        x: this.dragStart.x - this.root.offsetLeft,
-        y: this.dragStart.y - this.root.offsetTop,
-      }
-      // 拖动开始缓存容器 body 坐标原点（拖动帧复用，避免每帧 getBoundingClientRect 强制 reflow）
+      // 拖动开始缓存容器视口坐标原点（拖动帧复用，避免每帧 getBoundingClientRect 强制 reflow）
       const rect = this.container.getBoundingClientRect()
       this.dragRect = { left: rect.left, top: rect.top }
+      // 按下点相对浮层左上角的偏移（容器坐标；按下点 - 容器原点 - 浮层当前左上）
+      this.dragOffset = {
+        x: this.dragStart.x - this.dragRect.left - this.root.offsetLeft,
+        y: this.dragStart.y - this.dragRect.top - this.root.offsetTop,
+      }
     }
-    let left = event.clientX - this.dragOffset!.x
-    let top = event.clientY - this.dragOffset!.y
-    // 拖动边界（body 坐标）：pane1~pane5 数据区内缩 2px，浮层不越界到刻度区 / 图表外
+    // 容器坐标（absolute：相对容器定位）
+    let left = event.clientX - this.dragRect!.left - this.dragOffset!.x
+    let top = event.clientY - this.dragRect!.top - this.dragOffset!.y
+    // 拖动边界（容器坐标）：pane1~pane5 数据区内缩 2px，浮层不越界到刻度区 / 图表外
     const bounds = this.bounds
-    if (bounds && this.size && this.dragRect) {
+    if (bounds && this.size) {
       const clamped = clampTooltipPosition({
         left,
         top,
         bounds,
-        containerLeft: this.dragRect.left,
-        containerTop: this.dragRect.top,
         width: this.size.width,
         height: this.size.height,
       })
@@ -525,11 +600,10 @@ export class CrosshairTooltip {
     this.dragRect = null // 清理拖动缓存（防残留，下次拖动重新测量）
   }
 
-  /** 定位：容器内坐标 + 容器 rect → body 坐标（position: fixed）；
+  /** 定位：容器坐标（absolute 挂容器内，v1.7.7；旧实现 fixed + body 需叠加容器 rect）；
    *  角落位置限定在 pane1~pane5 数据区（paneLeft ~ paneRight），左右刻度开时不越界 */
   private place = (entrySide: 'left' | 'right', paneTop: number): void => {
     if (!this.size || !this.bounds) return
-    const rect = this.container.getBoundingClientRect()
     const pos = resolveTooltipPosition({
       entrySide,
       paneTop,
@@ -537,9 +611,7 @@ export class CrosshairTooltip {
       paneLeft: this.bounds.left,
       paneRight: this.bounds.right,
     })
-    this.root.style.left = `${rect.left + pos.left}px`
-    this.root.style.top = `${rect.top + pos.top}px`
-    // 滚动跟随基准：记录当前容器视口坐标（handleScroll 对比平移，v1.7.1）
-    this.lastContainerRect = { left: rect.left, top: rect.top }
+    this.root.style.left = `${pos.left}px`
+    this.root.style.top = `${pos.top}px`
   }
 }

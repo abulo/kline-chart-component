@@ -85,6 +85,8 @@ const props = withDefaults(
     priceLineVisible?: boolean;
     /** 成交量组显隐（v1.7.2）：默认 true（pane2 信息行 + pane3 成交量图）；false 隐藏 */
     volumeVisible?: boolean;
+    /** 分时均价线显隐（v1.7.4）：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价 */
+    avgLineVisible?: boolean;
     /** 全屏（v1.7.1）：true 时组件铺满浏览器视口（fixed 覆盖），false 保持父容器布局 */
     fullscreen?: boolean;
   }>(),
@@ -100,6 +102,7 @@ const props = withDefaults(
     period: "",
     priceLineVisible: true,
     volumeVisible: true,
+    avgLineVisible: true,
     fullscreen: false,
   },
 );
@@ -219,6 +222,8 @@ onMounted(() => {
     priceLineVisible: props.priceLineVisible,
     // v1.7.2：成交量组显隐（构造即应用；watch 负责运行时切换）
     volumeVisible: props.volumeVisible,
+    // v1.7.4：分时均价线显隐（构造即应用；watch 负责运行时切换）
+    avgLineVisible: props.avgLineVisible,
   });
   // 创建后立即应用全部 Props 初始值（与控制器构造默认值一致时幂等无副作用）
   controller.value.applyTheme(props.theme as ChartThemeName);
@@ -302,6 +307,11 @@ watch(
 watch(
   () => props.volumeVisible,
   (value) => controller.value?.setVolumeVisible(!!value),
+);
+// v1.7.4：分时均价线显隐（默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价）
+watch(
+  () => props.avgLineVisible,
+  (value) => controller.value?.setAvgLineVisible(!!value),
 );
 /** 外部自定义数据变化 → 直接注入渲染（v1.6.28；data 模式不走 service） */
 watch(

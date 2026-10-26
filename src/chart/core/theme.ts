@@ -132,7 +132,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     maskBackground: 'rgba(19, 23, 34, 0.72)',
     maskText: '#D1D4DC',
     // 浅灰蓝半透明（#9598A1 @ 25%）：深背景上清晰、穿过柱体时透出、细虚线更淡
-    crosshairLineColor: 'rgba(149, 152, 161, 0.25)',
+    crosshairLineColor: 'rgba(149, 152, 161, 1)',
     highMarkerColor: '#F4AA0A',
     lowMarkerColor: '#2962FF',
     sarUp: '#FF0000',
@@ -172,7 +172,7 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     maskBackground: 'rgba(255, 255, 255, 0.72)',
     maskText: '#33373E',
     // 中灰半透明（白底更清晰；细虚线更淡）
-    crosshairLineColor: 'rgba(90, 96, 112, 0.25)',
+    crosshairLineColor: 'rgba(90, 96, 112, 1)',
     highMarkerColor: '#B8860B',
     lowMarkerColor: '#2452CC',
     sarUp: '#FF0000',

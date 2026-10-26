@@ -91,6 +91,8 @@ const showRightScale = ref(isTimesharePeriod(activePeriod.value))
 const showPriceLine = ref(true)
 /** 成交量组显隐（v1.7.2：pane2 信息行 + pane3 成交量图，默认开；仿附图指标移除式开关） */
 const showVolume = ref(true)
+/** 分时均价线显隐（v1.7.4）：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价 */
+const showAvgLine = ref(true)
 /** 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关） */
 const activeMainIndicator = ref<MainIndicatorType | null>("ma")
 
@@ -155,6 +157,11 @@ const toggleVolume = (): void => {
   showVolume.value = !showVolume.value
 }
 
+/** 分时均价线开关（v1.7.4）：仅维护状态（图表由 KLineChart.vue 的 avgLineVisible Props watch 驱动） */
+const toggleAvgLine = (): void => {
+  showAvgLine.value = !showAvgLine.value
+}
+
 /** 放大 / 缩小 / 左移 / 右移（X 轴全局） */
 const zoomIn = (): void => chartRef.value?.controller?.zoomIn()
 const zoomOut = (): void => chartRef.value?.controller?.zoomOut()
@@ -198,6 +205,10 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       <button class="btn" :class="{ active: showPriceLine }" @click="togglePriceLine">
         价格线{{ showPriceLine ? '开' : '关' }}
       </button>
+      <!-- 分时均价线开关（v1.7.4）：均价为分时概念，仅分时周期显示（K 线无均价线） -->
+      <button v-if="isTimeshare" class="btn" :class="{ active: showAvgLine }" @click="toggleAvgLine">
+        均价{{ showAvgLine ? '开' : '关' }}
+      </button>
       <button class="btn" :class="{ active: showVolume }" @click="toggleVolume">
         成交量{{ showVolume ? '开' : '关' }}
       </button>
@@ -223,6 +234,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         :right-scale="showRightScale"
         :price-line-visible="showPriceLine"
         :volume-visible="showVolume"
+        :avg-line-visible="showAvgLine"
         :theme="theme"
         :main-indicator="activeMainIndicator ?? ''"
         :sub-indicator="activeSubIndicator ?? ''"

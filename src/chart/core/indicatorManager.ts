@@ -67,6 +67,10 @@ export interface IndicatorManagerDeps {
   getTimeFormat: () => string | undefined
   /** 当前周期（v1.6.9；日/周/月 → YYYY-MM-DD，分时 → HH:mm，分钟 K → YYYY-MM-DD HH:mm） */
   getPeriod: () => PeriodValueOrEmpty
+  /** 成交量组是否可见（v1.7.3：关闭时 pane0 信息行隐藏 成交量 / 成交额 段） */
+  getShowVolume: () => boolean
+  /** 均价线是否可见（v1.7.4：关闭时 pane0 信息行隐藏 均价 段，分时专用） */
+  getShowAvg: () => boolean
 }
 
 /** 指标值缓存项（信息行分段：label + 线色 + time→value Map，现取 O(1)）——见 types.ts */
@@ -84,6 +88,8 @@ export class IndicatorManager {
   private readonly getTimeFormat: IndicatorManagerDeps['getTimeFormat']
   /** 当前周期（v1.6.9） */
   private readonly getPeriod: IndicatorManagerDeps['getPeriod']
+  private readonly getShowVolume: IndicatorManagerDeps['getShowVolume']
+  private readonly getShowAvg: IndicatorManagerDeps['getShowAvg']
 
   /* ===== 主图指标状态 ===== */
   /** 当前激活的主图指标（null = 关闭；互斥） */
@@ -122,6 +128,8 @@ export class IndicatorManager {
     this.onIndicatorStateChange = deps.onIndicatorStateChange
     this.getTimeFormat = deps.getTimeFormat
     this.getPeriod = deps.getPeriod
+    this.getShowVolume = deps.getShowVolume
+    this.getShowAvg = deps.getShowAvg
     // 附图指标管理器：pane4 / pane5 独立成类（见 subIndicatorPaneManager.ts；
     // crosshairRegistry 直接转发，本类不持有）
     this.subIndicatorPane = new SubIndicatorPaneManager({
@@ -377,16 +385,24 @@ export class IndicatorManager {
         segments.push(
           { text: ' 价格: ', color: labelColor },
           { text: formatPrice(price), color: trendColor },
-          { text: ' 均价: ', color: labelColor },
-          { text: formatPrice(tsBar.avgPrice ?? 0), color: theme.timeshareAvgColor },
+          ...(this.getShowAvg()
+            ? [
+                { text: ' 均价: ', color: labelColor },
+                { text: formatPrice(tsBar.avgPrice ?? 0), color: theme.timeshareAvgColor },
+              ]
+            : []),
           { text: ' 涨跌: ', color: labelColor },
           { text: `${sign}${formatPrice(Math.abs(diff))}`, color: trendColor },
           { text: ' 涨幅: ', color: labelColor },
           { text: `${sign}${Math.abs(pct).toFixed(2)}%`, color: trendColor },
-          { text: ' 成交量: ', color: labelColor },
-          { text: formatVolume(tsBar.volume), color: labelColor },
-          { text: ' 成交额: ', color: labelColor },
-          { text: formatVolume(tsBar.amount), color: labelColor },
+          ...(this.getShowVolume()
+            ? [
+                { text: ' 成交量: ', color: labelColor },
+                { text: formatVolume(tsBar.volume), color: labelColor },
+                { text: ' 成交额: ', color: labelColor },
+                { text: formatVolume(tsBar.amount), color: labelColor },
+              ]
+            : []),
         )
       }
       return segments

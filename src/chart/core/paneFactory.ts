@@ -31,6 +31,7 @@ import { PaneBorderPrimitive } from '../border/paneBorderPrimitive'
 import { GridPrimitive } from '../grid/gridPrimitive'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
+import { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive'
 import { findLastKlineBar, PriceLinePrimitive } from '../overlay/priceLinePrimitive'
 import { TimeshareManager } from './timeshareManager'
 import type { IndicatorManager } from './indicatorManager'
@@ -76,6 +77,10 @@ export interface PaneBundle {
   indicatorLinePrimitive: IndicatorLinePrimitive
   /** pane3 成交量均量线 VOL MA5/MA10 自绘 primitive */
   volumeMaPrimitive: IndicatorLinePrimitive
+  /** pane2 十字星竖线自绘 primitive（v1.7.7：随 bundle 返回，volume 关闭时注销） */
+  pane2LinePrimitive: CrosshairLinePrimitive
+  /** pane3 十字星竖线自绘 primitive（v1.7.7：随 bundle 返回，volume 关闭时注销） */
+  pane3LinePrimitive: CrosshairLinePrimitive
 }
 
 /** 构建全部内容 Pane（pane0~pane3）的 series / primitive 并装配 */
@@ -331,6 +336,12 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
     }),
   )
   klineSeries.attachPrimitive(indicatorLinePrimitive)
+  // pane1 十字星竖线自绘（v1.7.6）：最后挂载（zOrder 'top' 同层内后绘制在上，
+  // 画在全部 K 线 / 指标线 / 价格线之上，贯穿 pane 全高）；
+  // 库竖线已关闭（vertLine.visible=false），由本 primitive 统一绘制
+  const pane1LinePrimitive = new CrosshairLinePrimitive(1)
+  klineSeries.attachPrimitive(pane1LinePrimitive)
+  crosshairManager.registerLinePrimitive(pane1LinePrimitive)
 
   /* ---------- 5/6. pane2 + pane3（成交量组，v1.7.2 抽取） ----------
    * 由 createVolumePanes 创建：pane2 成交量信息行 + pane3 成交量锚点 / 柱 /
@@ -348,6 +359,8 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
     priceLinePrimitive: priceLinePrimitive, // v1.7.1：显隐由 controller 参数控制
     indicatorLinePrimitive,
     volumeMaPrimitive: volume.volumeMaPrimitive,
+    pane2LinePrimitive: volume.pane2LinePrimitive,
+    pane3LinePrimitive: volume.pane3LinePrimitive,
   }
 }
 
@@ -362,6 +375,10 @@ export interface VolumePaneBundle {
   volumeSeries: ISeriesApi<'Histogram'>
   /** pane3 成交量均量线 VOL MA5/MA10 自绘 primitive */
   volumeMaPrimitive: IndicatorLinePrimitive
+  /** pane2 十字星竖线自绘 primitive（v1.7.7：随 bundle 返回，volume 关闭时注销） */
+  pane2LinePrimitive: CrosshairLinePrimitive
+  /** pane3 十字星竖线自绘 primitive（v1.7.7：随 bundle 返回，volume 关闭时注销） */
+  pane3LinePrimitive: CrosshairLinePrimitive
 }
 
 /**
@@ -472,6 +489,21 @@ export const createVolumePanes = (deps: VolumePaneDeps): VolumePaneBundle => {
   )
   volumeSeries.attachPrimitive(volumeMaPrimitive)
 
+  // pane2 / pane3 十字星竖线自绘（v1.7.6）：信息行 + 成交量 Pane 各挂一条，
+  // 最后挂载（zOrder 'top' 后绘制，成交量柱 / 均量线之上，贯穿全高）
+  const pane2LinePrimitive = new CrosshairLinePrimitive(2)
+  pane2InfoSeries.attachPrimitive(pane2LinePrimitive)
+  crosshairManager.registerLinePrimitive(pane2LinePrimitive)
+  const pane3LinePrimitive = new CrosshairLinePrimitive(3)
+  volumeSeries.attachPrimitive(pane3LinePrimitive)
+  crosshairManager.registerLinePrimitive(pane3LinePrimitive)
 
-  return { pane2InfoSeries, volumeSeries, volumeMaPrimitive }
+  return {
+    pane2InfoSeries,
+    volumeSeries,
+    volumeMaPrimitive,
+    // v1.7.7：竖线实例随 bundle 返回（controller 在移除成交量组时注销，防泄漏）
+    pane2LinePrimitive,
+    pane3LinePrimitive,
+  }
 }

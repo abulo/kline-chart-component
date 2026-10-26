@@ -110,6 +110,12 @@ describe('buildTooltipRows', () => {
     expect(rows[3].value).toBe('--')
     expect(rows[4].value).toBe('--')
   })
+
+  it('成交量组关闭：K 线 tooltip 隐藏 成交量 / 成交额（9 行 → 7 行，v1.7.3）', () => {
+    const rows = buildTooltipRows(makeBar({}), '2024-10-04', colors, false)
+    expect(rows).toHaveLength(7)
+    expect(rows.map((r) => r.label)).toEqual(['', '开盘', '收盘', '最高', '最低', '涨跌', '涨幅'])
+  })
 })
 
 describe('buildTooltipRows 分时点（v1.7.0）', () => {
@@ -151,6 +157,24 @@ describe('buildTooltipRows 分时点（v1.7.0）', () => {
     const rows = buildTooltipRows(makeTs({}), 't', colors)
     expect(rows[5].value).toBe('1234.57万')
     expect(rows[6].value).toBe('1.28亿')
+  })
+
+  it('成交量组关闭：分时 tooltip 隐藏 成交量 / 成交额（7 行 → 5 行，v1.7.3）', () => {
+    const rows = buildTooltipRows(makeTs({}), 't', colors, false)
+    expect(rows).toHaveLength(5)
+    expect(rows.map((r) => r.label)).toEqual(['', '价格', '均价', '涨跌', '涨幅'])
+  })
+
+  it('均价关闭：分时 tooltip 隐藏均价行（7 行 → 6 行，v1.7.4）', () => {
+    const rows = buildTooltipRows(makeTs({}), 't', colors, true, false)
+    expect(rows).toHaveLength(6)
+    expect(rows.map((r) => r.label)).toEqual(['', '价格', '涨跌', '涨幅', '成交量', '成交额'])
+  })
+
+  it('均价 + 成交量双关：分时 tooltip 仅 4 行（v1.7.4）', () => {
+    const rows = buildTooltipRows(makeTs({}), 't', colors, false, false)
+    expect(rows).toHaveLength(4)
+    expect(rows.map((r) => r.label)).toEqual(['', '价格', '涨跌', '涨幅'])
   })
 })
 
@@ -213,44 +237,40 @@ describe('resolveTooltipPosition（v1.6.36 进入方向角落定位 / v1.6.58 �
   })
 })
 
-describe('clampTooltipPosition（v1.6.59 拖动边界纯函数）', () => {
-  // 容器原点 (100, 200)，数据区（相对容器）left 72 / right 928、top 22 / bottom 600
+describe('clampTooltipPosition（v1.6.59；v1.7.7 容器坐标——浮层 absolute 挂容器内）', () => {
+  // 数据区（容器坐标）left 72 / right 928、top 22 / bottom 600
   const base = {
     bounds: { left: 72, right: 928, top: 22, bottom: 600 },
-    containerLeft: 100,
-    containerTop: 200,
     width: 180,
     height: 185,
   }
-  // body 坐标 minLeft = 100+72+2 = 174；maxLeft = 100+928-180-2 = 846
-  // minTop = 200+22+2 = 224；maxTop = 200+600-185-2 = 613
+  // 容器坐标 minLeft = 72+2 = 74；maxLeft = 928-180-2 = 746
+  // minTop = 22+2 = 24；maxTop = 600-185-2 = 413
 
   it('在数据区内 → 原样返回（不 clamp）', () => {
     expect(clampTooltipPosition({ ...base, left: 400, top: 300 })).toEqual({ left: 400, top: 300 })
   })
 
-  it('越过左刻度区 → clamp 到数据区左缘（174）', () => {
-    expect(clampTooltipPosition({ ...base, left: 120, top: 300 }).left).toBe(174)
+  it('越过左刻度区 → clamp 到数据区左缘（74）', () => {
+    expect(clampTooltipPosition({ ...base, left: 30, top: 300 }).left).toBe(74)
   })
 
-  it('越过右刻度区 → clamp 到数据区右缘（846）', () => {
-    expect(clampTooltipPosition({ ...base, left: 900, top: 300 }).left).toBe(846)
+  it('越过右刻度区 → clamp 到数据区右缘（746）', () => {
+    expect(clampTooltipPosition({ ...base, left: 900, top: 300 }).left).toBe(746)
   })
 
-  it('越过 pane1 顶 → clamp 到 pane1 顶（224）', () => {
-    expect(clampTooltipPosition({ ...base, left: 400, top: 100 }).top).toBe(224)
+  it('越过 pane1 顶 → clamp 到 pane1 顶（24）', () => {
+    expect(clampTooltipPosition({ ...base, left: 400, top: 10 }).top).toBe(24)
   })
 
-  it('越过 pane5 底 → clamp 到 pane5 底（613）', () => {
-    expect(clampTooltipPosition({ ...base, left: 400, top: 900 }).top).toBe(613)
+  it('越过 pane5 底 → clamp 到 pane5 底（413）', () => {
+    expect(clampTooltipPosition({ ...base, left: 400, top: 900 }).top).toBe(413)
   })
 
   it('数据区比浮层小（极端）→ 取最小边界不出界', () => {
     const tiny = { left: 0, right: 100, top: 0, bottom: 50 }
     const pos = clampTooltipPosition({
       bounds: tiny,
-      containerLeft: 0,
-      containerTop: 0,
       width: 200,
       height: 185,
       left: 999,
@@ -261,12 +281,43 @@ describe('clampTooltipPosition（v1.6.59 拖动边界纯函数）', () => {
   })
 })
 
-describe('CrosshairTooltip 滚动跟随（v1.7.1 修复滚动越界）', () => {
-  it('页面滚动后浮层随图表容器平移（不脱离 pane 区域）', () => {
-    // 容器 mock：视口坐标原点 (100, 200)
+describe('CrosshairTooltip 挂载与定位（v1.7.7：absolute 挂容器内）', () => {
+  it('角落定位使用容器坐标（absolute，不再叠加容器视口原点）', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
-    let rect = { left: 100, top: 200, right: 1100, bottom: 900, width: 1000, height: 700 }
+    const rect = { left: 100, top: 200, right: 1100, bottom: 900, width: 1000, height: 700 }
+    container.getBoundingClientRect = () => rect as DOMRect
+
+    const tooltip = new CrosshairTooltip(
+      container,
+      { upColor: '#FF0000', downColor: '#008000', timeshareAvgColor: '#F4AA0A' } as unknown as Parameters<typeof CrosshairTooltip.prototype.setTheme>[0],
+    )
+    try {
+      // 挂载在容器内（absolute 子节点）
+      expect(container.contains(tooltip['root'])).toBe(true)
+      expect(tooltip['root'].style.position).toBe('absolute')
+      tooltip.show({
+        entrySide: 'right', // 右进入 → 左上角
+        paneTop: 20,
+        bounds: { left: 72, right: 928, top: 20, bottom: 600 },
+        bar: makeBar({}),
+        timeText: '2024-10-04',
+      })
+      const left = parseFloat(tooltip['root'].style.left)
+      const top = parseFloat(tooltip['root'].style.top)
+      // 容器坐标直用：paneLeft 72 + 2、paneTop 20 + 2（不再加容器原点 100/200）
+      expect(left).toBe(74)
+      expect(top).toBe(22)
+    } finally {
+      tooltip.destroy()
+      document.body.removeChild(container)
+    }
+  })
+
+  it('滚动无需手动平移（absolute 随容器天然锚定，无 scroll 补偿逻辑）', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const rect = { left: 100, top: 200, right: 1100, bottom: 900, width: 1000, height: 700 }
     container.getBoundingClientRect = () => rect as DOMRect
 
     const tooltip = new CrosshairTooltip(
@@ -275,7 +326,7 @@ describe('CrosshairTooltip 滚动跟随（v1.7.1 修复滚动越界）', () => {
     )
     try {
       tooltip.show({
-        entrySide: 'right', // 右进入 → 左上角
+        entrySide: 'right',
         paneTop: 20,
         bounds: { left: 72, right: 928, top: 20, bottom: 600 },
         bar: makeBar({}),
@@ -283,17 +334,13 @@ describe('CrosshairTooltip 滚动跟随（v1.7.1 修复滚动越界）', () => {
       })
       const leftBefore = parseFloat(tooltip['root'].style.left)
       const topBefore = parseFloat(tooltip['root'].style.top)
-      expect(leftBefore).toBe(174) // 100(容器) + 72(paneLeft) + 2
-      expect(topBefore).toBe(222) // 200(容器) + 20(paneTop) + 2
-
-      // 模拟浏览器滚动：容器视口坐标左移 20、上移 50
-      rect = { left: 80, top: 150, right: 1080, bottom: 850, width: 1000, height: 700 }
+      // 模拟浏览器滚动：窗口 scroll / resize 事件（旧实现会手动平移浮层；absolute 无需）
       window.dispatchEvent(new Event('scroll'))
-
+      window.dispatchEvent(new Event('resize'))
       const leftAfter = parseFloat(tooltip['root'].style.left)
       const topAfter = parseFloat(tooltip['root'].style.top)
-      expect(leftAfter).toBe(leftBefore - 20) // 跟随容器左移 20
-      expect(topAfter).toBe(topBefore - 50) // 跟随容器上移 50
+      expect(leftAfter).toBe(leftBefore) // 位置不被滚动事件改写
+      expect(topAfter).toBe(topBefore)
     } finally {
       tooltip.destroy()
       document.body.removeChild(container)
