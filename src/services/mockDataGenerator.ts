@@ -29,7 +29,9 @@ export const MINUTE_GRANULARITY: Record<string, number> = {
   '1min': 1,
 }
 
-/** 是否为分钟 K 周期 */
+/** 是否为分钟 K 周期（60min/30min/15min/5min/1min）。
+ * @param period 周期标识
+ * @returns true = 分钟 K 周期 */
 export const isMinutePeriod = (period: string): boolean =>
   Object.prototype.hasOwnProperty.call(MINUTE_GRANULARITY, period)
 
@@ -120,14 +122,19 @@ export const aggregateToBars = (
   return out
 }
 
-/** 北京时间分钟（段首分钟）→ 当日 UTC 秒级 time（与分时点口径一致：UTC 00:00 − 8h + 分钟×60） */
+/** 北京时间分钟（段首分钟）→ 当日 UTC 秒级 time（与分时点口径一致：UTC 00:00 − 8h + 分钟×60）。
+ * @param day 当日任意日 K 点（取 tradeDate）
+ * @param minuteOfDay 北京时间分钟（如 570 = 09:30）
+ * @returns 秒级 UTC 时间戳 */
 export const minuteToTime = (day: ChartDataPoint, minuteOfDay: number): number => {
   const dayUtc0 = new Date(day.time * 1000)
   dayUtc0.setUTCHours(0, 0, 0, 0)
   return Math.round(dayUtc0.getTime() / 1000) - 8 * 3600 + minuteOfDay * 60
 }
 
-/** 日 K 点 → 桶 key：按自然周（周一 00:00 本地） */
+/** 日 K 点 → 桶 key：按自然周（周一 00:00 本地）。
+ * @param p 日 K 点
+ * @returns 该点所属周起点（周一 00:00 本地）的秒级时间戳 */
 export const weekBucketOf = (p: ChartDataPoint): number => {
   const d = new Date(p.time * 1000)
   const day = d.getDay()
@@ -136,7 +143,9 @@ export const weekBucketOf = (p: ChartDataPoint): number => {
   return Math.round(monday.getTime() / 1000)
 }
 
-/** 日 K 点 → 桶 key：按自然月（当月 1 日 00:00 本地） */
+/** 日 K 点 → 桶 key：按自然月（当月 1 日 00:00 本地）。
+ * @param p 日 K 点
+ * @returns 该点所属月起点（1 日 00:00 本地）的秒级时间戳 */
 export const monthBucketOf = (p: ChartDataPoint): number => {
   const d = new Date(p.time * 1000)
   const first = new Date(d.getFullYear(), d.getMonth(), 1)
@@ -169,6 +178,7 @@ export const TS_NEW_MINUTE_EVERY = 6
  *  - 09:31 ~ 11:30（120 分钟，上午）；
  *  - 13:01 ~ 15:00（120 分钟，下午）。
  * 首分钟（09:30）为集合竞价开盘价所在点，末分钟（15:00）为收盘点。
+ * @returns 升序的北京时间分钟数组（长度 241）
  */
 export const sessionMinutes = (): number[] => {
   const out: number[] = []
@@ -185,11 +195,16 @@ export const sessionMinutes = (): number[] => {
  *  11:30 后不追加（午休）、15:00 后不追加（收盘）） */
 export const TS_APPEND_MINUTES = new Set(sessionMinutes())
 
+/** 深拷贝单个数据点（fetchHistory 返回前调用，防调用方污染内部池）。
+ * @param p 源数据点
+ * @returns 内容相同的新对象 */
 export const clone = (p: ChartDataPoint): ChartDataPoint => {
   return { ...p }
 }
 
-/** 字符串 → 正整数种子（同 symbol 同数据） */
+/** 字符串 → 正整数种子（同 symbol 同数据，确定性随机源）。
+ * @param text 任意字符串（如 symbol）
+ * @returns 稳定的正整数哈希 */
 export const hashSeed = (text: string): number => {
   let h = 2166136261
   for (let i = 0; i < text.length; i++) {
@@ -199,7 +214,9 @@ export const hashSeed = (text: string): number => {
   return (h >>> 0) || 1
 }
 
-/** 线性同余伪随机数发生器 */
+/** 线性同余伪随机数发生器（确定性序列）。
+ * @param seed 正整数种子（来自 hashSeed）
+ * @returns 无参随机函数，每次调用返回 [0,1) 内的数 */
 export const createRandom = (seed: number): () => number => {
   let s = seed
   return () => {
@@ -213,7 +230,8 @@ export const isWeekend = (d: Date): boolean => {
   return day === 0 || day === 6
 }
 
-/** 生成截止 POOL_END_DATE、长度 POOL_SIZE 的交易日序列（升序） */
+/** 生成截止 POOL_END_DATE、长度 POOL_SIZE 的交易日序列（升序，跳过周末）。
+ * @returns 升序的 Date 数组（长度 POOL_SIZE） */
 export const buildTradingDates = (): Date[] => {
   const dates: Date[] = [new Date(POOL_END_DATE)]
   const cur = new Date(POOL_END_DATE)
@@ -224,7 +242,9 @@ export const buildTradingDates = (): Date[] => {
   return dates
 }
 
-/** 某日期之后的下一交易日 */
+/** 某日期之后的下一交易日（跳过周末）。
+ * @param d 起始日期
+ * @returns 下一个工作日 Date */
 export const nextTradingDay = (d: Date): Date => {
   const cur = new Date(d)
   do {

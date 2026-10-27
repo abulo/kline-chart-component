@@ -59,11 +59,13 @@ const CACHE_MAX_REALTIME_TIMERS = 8
  * LRU 缓存访问（v1.7.1，模块级纯函数可单测）：命中时刷新顺序
  * （delete + 重插使遍历序 = 最近使用序）；未命中时由 factory 生成并写入；
  * 超 maxSize 淘汰最久未使用（遍历序第一个）。
- * 用于 MockChartDataService 的 pools / tsPools / periodPools / timers 统一入口。
- * @param map 目标缓存
- * @param key 键
- * @param maxSize 上限（超出即淘汰最旧）
- * @param factory 未命中时的生成函数
+ * 用于 MockChartDataService 的 pools / tsPools / periodPools / timers 统一入口，
+ * 防止多 symbol / 多周期切换时派生池无限增长导致内存溢出。
+ * @param map 目标缓存（Map 实例，调用方持有）
+ * @param key 缓存键
+ * @param maxSize 上限（超出即淘汰最久未使用的一项）
+ * @param factory 未命中时的生成函数（返回要缓存的值）
+ * @returns 命中的缓存值，或 factory 新生成并写入的值（类型 V）
  */
 export const touchCache = <V>(
   map: Map<string, V>,
@@ -110,9 +112,12 @@ export class MockChartDataService implements ChartDataService {
   }
 
   /**
-   * 生成（或获取）某标的的完整日 K 池（v1.6.34 起东财口径真实化）：
-   * 趋势波段状态机 + GARCH 波动聚集 + 开盘跳空 + 价量联动，周 K / 月 K /
-   * 分钟 K（60/30/15/5/1 分）全部由本池派生，跨周期价格自洽。
+   * 生成（或获取）某标的的完整日 K 池（懒生成 + LRU 缓存，v1.6.34 起东财口径真实化）：
+   * 趋势波段状态机 + GARCH 波动聚集 + 开盘跳空 + 价量联动 + A股情绪形态注入
+   * （一字板 1~10 连板 / 厂字板 / 天地天 / 地天地等，涨跌停按主板 ±10%）。
+   * 周 K / 月 K / 分钟 K（60/30/15/5/1 分）全部由本池派生，跨周期价格自洽。
+   * @param symbol 证券代码（池缓存键；随机种子由 symbol 哈希决定，同标的数据确定）
+   * @returns 该标的按 time 升序的日 K 池（约 3 年，每根含 open/high/low/close/volume/amount）
    */
   private ensurePool = (symbol: string): ChartDataPoint[] =>
     touchCache(this.pools, symbol, CACHE_MAX_SYMBOL_POOLS, () => {
@@ -315,7 +320,11 @@ export class MockChartDataService implements ChartDataService {
     return out
   }
 
-  /** 分时周期数据池（最近 5 交易日，1d~5d 共用；缓存于 tsPools） */
+  /**
+   * 分时周期数据池（最近 5 交易日，1d~5d 共用；懒生成 + LRU 缓存于 tsPools）。
+   * @param symbol 证券代码（缓存键）
+   * @returns 按 time 升序的最近 5 交易日分时点数组（每根含 price / avgPrice / volume / amount）
+   */
   private ensureTsPool = (symbol: string): ChartDataPoint[] =>
     touchCache(this.tsPools, symbol, CACHE_MAX_SYMBOL_POOLS, () =>
       this.buildTsPool(symbol, 5),
@@ -438,6 +447,15 @@ export class MockChartDataService implements ChartDataService {
    *    time 落在周初/月初 00:00、tradeDate 取组内末交易日、preClose 取组内首点昨收近似）；
    *  - 60/30/15/5/1min：分钟 K 池（buildMinuteKPool，布朗桥锚定日开/收 + 真实时段聚合）。
    */
+  /**
+   * 生成（或获取）按周期聚合后的 K 线池（懒生成 + LRU 缓存于 periodPools）：
+   * - day：直接用日 K 池（不复制引用）；week / month：由日 K 池按周 / 月桶聚合；
+   * - 分钟周期（60/30/15/5/1min）：由 buildMinuteKPool 布朗桥锚定日 K 开收生成；
+   * - 未知周期：回退日 K 池（接口协议未知周期兜底）。
+   * @param symbol 证券代码
+   * @param period 周期标识（'day' / 'week' / 'month' / 分钟周期）
+   * @returns 按 time 升序的该周期 K 线池
+   */
   private ensurePeriodPool = (symbol: string, period: string): ChartDataPoint[] => {
     if (period === 'day') return this.ensurePool(symbol)
     const key = `${symbol}|${period}`
@@ -456,7 +474,12 @@ export class MockChartDataService implements ChartDataService {
     })
   }
 
-  /** 二分查找：第一个 time >= target 的下标 */
+  /**
+   * 二分查找：第一个 time >= target 的下标（分页 `before` 锚点定位用）。
+   * @param pool 按 time 升序的数据池
+   * @param target 目标时间戳（秒）
+   * @returns 第一个满足 pool[i].time >= target 的下标；全部小于 target 时返回 pool.length
+   */
   private static lowerBound = (pool: ChartDataPoint[], target: number): number  => {
     let lo = 0
     let hi = pool.length
@@ -468,6 +491,15 @@ export class MockChartDataService implements ChartDataService {
     return lo
   }
 
+  /**
+   * 拉取历史数据（实现 ChartDataService.fetchHistory）。
+   * - 分时周期（1d~5d）：返回最近 N 个交易日的全部分时点（升序，N = 周期数字；
+   *   每日条数随形态变化：半日 120 / 最新日完整 241 / 久远日 240）；
+   * - K 线周期：按 `before` 锚点分页——取该时间戳之前的一页（数量 = limit）。
+   * @param query 查询入参（symbol / period / before / limit）
+   * @returns 按 time 升序的数据点克隆数组（每次返回深拷贝，防调用方污染内部池）；
+   *          返回条数 < limit 表示已无更早数据
+   */
   async fetchHistory(query: HistoryQuery): Promise<ChartDataPoint[]> {
     // —— 分时周期（1d~5d）：取最近 N 个交易日的分时点（升序，N=周期数字）——
     if (isTimesharePeriod(query.period)) {
@@ -505,6 +537,16 @@ export class MockChartDataService implements ChartDataService {
     return pool.slice(start, end).map(clone)
   }
 
+  /**
+   * 订阅实时数据（实现 ChartDataService.subscribeRealtime）。
+   * - 分时周期：模拟盘中每分钟刷新——交易时段内追加新分钟点、其余刷新最后一根；
+   * - K 线周期：模拟 tick 刷新最后一根 / 周期性产生新 K 线（NEW_BAR_EVERY）。
+   * 同一 symbol|period 重复订阅时先关闭旧定时器（保证唯一）。
+   * @param symbol 证券代码
+   * @param period 周期标识（分时 '1d'~'5d' / K 线周期）
+   * @param handler 实时回调（每个模拟点调用一次）
+   * @returns 取消订阅函数：clearInterval 并从 timers 缓存移除（防定时器泄漏）
+   */
   subscribeRealtime(symbol: string, period: string, handler: RealtimeHandler): () => void {
     const key = `${symbol}|${period}`
     // 已存在订阅则先关闭，保证唯一

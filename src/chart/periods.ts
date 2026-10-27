@@ -51,7 +51,8 @@ export const periodMap: ReadonlyMap<PeriodValue, PeriodItem> = new Map(
 /**
  * 按 value 取周期展示文案。
  * 未命中（后端返回未知周期）时返回原值，保证 UI 不显示空文案。
- */
+ * @param value 周期标识（'1d'~'5d' / 'day' / 'week' / 'month' / 分钟周期）
+ * @returns 展示文案；未知周期返回原值 */
 export const getPeriodLabel = (value: string): string =>
   periodMap.get(value as PeriodValue)?.label ?? value
 
@@ -83,13 +84,16 @@ export const TIMESHARE_PERIODS: ReadonlySet<string> = new Set(['1d', '2d', '3d',
  *  - pane3 成交量用直方图（Histogram），不用 K 线柱体自绘；
  *  - 附图指标无 CR；竖线栅格份数按 timeshareGridVerticalCount；
  *  - App 平移 / 缩放按钮隐藏。
- */
+ * @param period 周期标识
+ * @returns true = 分时周期（'1d'~'5d'） */
 export const isTimesharePeriod = (period: string): boolean =>
   TIMESHARE_PERIODS.has(period)
 
 /** 分时周期竖向栅格等分数（v1.7.0）：1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5，非分时回退 4。
  *  统一收口 timeshareGridVerticalCount 的索引（period 为 PeriodValue 全联合，
- *  直接索引 Partial<Record<timeshare>> 会触发 TS7053） */
+ *  直接索引 Partial<Record<timeshare>> 会触发 TS7053）
+ * @param period 周期标识
+ * @returns 栅格竖线等分数：分时按表（1d=4/2d=2/3d=3/4d=4/5d=5），非分时回退 4 */
 export const timeshareVerticalCount = (period: string): number =>
   timeshareGridVerticalCount[period as keyof typeof timeshareGridVerticalCount] ?? 4
 

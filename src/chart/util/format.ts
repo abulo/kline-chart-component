@@ -75,7 +75,9 @@ export const formatDate = (seconds?: number | null): string => {
 }
 
 
-/** 秒级时间戳 → 本地 "HH:mm"（分时周期专用，与交易时段一致） */
+/** 秒级时间戳 → 本地 "HH:mm"（分时周期专用，与交易时段一致）。
+ * @param seconds 秒级时间戳；undefined / null / NaN 时返回 '--'（展示层容错）
+ * @returns 两位补零的 "HH:mm" 本地时间字符串，如 '09:31' */
 export const formatClock = (seconds?: number | null): string => {
   if (seconds === undefined || seconds === null || Number.isNaN(seconds)) return '--'
   const date = new Date(seconds * 1000)
@@ -84,7 +86,9 @@ export const formatClock = (seconds?: number | null): string => {
   return `${hour}:${minute}`
 }
 
-/** 秒级时间戳 → 本地 "YYYY-MM-DD HH:mm"（分钟 K 周期专用） */
+/** 秒级时间戳 → 本地 "YYYY-MM-DD HH:mm"（分钟 K 周期 / 分时 tooltip 专用）。
+ * @param seconds 秒级时间戳；非法输入返回 '--'
+ * @returns 由 formatDate + formatClock 拼接的日期时间字符串 */
 export const formatDateTime = (seconds?: number | null): string => {
   if (seconds === undefined || seconds === null || Number.isNaN(seconds)) return '--'
   return `${formatDate(seconds)} ${formatClock(seconds)}`
@@ -97,7 +101,9 @@ export const formatDateTime = (seconds?: number | null): string => {
  *    需区分日期，由 HH:mm 改为日期 + 时间）；
  *  - 60/30/15/5/1 分钟 K       → YYYY-MM-DD HH:mm。
  * 未知周期默认按日 K（YYYY-MM-DD），容错外部传入非常用周期值。
- */
+ * @param seconds 秒级时间戳；非法输入返回 '--'
+ * @param period 周期标识（分时 '1d'~'5d' / 分钟 K → 日期+时间；日/周/月 K → 仅日期）
+ * @returns 按周期格式化的时间字符串 */
 export const formatAxisTime = (seconds?: number | null, period?: string): string => {
   if (period === '1d' || period === '2d' || period === '3d' || period === '4d' || period === '5d') {
     return formatDateTime(seconds)
@@ -119,7 +125,9 @@ export const formatAxisTime = (seconds?: number | null, period?: string): string
  * 支持标记：YYYY / MM / DD / HH / mm / ss。
  * 例：formatTimeByFmt(1728000000, 'YYYY-MM-DD') -> '2024-10-04'
  *     formatTimeByFmt(1728000000, 'YYYY-MM-DD HH:mm') -> '2024-10-04 00:00'
- */
+ * @param ts 秒级时间戳（必传）
+ * @param fmt 格式模板（默认 'YYYY-MM-DD HH:mm'）
+ * @returns 按模板替换后的字符串；模板中未识别的标记原样保留 */
 export const formatTimeByFmt = (ts: number, fmt = 'YYYY-MM-DD HH:mm'): string => {
   const date = new Date(ts * 1000)
   const pad = (v: number): string => String(v).padStart(2, '0')
@@ -141,7 +149,8 @@ export const formatTimeByFmt = (ts: number, fmt = 'YYYY-MM-DD HH:mm'): string =>
  * "Cannot update oldest data, last time=[object Object]"。
  *  - number 且有限 → 原值；BusinessDay {year, month, day} → Date.UTC 秒；
  *  - Date / ISO 字符串 → getTime / Date.parse 秒；其余 → null（调用方跳过该条）。
- */
+ * @param time 任意来源的时间值（number / BusinessDay / Date / ISO 字符串 / 其他）
+ * @returns 归一化后的秒级整数时间戳；无法解析时返回 null */
 export const normalizeChartTime = (time: unknown): number | null => {
   if (typeof time === 'number') {
     return Number.isFinite(time) ? Math.floor(time) : null
