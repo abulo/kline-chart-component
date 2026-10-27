@@ -1,105 +1,92 @@
-/**
- * HttpChartDataService —— 接入真实后端的示例实现（HTTP 历史 + WebSocket 实时 + 历史数据缓存）
- *
- * 组件 / 控制器已通过 ChartDataService 接口解耦，接入后端只需：
- *   1. 本文件按你的后端地址配置 historyUrl / wsUrl（或直接改用你自己的字段名）；
- *   2. 在 App.vue 中把 `new MockChartDataService({ fetchLimit: 200 })` 替换为
- *      `new HttpChartDataService({ historyUrl: '/api/kline/history', fetchLimit: 200 })`；
- *   3. 如需鉴权 / 租户 / 版本等上下文，通过外部参数注入：
- *        headers  → 附加请求头（所有 HTTP 请求）；
- *        cookies  → 附加 Cookie（**对象形式**，序列化后注入所有 HTTP 请求的 Cookie 头）；
- *        params   → 附加 URL 查询参数（history / latest / SSE / WS 全部请求）。
- *
- * 后端接口约定（推荐直接对齐，可省去字段映射）：
- *   GET {historyUrl}?symbol=<代码>&period=<周期>&before=<秒时间戳>&limit=<条数>
- *     （historyUrl 为必填完整地址；自带 query 时以 & 追加）
- *     响应：{ code: 200, msg?: "ok", data: [ { time, tradeDate, preClose, open, high, low, close, volume, amount } ] }
- *     - time: 秒级时间戳；tradeDate: 'YYYY-MM-DD'；preClose: 昨收
- *     - 数组按 time 升序返回；返回条数 < limit 表示已无更早数据
- *   WS  {wsUrl}?symbol=<代码>&period=<周期>
- *     推送：单条数据点对象 或 { data: 对象|数组 }
- *     - 与历史同结构；time 与最后一根相同 = 刷新该根，time 更大 = 追加新 K 线
- *
- * 兼容字段缩写：open/high/low/close/volume 也接受 o/h/l/c/v，均会自动映射。
- *
- * 数据缓存（默认开启）：
- *   - 按 `symbol|period` 缓存已拉取的历史数据（含分页前置插入的旧页），
- *     重复滑动回看 / 切回同标的时**零网络请求**，直接命中缓存返回；
- *   - 最新页缓存带 TTL（默认 30s），超时后重新拉取最新快照，保证盘中行情不陈旧；
- *   - 更早的分页历史属于不可变数据，不受 TTL 限制，直到被 LRU 淘汰；
- *   - 缓存条目按 LRU 淘汰（默认最多保留 12 个 symbol|period 组合），控制内存总量；
- *   - 返回给调用方的一律是独立副本，实时更新不会污染缓存。
- */
+// httpChartDataService.ts —— 接入真实后端的示例实现（HTTP 历史 + WS/SSE/Poll 实时 + LRU 缓存）。
+// 组件 / 控制器已通过 ChartDataService 接口解耦，接入后端只需：
+//   1. 按后端地址配置 historyUrl / wsUrl / sseUrl / pollUrl；
+//   2. 在 App.vue 中把 MockChartDataService 替换为 HttpChartDataService 实例；
+//   3. 鉴权 / 租户 / 版本等上下文经外部参数注入：headers（附加请求头）、
+//      cookies（对象形式，序列化注入 Cookie 头）、params（附加 URL 查询参数）。
+// 后端接口约定：GET {historyUrl}?symbol=&period=&before=&limit=&total= 返回
+// { code: 200, msg?, data: [ { time, tradeDate, preClose, open, high, low, close, volume, amount } ] }
+// 数组按 time 升序；返回条数 < limit 表示已无更早数据。兼容字段缩写 o/h/l/c/v。
+// 数据缓存（默认开启）：按 symbol|period 缓存历史（含分页前置插入的旧页），重复滑动
+// 回看零网络请求；最新页缓存带 TTL（默认 30s）保证盘中不陈旧；更早分页历史不可变、
+// 不受 TTL 限制；缓存条目按 LRU 淘汰（默认 12 个组合）；返回给调用方的一律独立副本。
 import type { ChartDataPoint } from '../types/chart'
 import { fetchEventSource, type EventSourceMessage } from '@microsoft/fetch-event-source'
 import type { ChartDataService, HistoryQuery, RealtimeHandler } from './chartDataService'
 
-/** HttpChartDataService 构造参数（v1.6.30：各接口地址全部显式配置，无基址派生） */
+/** HttpChartDataService 构造参数（各接口地址全部显式配置，无基址派生）。 */
 export interface HttpChartDataServiceOptions {
-  /** 每页拉取条数（构造必填，如 200） */
+  /** 每页拉取条数（构造必填，如 200）。 */
   fetchLimit: number
-  /** 历史 K 线完整接口地址（必填，v1.6.30）：任意完整 URL（含自有路由 / query） */
+  /** 历史 K 线完整接口地址（必填）：任意完整 URL（含自有路由 / query）。 */
   historyUrl: string
-  /** 实时行情 WebSocket 地址（realtimeTransport='ws' 时使用）；不传则不做实时订阅 */
+  /** 实时行情 WebSocket 地址（realtimeTransport = 'ws' 时使用）；不传则不做实时订阅。 */
   wsUrl?: string
-  /** SSE 实时地址（realtimeTransport='sse' 时使用，必填完整地址；缺省不订阅） */
+  /** SSE 实时地址（realtimeTransport = 'sse' 时使用，必填完整地址；缺省不订阅）。 */
   sseUrl?: string
-  /** SSE 事件名，默认 'message'（部分后端用自定义事件名，如 'quote'） */
+  /** SSE 事件名，默认 'message'（部分后端用自定义事件名，如 'quote'）。 */
   sseEventName?: string
-  /** 实时传输方式：'ws' WebSocket 推送（默认）/ 'poll' HTTP 轮询 / 'sse' Server-Sent Events */
+  /** 实时传输方式：'ws' WebSocket 推送（默认）/ 'poll' HTTP 轮询 / 'sse' Server-Sent Events。 */
   realtimeTransport?: 'ws' | 'poll' | 'sse'
-  /** HTTP 轮询专用实时接口（realtimeTransport='poll' 时使用，必填完整地址；缺省不轮询） */
+  /** HTTP 轮询专用实时接口（realtimeTransport = 'poll' 时使用，必填完整地址；缺省不轮询）。 */
   pollUrl?: string
-  /** HTTP 轮询频率 ms（realtimeTransport='poll' 时生效），默认 3000 */
+  /** HTTP 轮询频率 ms（realtimeTransport = 'poll' 时生效），默认 3000。 */
   pollIntervalMs?: number
-  /** fetch 超时 ms，默认 8000 */
+  /** fetch 超时 ms，默认 8000。 */
   timeoutMs?: number
   /**
-   * 附加请求头（外部参数）：注入到**所有 HTTP 请求**（history / latest 轮询）的 fetch 头中，
-   * 与默认的 Accept 合并（同名以这里的值为准）。示例：
-   *   headers: { Authorization: 'Bearer <token>', 'X-App-Version': '1.0.0' }
-   * v1.6.31：SSE 基于 @microsoft/fetch-event-source（fetch 流），**可注入自定义头**；
-   * WebSocket 仍受浏览器限制无法自定义请求头，鉴权依赖自定义头时请改用 'sse' 或 'poll'。
+   * 附加请求头，注入到所有 HTTP 请求（history / latest 轮询）的 fetch 头中，
+   * 与默认 Accept 合并（同名以这里的值为准）。
+   *
+   * @remarks
+   * SSE 基于 @microsoft/fetch-event-source（fetch 流），可注入自定义头；
+   * WebSocket 受浏览器限制无法自定义请求头，鉴权依赖自定义头时请改用 'sse' 或 'poll'。
    */
   headers?: Record<string, string>
   /**
-   * 附加 Cookie（外部参数）：**对象形式**，例如 { session: 'abc123', theme: 'dark' }，
-   * 内部序列化为 `session=abc123; theme=dark` 注入到**所有 HTTP 请求**的 `Cookie` 头。
-   * v1.6.31：SSE 基于 fetch 可注入 Cookie 头（与 HTTP 一致）；WebSocket 仍由浏览器
-   * 自动携带同源 Cookie，无法注入自定义 Cookie；跨域 WS 请配合后端 CORS credentials 或改用 poll。
+   * 附加 Cookie（对象形式）。
+   *
+   * @remarks
+   * 例如 { session: 'abc123', theme: 'dark' }，内部序列化为 `session=abc123; theme=dark`
+   * 注入到所有 HTTP 请求的 Cookie 头。SSE 基于 fetch 可注入 Cookie 头；WebSocket 仅由
+   * 浏览器自动携带同源 Cookie，无法注入自定义 Cookie（跨域 WS 请配合后端 CORS
+   * credentials 或改用 poll）。
    */
   cookies?: Record<string, string>
   /**
-   * 附加 URL 查询参数（外部参数）：附加到**所有请求**（history / latest / SSE / WS）的
-   * 查询字符串中，例如 { lang: 'zh-CN', market: 'SH' } → &lang=zh-CN&market=SH。
-   * 同名冲突时 symbol/period/before/limit 等核心参数优先（外部 params 不会覆盖它们）。
+   * 附加 URL 查询参数，附加到所有请求（history / latest / SSE / WS）的查询字符串中。
+   *
+   * @remarks
+   * 同名冲突时 symbol / period / before / limit 等核心参数优先（外部 params 不会覆盖）。
    */
   params?: Record<string, string | number | boolean>
-  /** 历史数据缓存开关，默认 true */
+  /** 历史数据缓存开关，默认 true。 */
   cache?: boolean
-  /** 缓存条目上限（LRU 淘汰），默认 12 */
+  /** 缓存条目上限（LRU 淘汰），默认 12。 */
   maxCacheEntries?: number
   /**
-   * 「已知总条数」记录上限（knownTotals，独立于历史缓存、**缓存淘汰不清除**，
-   * 表示该 key 目前有多少条数据、包括已被缓存淘汰的）。默认 64。
-   * 仅当已知 key 数量超过该上限时，才按 LRU 淘汰最旧的 total 记录（防内存无限增长）。
+   * 「已知总条数」记录上限（knownTotals，独立于历史缓存、缓存淘汰不清除）。
+   *
+   * @remarks
+   * knownTotals 表示该 key 目前有多少条数据（包括已被缓存淘汰的）；仅当已知 key 数量
+   * 超过该上限时才按 LRU 淘汰最旧的 total 记录（防内存无限增长）。默认 64。
    */
   maxKnownTotals?: number
-  /** 最新页缓存有效期 ms（更早分页历史不受限），默认 30_000 */
+  /** 最新页缓存有效期 ms（更早分页历史不受限），默认 30_000。 */
   cacheTtlMs?: number
 }
 
-/**
- * 后端返回的最外层包裹（{ code, data, msg? }），兼容直接返回数组。
- * **业务码约定：code === 200 表示返回成功**；code 非 200 时视为失败，
- * 请求层会抛错（错误信息取 msg 字段）；直接返回数组视为成功。
- */
+// 后端返回的最外层包裹（{ code, data, msg? }），兼容直接返回数组。
+// 业务码约定：code === 200 表示返回成功；code 非 200 视为失败（请求层抛错，取 msg）；
+// 直接返回数组视为成功。
 type BackendResponse = { code?: number; data?: unknown; msg?: string } | unknown[]
 
 /**
- * 请求超时错误（v1.7.2）：request() 超时中止时抛出。
- * 将 fetch 的裸 AbortError 语义化为"超时"错误，供上层（KLineChartController）
- * 识别为**可重试**错误（网络抖动 / 后端慢可自愈），而非意外崩溃。
+ * 请求超时错误。
+ *
+ * @remarks
+ * request() 超时中止时抛出：将 fetch 的裸 AbortError 语义化为"超时"错误，供上层
+ * （KLineChartController）识别为可重试错误（网络抖动 / 后端慢可自愈），而非意外崩溃。
  */
 export class RequestTimeoutError extends Error {
   constructor(timeoutMs: number, url: string) {
@@ -108,35 +95,35 @@ export class RequestTimeoutError extends Error {
   }
 }
 
-/** 单 key 缓存条目 */
+// 单 key 缓存条目（内部结构）。
 interface CacheEntry {
-  /** 已缓存数据（按 time 升序、去重；分页前置累积 + 最新页覆盖合并） */
+  /** 已缓存数据（按 time 升序、去重；分页前置累积 + 最新页覆盖合并）。 */
   points: ChartDataPoint[]
-  /** 最近一次"最新页"网络拉取时间（ms），用于最新页 TTL 判定 */
+  /** 最近一次"最新页"网络拉取时间（ms），用于最新页 TTL 判定。 */
   fetchedAt: number
-  /** LRU 最近使用时间（ms） */
+  /** LRU 最近使用时间（ms）。 */
   lastUsed: number
 }
 
 /**
- * HttpChartDataService —— 真实后端数据服务实现
+ * 真实后端数据服务实现。
  *
- *  - fetchHistory：HTTP GET {historyUrl}（必填完整地址；fetch + AbortController 超时）；
- *  - subscribeRealtime：三种实时模式（realtimeTransport 切换）：
- *      'ws'  ：WebSocket {wsUrl}?symbol=&period=（返回 () => ws.close() 清理函数）；
- *      'poll'：HTTP 轮询（默认 3000ms 一次，独立实时接口 {pollUrl}（必填完整地址）
- *              拉最新数据（不附加 limit，**后端返回多少就回调多少**）；增量过滤 +
- *              同根刷新回调；防重入；返回 () => clearInterval 清理函数）；
- *      'sse' ：Server-Sent Events {sseUrl}?symbol=&period=（v1.6.31 起基于
- *              @microsoft/fetch-event-source，可注入 headers/cookies；默认监听 message
- *              事件，断线自动重连；返回 () => ctrl.abort() 清理函数）；
- *  - 历史数据 LRU 缓存（Map + 容量上限，命中/未命中都会更新时间戳，防内存无限增长）；
- *  - normalizePoint：兼容 open/high/low/close/volume 与 o/h/l/c/v 缩写字段。
+ * @remarks
+ * - fetchHistory：HTTP GET {historyUrl}（fetch + AbortController 超时）；
+ * - subscribeRealtime：三种实时模式（realtimeTransport 切换）——
+ *   'ws'：WebSocket {wsUrl}?symbol=&period=（返回 () => ws.close() 清理函数）；
+ *   'poll'：HTTP 轮询（默认 3000ms 一次，独立实时接口 {pollUrl}，不附加 limit，
+ *   后端返回多少就回调多少；增量过滤 + 同根刷新回调；防重入；返回清理函数）；
+ *   'sse'：Server-Sent Events（基于 @microsoft/fetch-event-source，可注入
+ *   headers/cookies；默认监听 message 事件，断线自动重连；返回 () => ctrl.abort()）；
+ * - 历史数据 LRU 缓存（Map + 容量上限，防内存无限增长）；
+ * - normalizePoint：兼容 open/high/low/close/volume 与 o/h/l/c/v 缩写字段。
  */
 export class HttpChartDataService implements ChartDataService {
-  /** 每页拉取条数（v1.6.27：构造必填） */
+  /** 每页拉取条数（构造必填）。 */
   readonly fetchLimit: number
 
+  // 归一化后的构造参数（默认值在此收敛，运行时只读）。
   private readonly opts: {
     historyUrl: string
     wsUrl?: string
@@ -146,11 +133,11 @@ export class HttpChartDataService implements ChartDataService {
     pollUrl?: string
     pollIntervalMs: number
     timeoutMs: number
-    /** 外部附加请求头（注入所有 HTTP fetch 与 SSE（v1.6.31）；WS 无法注入，见接口注释） */
+    /** 外部附加请求头（注入所有 HTTP fetch 与 SSE；WS 无法注入）。 */
     headers?: Record<string, string>
-    /** 外部附加 Cookie（对象 → 序列化为 Cookie 头注入所有 HTTP fetch） */
+    /** 外部附加 Cookie（对象 → 序列化为 Cookie 头注入所有 HTTP fetch）。 */
     cookies?: Record<string, string>
-    /** 外部附加 URL 查询参数（history/latest/SSE/WS 全部附加） */
+    /** 外部附加 URL 查询参数（history / latest / SSE / WS 全部附加）。 */
     params?: Record<string, string | number | boolean>
     cache: boolean
     maxCacheEntries: number
@@ -158,15 +145,16 @@ export class HttpChartDataService implements ChartDataService {
     cacheTtlMs: number
   }
 
-  /** 历史数据缓存：key = `${symbol}|${period}` */
+  // 历史数据缓存：key = `${symbol}|${period}`。
   private cache = new Map<string, CacheEntry>()
 
   /**
-   * 「已知总条数」knownTotals（key = `${symbol}|${period}`）：
-   * 该 key **目前有多少条数据** = **累计拉取并去重后的数据条数**（后端不返回 total 字段，
-   * 纯前端自动计算），**包含已被缓存（LRU）淘汰的数据**。
-   * 与历史缓存**解耦**：缓存条目被 LRU 淘汰时不清除 total 记录（满足
-   * "包括缓存淘汰的"语义）；自身按 maxKnownTotals 独立 LRU 淘汰，防内存无限增长。
+   * 「已知总条数」knownTotals（key = `${symbol}|${period}`）。
+   *
+   * @remarks
+   * 该 key 目前有多少条数据 = 累计拉取并去重后的数据条数（后端不返回 total 字段，
+   * 纯前端自动计算），包含已被缓存（LRU）淘汰的数据。与历史缓存解耦：缓存条目被
+   * LRU 淘汰时不清除 total 记录；自身按 maxKnownTotals 独立 LRU 淘汰，防内存无限增长。
    */
   private knownTotals = new Map<string, number>()
 
@@ -193,12 +181,22 @@ export class HttpChartDataService implements ChartDataService {
 
   /* ============================== 历史（HTTP + 缓存） ============================== */
 
+  /**
+   * 拉取历史数据（实现 {@link ChartDataService.fetchHistory}）。
+   *
+   * @remarks
+   * 带 LRU 缓存：最新页命中且未过期直接返回；更早分页为不可变历史，缓存中已有该区间
+   * 即命中（不受 TTL 限制）；未命中走网络拉取并合并写缓存。返回独立副本（防污染）。
+   *
+   * @param query 查询入参，见 {@link HistoryQuery}。
+   * @returns 按 time 升序的数据点数组（独立副本）；返回条数 < limit 表示已无更早数据。
+   */
   async fetchHistory(query: HistoryQuery): Promise<ChartDataPoint[]> {
     const key = `${query.symbol}|${query.period}`
-    // cache=false：仍自动计算并记录 total（供 getTotal / URL 附加），但不缓存数据
+    // cache=false：仍自动计算并记录 total（供 getTotal / URL 附加），但不缓存数据。
     if (!this.opts.cache) {
       const points = await this.fetchNetwork(query, query.total ?? this.knownTotals.get(key))
-      // 自动计算 = 本次拉取并去重后的条数（后端不返回 total 字段，纯前端口径）
+      // 自动计算 = 本次拉取并去重后的条数（后端不返回 total 字段，纯前端口径）。
       this.recordTotal(key, Math.max(this.knownTotals.get(key) ?? 0, points.length))
       return points
     }
@@ -213,7 +211,7 @@ export class HttpChartDataService implements ChartDataService {
         if (now - entry.fetchedAt < this.opts.cacheTtlMs) {
           return clonePoints(entry.points.slice(-query.limit))
         }
-        // 已过期：不命中，走网络刷新（保证盘中快照新鲜）
+        // 已过期：不命中，走网络刷新（保证盘中快照新鲜）。
       } else {
         // —— 更早分页请求：历史数据不可变，只要缓存中已有该区间就命中（不受 TTL 限制）——
         const before = query.before // 局部常量：闭包内可被 TS 正确收窄
@@ -223,7 +221,7 @@ export class HttpChartDataService implements ChartDataService {
     }
 
     // —— 网络拉取 + 写缓存 ——
-    // total 自动计算：调用方显式传 query.total > 服务已知 total（knownTotals，含缓存淘汰）。
+    // total 自动计算：调用方显式传 query.total 优先，否则取 knownTotals（含缓存淘汰）。
     // 后端不返回 total 字段 → 纯前端口径：total = 累计拉取并去重后的条数（单调不减，
     // 即使缓存 LRU 淘汰也由 knownTotals 持久记住，满足"包括缓存淘汰的"）。
     const autoTotal = query.total ?? this.knownTotals.get(key)
@@ -239,37 +237,41 @@ export class HttpChartDataService implements ChartDataService {
         lastUsed: now,
       })
     } else {
-      // 合并去重（新拉取的 page 优先覆盖同 time 的旧根），保持 time 升序
+      // 合并去重（新拉取的 page 优先覆盖同 time 的旧根），保持 time 升序。
       entry.points = mergePoints(page, entry.points)
       entry.lastUsed = now
-      // 只有拉"最新页"才刷新快照时间；更早分页不改变最新快照的有效期
+      // 只有拉"最新页"才刷新快照时间；更早分页不改变最新快照的有效期。
       if (query.before === undefined) entry.fetchedAt = now
     }
     this.evict()
 
-    // 返回独立副本，避免控制器实时更新（push / 替换元素）污染缓存
+    // 返回独立副本，避免控制器实时更新（push / 替换元素）污染缓存。
     return clonePoints(page)
   }
 
   /**
-   * 查询某标的/周期**目前有多少条数据**（自动计算，含已被缓存淘汰的；后端不返回 total 字段）。
-   *  - 未请求过该 key 时返回 undefined；
-   *  - 计算口径 = **累计拉取并去重后的数据条数**（单调不减：新拉取的 page 与既有缓存
-   *    合并去重后取条数最大值），该记录与历史缓存**解耦**（缓存 LRU 淘汰不清除，
-   *    仅 knownTotals 自身达到 maxKnownTotals 上限时才按 LRU 淘汰最旧记录）；
-   *  - 也可直接给 fetchHistory 传 `query.total` 覆盖自动值。
+   * 查询某标的 / 周期目前有多少条数据（自动计算，含已被缓存淘汰的）。
+   *
+   * @remarks
+   * - 未请求过该 key 时返回 undefined；
+   * - 计算口径 = 累计拉取并去重后的数据条数（单调不减），与历史缓存解耦
+   *   （缓存 LRU 淘汰不清除，仅 knownTotals 自身达到 maxKnownTotals 上限时
+   *   按 LRU 淘汰最旧记录）；
+   * - 也可直接给 fetchHistory 传 query.total 覆盖自动值。
    * 用途示例：判断该标的在该周期下目前有多少条 K 线，用于"是否还有更早历史"提示。
+   *
+   * @param symbol 证券代码。
+   * @param period 周期标识。
+   * @returns 已知总条数；该 key 从未请求过时返回 undefined。
    */
   getTotal = (symbol: string, period: string): number | undefined => {
     return this.knownTotals.get(`${symbol}|${period}`)
   }
 
-  /**
-   * 记录（刷新）某 key 的已知总条数，并做 knownTotals 独立 LRU：
-   *  - 已有 key：先 delete 再 set → 移到 Map 末尾（最近使用）；
-   *  - 超过 maxKnownTotals 上限时淘汰最旧（Map 首个）记录。
-   * 缓存条目被 LRU 淘汰时**不调用**本方法删除——total 语义"包括缓存淘汰的"。
-   */
+  // 记录（刷新）某 key 的已知总条数，并做 knownTotals 独立 LRU：
+  //  - 已有 key：先 delete 再 set → 移到 Map 末尾（最近使用）；
+  //  - 超过 maxKnownTotals 上限时淘汰最旧（Map 首个）记录。
+  // 缓存条目被 LRU 淘汰时不调用本方法删除——total 语义"包括缓存淘汰的"。
   private recordTotal = (key: string, total: number): void => {
     this.knownTotals.delete(key)
     this.knownTotals.set(key, total)
@@ -280,8 +282,20 @@ export class HttpChartDataService implements ChartDataService {
     }
   }
 
-  /* ============================== 实时（WS 推送 / HTTP 轮询） ============================== */
+  /* ============================== 实时（WS 推送 / SSE / HTTP 轮询） ============================== */
 
+  /**
+   * 订阅实时数据（实现 {@link ChartDataService.subscribeRealtime}）。
+   *
+   * @remarks
+   * 按 realtimeTransport 分发：'ws' → WebSocket；'sse' → fetch-event-source；
+   * 'poll' → HTTP 轮询。未配置对应地址时返回空清理函数（不做订阅）。
+   *
+   * @param symbol 证券代码。
+   * @param period 周期标识。
+   * @param handler 实时回调。
+   * @returns 取消订阅函数（关闭连接 / 中止流 / 停止轮询，防泄漏）。
+   */
   subscribeRealtime(symbol: string, period: string, handler: RealtimeHandler): () => void {
     // —— HTTP 轮询模式（realtimeTransport='poll'）：复用 history 接口按频率拉最新 ——
     if (this.opts.realtimeTransport === 'poll') {
@@ -306,7 +320,7 @@ export class HttpChartDataService implements ChartDataService {
     ws.onmessage = (ev: MessageEvent) => {
       try {
         const msg = JSON.parse(ev.data as string) as Record<string, unknown>
-        // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）
+        // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）。
         const points = Array.isArray(msg) ? msg : msg.data !== undefined ? msg.data : msg
         const list = Array.isArray(points) ? points : points !== undefined ? [points] : []
         list.forEach(raw => handler(normalizePoint(raw as Record<string, unknown>)))
@@ -323,20 +337,17 @@ export class HttpChartDataService implements ChartDataService {
     }
   }
 
-  /**
-   * HTTP 轮询实时模式（startPolling 内部实现）
-   *
-   * 行为约定：
-   *  - 频率：注册后立即拉取一次，之后每 pollIntervalMs 拉取一次（setInterval）；
-   *  - 数据源：独立实时接口 fetchLatest（**不复用 history 历史接口**），
-   *    GET {pollUrl}?symbol=&period=（不附加 limit，后端返回多少就回调多少），
-   *    直接 fetch 网络（不走历史缓存，保证每次拿到后端最新）；
-   *  - 增量过滤：只回调 time >= 已回调最大 time 的点（升序；同根盘中刷新也回调，
-   *    控制器 series.update() 对同 time 是覆盖语义，无重复副作用）；
-   *  - 防重入：上一次请求未返回时跳过本轮（慢接口不叠加请求、不并发）；
-   *  - 缓存同步：每次成功拉取后 merge 进历史缓存（保持最新快照一致，供后续 fetchHistory 命中）；
-   *  - 清理：返回 () => { stopped = true; clearInterval(timer) }。
-   */
+  // HTTP 轮询实时模式（startPolling 内部实现）。
+  // 行为约定：
+  //  - 频率：注册后立即拉取一次，之后每 pollIntervalMs 拉取一次（setInterval）；
+  //  - 数据源：独立实时接口 fetchLatest（不复用 history 历史接口），GET {pollUrl}?
+  //    symbol=&period=（不附加 limit，后端返回多少就回调多少），直接 fetch 网络
+  //    （不走历史缓存，保证每次拿到后端最新）；
+  //  - 增量过滤：只回调 time >= 已回调最大 time 的点（升序；同根盘中刷新也回调，
+  //    控制器 series.update() 对同 time 是覆盖语义，无重复副作用）；
+  //  - 防重入：上一次请求未返回时跳过本轮（慢接口不叠加请求、不并发）；
+  //  - 缓存同步：每次成功拉取后 merge 进历史缓存（保持最新快照一致）；
+  //  - 清理：返回 () => { stopped = true; clearInterval(timer) }。
   private startPolling(symbol: string, period: string, handler: RealtimeHandler): () => void {
     let inFlight = false
     let stopped = false
@@ -354,16 +365,16 @@ export class HttpChartDataService implements ChartDataService {
           },
           this.knownTotals.get(key) // 自动计算的已知条数（含缓存淘汰），附加到 latest URL
         )
-        // 增量过滤（同根刷新也保留）：仅回调 time >= lastTime 的点
+        // 增量过滤（同根刷新也保留）：仅回调 time >= lastTime 的点。
         const fresh = points.filter(p => p.time >= lastTime)
         if (fresh.length) lastTime = fresh[fresh.length - 1].time
         fresh.forEach(p => handler(p))
-        // 同步进历史缓存（不读取缓存，只写入，保持最新快照一致）
+        // 同步进历史缓存（不读取缓存，只写入，保持最新快照一致）。
         this.mergeIntoCache(symbol, period, points)
-        // 自动计算 knownTotals = max(已知, 累计去重后持有条数)（后端不返回 total）
+        // 自动计算 knownTotals = max(已知, 累计去重后持有条数)（后端不返回 total）。
         this.recordTotal(key, Math.max(this.knownTotals.get(key) ?? 0, points.length))
       } catch (e) {
-        // 单次失败不中断轮询（网络抖动自愈），下一轮自动重试
+        // 单次失败不中断轮询（网络抖动自愈），下一轮自动重试。
         console.error('[HttpChartDataService] HTTP 轮询失败（下轮自动重试）：', e)
       } finally {
         inFlight = false
@@ -371,8 +382,8 @@ export class HttpChartDataService implements ChartDataService {
     }
 
     void tick() // 立即拉一次（不等首个间隔）
-    // 包装箭头函数显式忽略 Promise：tick 为 async，直接传 setInterval 触发
-    // no-misused-promises（Promise returned in function argument where a void return was expected）
+    // 包装箭头函数显式忽略 Promise：tick 为 async，直接传 setInterval 会触发
+    // no-misused-promises（Promise returned in function argument where a void return was expected）。
     const timer = setInterval(() => {
       void tick()
     }, this.opts.pollIntervalMs)
@@ -382,19 +393,16 @@ export class HttpChartDataService implements ChartDataService {
     }
   }
 
-  /**
-   * SSE 实时模式（startSSE 内部实现）
-   *
-   * 行为约定：
-   *  - 端点：{sseUrl}?symbol=&period=（fetch 流式读取，可注入 headers / cookies 鉴权）；
-   *  - 事件：默认监听 'message' 事件（sseEventName 可改，如后端自定义 'quote'）；
-   *    数据格式与 WS 一致：单点对象或 { data: 对象 | 数组 }，经 normalizePoint 规范化；
-   *  - 重连：onerror 返回 3000 → 3s 后自动重连；HTTP 401/403（鉴权失败）抛出 → 中止，
-   *    避免无限重连死循环；
-   *  - 清理：返回 () => ctrl.abort()（中止 fetch 流并释放连接）。
-   */
+  // SSE 实时模式（startSSE 内部实现）。
+  // 行为约定：
+  //  - 端点：{sseUrl}?symbol=&period=（fetch 流式读取，可注入 headers / cookies 鉴权）；
+  //  - 事件：默认监听 'message' 事件（sseEventName 可改，如后端自定义 'quote'）；
+  //    数据格式与 WS 一致：单点对象或 { data: 对象 | 数组 }，经 normalizePoint 规范化；
+  //  - 重连：onerror 返回 3000 → 3s 后自动重连；HTTP 401/403（鉴权失败）抛出 → 中止，
+  //    避免无限重连死循环；
+  //  - 清理：返回 () => ctrl.abort()（中止 fetch 流并释放连接）。
   private startSSE(symbol: string, period: string, handler: RealtimeHandler): () => void {
-    // v1.6.30：sseUrl 必填完整地址；缺省不订阅（warn）
+    // sseUrl 必填完整地址；缺省不订阅（warn）。
     if (!this.opts.sseUrl) {
       console.warn('[HttpChartDataService] realtimeTransport=sse 需配置 sseUrl，已跳过订阅')
       return () => {}
@@ -406,11 +414,11 @@ export class HttpChartDataService implements ChartDataService {
     const ctrl = new AbortController()
 
     const onMessage = (ev: EventSourceMessage): void => {
-      // v1.6.31：非默认事件名时按 sseEventName 过滤（无 event 字段的块默认 'message'）
+      // 非默认事件名时按 sseEventName 过滤（无 event 字段的块默认 'message'）。
       if (ev.event && ev.event !== this.opts.sseEventName) return
       try {
         const msg = JSON.parse(ev.data) as Record<string, unknown>
-        // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）
+        // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）。
         const points = Array.isArray(msg) ? msg : msg.data !== undefined ? msg.data : msg
         const list = Array.isArray(points) ? points : points !== undefined ? [points] : []
         list.forEach(raw => handler(normalizePoint(raw as Record<string, unknown>)))
@@ -421,7 +429,7 @@ export class HttpChartDataService implements ChartDataService {
 
     void fetchEventSource(url, {
       signal: ctrl.signal,
-      // v1.6.31：基于 fetch，headers / cookies 与 HTTP 请求一致注入（原生 EventSource 做不到）
+      // 基于 fetch，headers / cookies 与 HTTP 请求一致注入（原生 EventSource 做不到）。
       headers: {
         Accept: 'text/event-stream',
         ...this.opts.headers,
@@ -432,7 +440,7 @@ export class HttpChartDataService implements ChartDataService {
       openWhenHidden: true,
       onopen: async (resp): Promise<void> => {
         if (!resp.ok) {
-          // 非 2xx：记录并抛出 → 中止（401/403 鉴权失败无限重连无意义）
+          // 非 2xx：记录并抛出 → 中止（401/403 鉴权失败无限重连无意义）。
           console.error(`[HttpChartDataService] SSE 打开失败：HTTP ${resp.status} ${resp.statusText}`)
           throw new Error(`SSE 打开失败：HTTP ${resp.status}`)
         }
@@ -453,7 +461,7 @@ export class HttpChartDataService implements ChartDataService {
     return () => ctrl.abort()
   }
 
-  /** 将轮询拉到的最新点合并进历史缓存（无缓存条目则创建） */
+  // 将轮询拉到的最新点合并进历史缓存（无缓存条目则创建）。
   private mergeIntoCache = (symbol: string, period: string, points: ChartDataPoint[]): void => {
     if (!this.opts.cache) return
     const key = `${symbol}|${period}`
@@ -471,26 +479,24 @@ export class HttpChartDataService implements ChartDataService {
 
   /* ============================== 私有工具 ============================== */
 
-  /**
-   * 构造带查询参数的请求 URL（history / latest / SSE / WS 统一入口）：
-   *  - query 为调用方核心参数（symbol / period / before / limit 等）；
-   *  - 外部附加 params（opts.params，外部参数）追加在其后；
-   *  - **同名冲突时核心参数优先**：先写入外部 params、再写入核心参数，
-   *    因此外部参数不会覆盖 symbol/period 等核心字段。
-   */
+  // 构造带查询参数的请求 URL（history / latest / SSE / WS 统一入口）：
+  //  - query 为调用方核心参数（symbol / period / before / limit 等）；
+  //  - 外部附加 params（opts.params）追加在其后；
+  //  - 同名冲突时核心参数优先：先写入外部 params、再写入核心参数，因此外部参数
+  //    不会覆盖 symbol / period 等核心字段。
   private withParams = (base: string, query: Record<string, string | number>): string => {
     const sp = new URLSearchParams()
-    // 外部 params 为空对象时不参与拼接（不产生任何附加查询参数）
+    // 外部 params 为空对象时不参与拼接（不产生任何附加查询参数）。
     if (this.opts.params && Object.keys(this.opts.params).length > 0) {
       Object.entries(this.opts.params).forEach(([k, v]) => sp.set(k, String(v)))
     }
     Object.entries(query).forEach(([k, v]) => sp.set(k, String(v)))
-    // v1.6.29：base 已带 query（完整自定义地址）时用 & 追加，避免 `?a=1?b=2`
+    // base 已带 query（完整自定义地址）时用 & 追加，避免 `?a=1?b=2`。
     const sep = base.includes('?') ? '&' : '?'
     return `${base}${sep}${sp.toString()}`
   }
 
-  /** fetch + 超时控制（统一注入外部 headers / Cookie） */
+  // fetch + 超时控制（统一注入外部 headers / Cookie）。
   private async request(url: string): Promise<unknown> {
     const ctrl = new AbortController()
     // 超时标记：timer 触发后置 true。本方法的 AbortController 仅由超时 timer 触发
@@ -501,9 +507,9 @@ export class HttpChartDataService implements ChartDataService {
       ctrl.abort()
     }, this.opts.timeoutMs)
     try {
-      // 请求头合并顺序：默认 Accept → 外部附加 headers（同名覆盖）→ 外部附加 Cookie（对象序列化）
+      // 请求头合并顺序：默认 Accept → 外部附加 headers（同名覆盖）→ 外部附加 Cookie
+      // （对象序列化）。空对象不参与注入。
       const headers: Record<string, string> = { Accept: 'application/json' }
-      // 空对象不参与注入：只有非空 headers / cookies 才合并
       if (this.opts.headers && Object.keys(this.opts.headers).length > 0) {
         Object.assign(headers, this.opts.headers)
       }
@@ -513,15 +519,15 @@ export class HttpChartDataService implements ChartDataService {
       const res = await fetch(url, { signal: ctrl.signal, headers })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const body = (await res.json()) as BackendResponse
-      // 业务码校验：对象包裹且带 code 时，**code === 200 表示成功**；非 200 视为失败，
-      // 抛出带 msg 的业务错误（便于上层/控制台定位后端拒绝原因）。
+      // 业务码校验：对象包裹且带 code 时，code === 200 表示成功；非 200 视为失败，
+      // 抛出带 msg 的业务错误（便于上层 / 控制台定位后端拒绝原因）。
       if (!Array.isArray(body) && body.code !== undefined && body.code !== 200) {
         throw new Error(`后端业务错误(code=${body.code})：${body.msg ?? '(无错误信息)'}`)
       }
       return body
     } catch (error) {
-      // v1.7.2：超时中止 → 转语义化 RequestTimeoutError，不再向上泄漏裸 AbortError
-      //（上层据此识别为"超时可重试"；SSE 流式读取等主动 abort 场景不受影响）
+      // 超时中止 → 转语义化 RequestTimeoutError，不再向上泄漏裸 AbortError
+      //（上层据此识别为"超时可重试"；SSE 流式读取等主动 abort 场景不受影响）。
       if (timedOut || (error as { name?: string })?.name === 'AbortError') {
         throw new RequestTimeoutError(this.opts.timeoutMs, url)
       }
@@ -531,15 +537,10 @@ export class HttpChartDataService implements ChartDataService {
     }
   }
 
-  /**
-   * HTTP 轮询实时专用接口：GET {pollUrl}?symbol=&period=
-   *
-   * 与 fetchNetwork（history 历史接口）相互独立——实时轮询不经过历史接口，
-   * 后端可对 /kline/latest 单独做轻量响应。**不附加 limit 参数**：后端返回多少
-   * 数据就回调多少（调用方按增量过滤消费）。
-   * 响应格式与 history 一致：{ code: 200, data: [...] }（兼容数组 / 单点）。
-   * @param knownTotal 服务自动计算的已知条数（含缓存淘汰）；已知时以 `total=<n>` 附加 URL
-   */
+  // HTTP 轮询实时专用接口：GET {pollUrl}?symbol=&period=（+可选 total）。
+  // 与 fetchNetwork（history 历史接口）相互独立——实时轮询不经过历史接口，后端可对
+  // /kline/latest 单独做轻量响应。不附加 limit 参数：后端返回多少数据就回调多少
+  // （调用方按增量过滤消费）。响应格式与 history 一致：{ code: 200, data: [...] }。
   private async fetchLatest(
     query: Omit<HistoryQuery, 'limit'> & { limit?: number },
     knownTotal?: number
@@ -548,11 +549,11 @@ export class HttpChartDataService implements ChartDataService {
       symbol: query.symbol,
       period: query.period,
     }
-    // limit 可选：不传时 URL 不附加 limit（后端返回多少就更新多少）
+    // limit 可选：不传时 URL 不附加 limit（后端返回多少就更新多少）。
     if (query.limit !== undefined) core.limit = String(query.limit)
-    if (knownTotal !== undefined) core.total = String(knownTotal) // 自动计算/显式传入的 total
+    if (knownTotal !== undefined) core.total = String(knownTotal) // 自动计算 / 显式传入的 total
 
-    // v1.6.30：pollUrl 必填完整地址；缺省不轮询（warn + 返回空）
+    // pollUrl 必填完整地址；缺省不轮询（warn + 返回空）。
     if (!this.opts.pollUrl) {
       console.warn('[HttpChartDataService] poll 模式需配置 pollUrl，本次返回空')
       return []
@@ -565,12 +566,10 @@ export class HttpChartDataService implements ChartDataService {
     return body.map(raw => normalizePoint(raw as Record<string, unknown>))
   }
 
-  /**
-   * 纯网络拉取（不带缓存读写），返回原始响应标准化后的数组：
-   *  - 后端不返回 total 字段（前端纯自动计算口径）；
-   *  - knownTotal：服务自动计算的已知条数（含缓存淘汰），以 `total=<n>` 附加到请求 URL，
-   *    供后端做增量 / 续传 / 进度判断（未知则不附加）。
-   */
+  // 纯网络拉取（不带缓存读写），返回原始响应标准化后的数组：
+  //  - 后端不返回 total 字段（前端纯自动计算口径）；
+  //  - knownTotal：服务自动计算的已知条数（含缓存淘汰），以 `total=<n>` 附加到请求 URL，
+  //    供后端做增量 / 续传 / 进度判断（未知则不附加——首次请求时置 0）。
   private async fetchNetwork(query: HistoryQuery, knownTotal?: number): Promise<ChartDataPoint[]> {
     const core: Record<string, string> = {
       symbol: query.symbol,
@@ -578,11 +577,11 @@ export class HttpChartDataService implements ChartDataService {
       limit: String(query.limit),
     }
     if (query.before !== undefined) core.before = String(query.before)
-    // v1.7.1：total 无条件附加——第一次请求（knownTotal 未知）时置 0，
-    // 保证后端每次请求都能收到 total 参数；后续请求携带自动计算/显式传入的值。
+    // total 无条件附加：第一次请求（knownTotal 未知）时置 0，保证后端每次请求都能
+    // 收到 total 参数；后续请求携带自动计算 / 显式传入的值。
     core.total = String(knownTotal ?? 0)
 
-    // v1.6.30：historyUrl 必填完整地址，直接使用
+    // historyUrl 必填完整地址，直接使用。
     const url = this.withParams(this.opts.historyUrl, core)
     const res = (await this.request(url)) as BackendResponse
 
@@ -591,9 +590,9 @@ export class HttpChartDataService implements ChartDataService {
     return body.map(raw => normalizePoint(raw as Record<string, unknown>))
   }
 
-  /** LRU 淘汰：超出 maxCacheEntries 时移除最近未使用（lastUsed 最小）的条目。
-   *  **注意**：不删除 knownTotals 记录——total 语义为"包括已被缓存淘汰的数据"，
-   *  该记录由 recordTotal 独立 LRU（maxKnownTotals）管理。 */
+  // LRU 淘汰：超出 maxCacheEntries 时移除最近未使用（lastUsed 最小）的条目。
+  // 注意：不删除 knownTotals 记录——total 语义为"包括已被缓存淘汰的数据"，
+  // 该记录由 recordTotal 独立 LRU（maxKnownTotals）管理。
   private evict = (): void => {
     if (this.cache.size <= this.opts.maxCacheEntries) return
     let oldestKey: string | null = null
@@ -606,7 +605,7 @@ export class HttpChartDataService implements ChartDataService {
     })
     if (oldestKey) {
       this.cache.delete(oldestKey)
-      // 注意：knownTotals 记录**不随缓存淘汰删除**（total 语义包含已被淘汰的数据），
+      // knownTotals 记录不随缓存淘汰删除（total 语义包含已被淘汰的数据），
       // 由 recordTotal 独立 LRU（maxKnownTotals 上限）管理，防内存增长。
     }
   }
@@ -614,25 +613,21 @@ export class HttpChartDataService implements ChartDataService {
 
 /* ============================== 缓存合并 / 拷贝工具 ============================== */
 
-/**
- * Cookie 对象 → Cookie 头字符串：
- *   { session: 'abc123', theme: 'dark' } → 'session=abc123; theme=dark'
- * （多组以 `; ` 分隔，与 RFC 6265 Cookie 头格式一致）
- */
+// Cookie 对象 → Cookie 头字符串：
+//   { session: 'abc123', theme: 'dark' } → 'session=abc123; theme=dark'
+// （多组以 `; ` 分隔，与 RFC 6265 Cookie 头格式一致）。
 const serializeCookies = (cookies: Record<string, string>): string =>
   Object.entries(cookies)
     .map(([k, v]) => `${k}=${v}`)
     .join('; ')
 
-/** 独立副本（新数组 + 新元素对象），防止调用方修改污染缓存 */
+// 独立副本（新数组 + 新元素对象），防止调用方修改污染缓存。
 const clonePoints = (list: ChartDataPoint[]): ChartDataPoint[] => {
   return list.map(p => ({ ...p }))
 }
 
-/**
- * 合并两组数据并按 time 升序去重。
- * 前者（新拉取页）优先：同 time 时以 a 的值为准（最新页刷新旧根 / 分页覆盖）。
- */
+// 合并两组数据并按 time 升序去重。前者（新拉取页）优先：同 time 时以 a 的值为准
+//（最新页刷新旧根 / 分页覆盖）。
 const mergePoints = (a: ChartDataPoint[], b: ChartDataPoint[]): ChartDataPoint[] => {
   const map = new Map<number, ChartDataPoint>()
   for (const p of b) map.set(p.time, p)
@@ -642,14 +637,14 @@ const mergePoints = (a: ChartDataPoint[], b: ChartDataPoint[]): ChartDataPoint[]
 
 /* ============================== 字段标准化 ============================== */
 
-/** 秒时间戳或 ISO 字符串 → 秒时间戳 */
+// 秒时间戳或 ISO 字符串 → 秒时间戳。
 const toSeconds = (time: unknown): number => {
   if (typeof time === 'number') return Math.floor(time)
   const t = new Date(time as string).getTime()
   return Math.floor(t / 1000)
 }
 
-/** 秒时间戳 → 'YYYY-MM-DD'（UTC，交易日归属日线） */
+// 秒时间戳 → 'YYYY-MM-DD'（UTC，交易日归属日线）。
 const toTradeDate = (sec: number): string => {
   const d = new Date(sec * 1000)
   return [
@@ -659,7 +654,16 @@ const toTradeDate = (sec: number): string => {
   ].join('-')
 }
 
-/** 后端点 → ChartDataPoint（兼容 open/high/low/close/volume 与 o/h/l/c/v 缩写） */
+/**
+ * 后端原始点 → 标准 ChartDataPoint（兼容 open/high/low/close/volume 与 o/h/l/c/v 缩写）。
+ *
+ * @remarks
+ * 按 pointType 分流：kline 读 OHLC + 量额；timeshare 读 price / avgPrice + 量额；
+ * auction 读匹配量 / 方向字段。time 支持数字秒戳 / ISO 字符串；其余未建模字段透传。
+ *
+ * @param raw 后端返回的原始点对象。
+ * @returns 标准化后的 {@link ChartDataPoint}。
+ */
 export const normalizePoint = (raw: Record<string, unknown>): ChartDataPoint => {
   const time = toSeconds(raw.time ?? raw.t)
   const pointType = (raw.pointType as ChartDataPoint['pointType']) ?? 'kline'
@@ -690,7 +694,7 @@ export const normalizePoint = (raw: Record<string, unknown>): ChartDataPoint => 
     if (raw.isAuction !== undefined) p.isAuction = Boolean(raw.isAuction)
   }
 
-  // 其他扩展字段透传
+  // 其他扩展字段透传。
   Object.entries(raw).forEach(([k, v]) => {
     if (!(k in p)) (p as Record<string, unknown>)[k] = v
   })

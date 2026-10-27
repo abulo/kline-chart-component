@@ -1,19 +1,25 @@
-/**
- * kdj.ts —— 随机指标 KDJ（Pane2 附图指标）
- *
- * 东财算法（通达信公式内核，参数 9,3,3）：
- *   RSV = (C - LLV(L,9)) / (HHV(H,9) - LLV(L,9)) * 100
- *   K   = SMA(RSV, 3, 1)
- *   D   = SMA(K, 3, 1)
- *   J   = 3 * K - 2 * D
- * 返回三条线（下标 0/1/2 对应 K/D/J）。
- * 颜色见控制器 SUB_INDICATOR_META：
- *   K #666666 / D #F4AA0A / J #FF1DFF。
- */
+// kdj.ts —— 随机指标 KDJ（附图指标）。
+// 东财算法（通达信公式内核，参数 9,3,3）：
+//   RSV = (C - LLV(L,9)) / (HHV(H,9) - LLV(L,9)) * 100
+//   K   = SMA(RSV, 3, 1)
+//   D   = SMA(K, 3, 1)
+//   J   = 3 * K - 2 * D
+// 返回三条线（下标 0/1/2 对应 K/D/J）。
+// 颜色见主题 SUB_INDICATOR_META：K / D / J。
 import type { IndicatorLine, K } from './types'
 import { runningMax, runningMin, tdxSMA, toLines } from './utils'
 
-/** 计算 KDJ 三条线（K/D/J） */
+/**
+ * 计算 KDJ 三条线（K/D/J）。
+ *
+ * @remarks
+ * 公式：RSV = (C − LLV(L,9)) / (HHV(H,9) − LLV(L,9)) × 100，
+ * K = SMA(RSV,3,1)、D = SMA(K,3,1)、J = 3K − 2D；
+ * LLV/HHV 为滚动窗口最值（见 utils.runningMin / runningMax）。
+ *
+ * @param bars 升序 K 线数组。
+ * @returns [K, D, J] 三条线。
+ */
 export const calcKDJ = (bars: K[]): IndicatorLine[][] => {
   const times = bars.map((b) => b.time)
   const c = bars.map((b) => b.close!)

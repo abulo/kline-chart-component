@@ -1,12 +1,9 @@
-/**
- * paneLayout.ts —— Pane 高度分配工具（v1.7.1 自 KLineChartController.ts 拆分）
- *
- * 纯计算 + chart API 操作，无 controller 状态读写（高度结果经回调回写）：
- *  - applyPaneStretchFactors：固定空 Pane（pane0/2/4）设同一像素因子 topPaneHeight
- *    （绝对相等），内容 Pane 按组比例分配剩余高度（指标开 60:20:20 / 关 80:20）
- *  - calcPaneTop：所在 pane 顶部 y（相对图表 canvas）= 前序 Pane 像素高度累加
- *    （十字星 tooltip 定位）
- */
+// paneLayout.ts —— Pane 高度分配工具（自 KLineChartController.ts 拆分）。
+// 纯计算 + chart API 操作，无 controller 状态读写（高度结果经回调回写）：
+//  - applyPaneStretchFactors：固定空 Pane（pane0/2/4）设同一像素因子 topPaneHeight
+//    （绝对相等），内容 Pane 按组比例分配剩余高度（指标开 60:20:20 / 关 80:20）；
+//  - calcPaneTop：所在 pane 顶部 y（相对图表 canvas）= 前序 Pane 像素高度累加
+//    （十字星 tooltip 定位）。
 import { LIBRARY_TIME_AXIS_HEIGHT } from './constants'
 import {
   fixedPaneCount,
@@ -19,21 +16,30 @@ import {
   calcPaneHeights,
 } from './layout'
 
-/** applyPaneStretchFactors 依赖（controller 注入） */
+/** applyPaneStretchFactors 依赖（controller 注入）。 */
 export interface PaneStretchDeps {
+  /** lightweight-charts 图表实例。 */
   chart: ReturnType<typeof import('lightweight-charts').createChart>
-  /** 图表容器（可用高度 = 容器高 − 时间轴高） */
+  /** 图表容器（可用高度 = 容器高 − 时间轴高）。 */
   container: HTMLElement
-  /** 成交量组是否开启（pane2/3；关时组比例 80:20 / 仅 K 线 100%）
-   *  v1.7.2：与指标开关组合出四态布局 */
+  /**
+   * 成交量组是否开启（pane2/3）。
+   *
+   * @remarks
+   * 关时组比例 80:20 / 仅 K 线 100%；与指标开关组合出四态布局。
+   */
   getShowVolume: () => boolean
-  /** 附图指标层是否开启（固定 Pane 数 3/2、组比例 60:20:20 / 80:20） */
+  /** 附图指标层是否开启（固定 Pane 数 3/2、组比例 60:20:20 / 80:20）。 */
   getShowIndicator: () => boolean
-  /** 高度结果回写（controller 保存 paneHeights，供 getPaneTop / tooltip 定位） */
+  /** 高度结果回写（controller 保存 paneHeights，供 getPaneTop / tooltip 定位）。 */
   onHeights: (heights: number[]) => void
 }
 
-/** 高度分配：固定空 Pane 设同一像素因子（绝对相等），内容 Pane 按组比例分配剩余高度 */
+/**
+ * 高度分配：固定空 Pane 设同一像素因子（绝对相等），内容 Pane 按组比例分配剩余高度。
+ *
+ * @param deps 依赖注入（见 {@link PaneStretchDeps}）。
+ */
 export const applyPaneStretchFactors = (deps: PaneStretchDeps): void => {
   const { chart, container, getShowVolume, getShowIndicator, onHeights } = deps
   const panes = chart.panes()
@@ -45,7 +51,7 @@ export const applyPaneStretchFactors = (deps: PaneStretchDeps): void => {
     ? LIBRARY_TIME_AXIS_HEIGHT
     : 0
   const usableHeight = container.clientHeight - timeAxisHeight
-  // 四态布局（v1.7.2，成交量开关 × 指标开关）：
+  // 四态布局（成交量开关 × 指标开关）：
   //  vol开+ind开：3 固定 Pane、60:20:20（6 Pane）
   //  vol开+ind关：2 固定 Pane、80:20（4 Pane：main + volume）
   //  vol关+ind开：2 固定 Pane、80:20（4 Pane：main + indicator，与 ind 关 80:20 对称）
@@ -67,11 +73,17 @@ export const applyPaneStretchFactors = (deps: PaneStretchDeps): void => {
         : groupRatiosKlineOnly
   const paneHeights = calcPaneHeights(usableHeight, topPaneHeight, fixedCount, ratios)
   panes.forEach((pane, index) => pane.setStretchFactor(paneHeights[index]))
-  // v1.6.35：记录各 Pane 像素高度（十字星 tooltip 定位：paneTop = 前序 Pane 高度累加）
+  // 记录各 Pane 像素高度（十字星 tooltip 定位：paneTop = 前序 Pane 高度累加）。
   onHeights(paneHeights)
 }
 
-/** 所在 pane 顶部 y（相对图表 canvas）：前序 Pane 像素高度累加（v1.6.35 tooltip 定位） */
+/**
+ * 所在 pane 顶部 y（相对图表 canvas）：前序 Pane 像素高度累加（tooltip 定位）。
+ *
+ * @param heights 各 Pane 像素高度数组（由 {@link applyPaneStretchFactors} 回写）。
+ * @param paneIndex 目标 pane 下标。
+ * @returns 该 pane 顶部相对图表 canvas 的 y 坐标（px）。
+ */
 export const calcPaneTop = (heights: number[], paneIndex: number): number => {
   let top = 0
   for (let i = 0; i < paneIndex; i++) top += heights[i] ?? 0

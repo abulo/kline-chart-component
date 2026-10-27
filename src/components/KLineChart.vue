@@ -1,28 +1,14 @@
 <script setup lang="ts">
-/**
- * KLineChart.vue —— 图表组件（v1.5.0：数据服务集成）
- *
- * 职责：提供一个占满容器的 div，挂载 KLineChartController；
- * 将工具栏状态下沉为 Props（单向数据流），组件内部 watch Props 驱动控制器；
- * **数据层接入 src/services（ChartDataService 接口）**：
- *  - controller.init 统一拉历史 + 订阅实时（v1.6.17；首次挂载 / symbol / period / service 变化触发）
- *    → controller.setKlineData（过滤 kline 点，整体重建 + fitContent）；
- *  - 实时订阅在 controller 内部（startRealtime → updateLastBar）
- *    （同 time 覆盖最后一根 / 更大 time 追加新 K，指标增量重建）。
- *
- * Props：
- *  - symbol / name：股票代码 / 名称（pane0 信息行：名称 [代码]）；
- *  - timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator：状态开关；
- *  - 拉取条数：服务实例 fetchLimit（构造必填，如 200）；
- *  - period：当前周期（外部可控，缺省不设置（不发起请求）；变化时重新拉取）；
- *  - service：数据服务实现（默认 MockChartDataService 单例；接入真实行情传
- *    HttpChartDataService 实例即可，组件 / 控制器零改动）。
- *
- * 生命周期（实例保护 + 内存管理）：
- *  - onMounted：controller 为空才创建（防重复挂载重复创建 chart），随后 controller.init()；
- *  - onBeforeUnmount：controller.destroy()（内部退订实时 + 使在途请求失效）并置空引用；
- *  - 数据加载竞态由 controller 内部 loadSeq 守卫（快速切换周期 / 标的丢弃过期响应）。
- */
+// KLineChart.vue —— 图表对外组件。
+// 职责：提供一个占满容器的 div，挂载 KLineChartController；将工具栏状态下沉为
+// Props（单向数据流），组件内部 watch Props 驱动控制器。
+// 数据层接入 src/services（ChartDataService 接口）：controller.init 统一拉历史 +
+// 订阅实时（首次挂载 / symbol / period / service 变化触发）；实时订阅在 controller
+// 内部（同 time 覆盖最后一根 / 更大 time 追加新 K，指标增量重建）。
+// 生命周期：onMounted 仅当控制器为空才创建（防重复挂载重复创建 chart），随后
+// controller.init()；onBeforeUnmount 调用 controller.destroy()（内部退订实时 +
+// 使在途请求失效）并置空引用；数据加载竞态由 controller 内部 loadSeq 守卫
+// （快速切换周期 / 标的丢弃过期响应）。
 import { onBeforeUnmount, onMounted, ref, watch, computed } from "vue";
 import { KLineChartController } from "../chart/core/kLineChartController";
 import type { ChartThemeName } from "../chart/core/theme";
@@ -37,57 +23,60 @@ import { MockChartDataService } from "../services/mockChartDataService";
 import { debounce } from "../chart/util/timing";
 import { SWITCH_DEBOUNCE_MS } from "../chart/core/constants";
 
-/** 默认数据服务（Mock 单例：池缓存复用，内存友好；接入后端时父组件传 HttpChartDataService） */
+// 默认数据服务（Mock 单例：池缓存复用，内存友好；接入后端时父组件传 HttpChartDataService）。
 const defaultService = new MockChartDataService({ fetchLimit: 200 });
 
-/** 图表组件 Props（工具栏状态 + 数据服务 单向数据流） */
-/** 加载状态事件（v1.6.18）：controller.init 全流程状态通知（'loading' | 'ready' | 'error'） */
 const emit = defineEmits<{
+  /** 加载状态事件：controller.init 全流程状态通知（'loading' | 'ready' | 'error'）。 */
   "status-change": [status: ChartLoadStatus];
-  /** 全屏切换（v1.7.1）：组件内"退出全屏"按钮触发，父组件据以更新 fullscreen prop */
+  /** 全屏切换：组件内"退出全屏"按钮触发，父组件据以更新 fullscreen prop。 */
   "fullscreen-change": [fullscreen: boolean];
 }>();
 
-/** 当前加载状态（v1.6.21 组件内部可读：模板 / script 直接引用；变化时同步 emit） */
+// 当前加载状态（组件内部可读：模板 / script 直接引用；变化时同步 emit）。
 const loadStatus = ref<ChartLoadStatus>("idle");
 
-/** 是否使用外部自定义数据（v1.6.28：data 非空 → 不走 service 拉取） */
+// 是否使用外部自定义数据（data 非空 → 不走 service 拉取）。
 const useCustomData = computed(() => !!props.data && props.data.length > 0);
 
 const props = withDefaults(
   defineProps<{
-    /** 股票代码（pane0 顶部信息行显示） */
+    /** 股票代码（pane0 顶部信息行显示）。 */
     symbol?: string;
-    /** 股票名称（pane0 顶部信息行显示） */
+    /** 股票名称（pane0 顶部信息行显示）。 */
     name?: string;
-    /** 时间轴开关（默认开） */
+    /** 时间轴开关（默认开）。 */
     timeAxis?: boolean;
-    /** 左刻度区开关（默认关） */
+    /** 左刻度区开关（默认关）。 */
     leftScale?: boolean;
-    /** 右刻度区开关（默认关） */
+    /** 右刻度区开关（默认关）。 */
     rightScale?: boolean;
-    /** 风格（'dark' | 'light'，默认深系） */
+    /** 风格（'dark' | 'light'，默认深系）。 */
     theme?: string;
-    /** 主图指标（'' = 关闭；互斥单选，由父组件保证） */
+    /** 主图指标（'' = 关闭；互斥单选，由父组件保证）。 */
     mainIndicator?: string;
-    /** 附图指标（'' = 关闭指标层；互斥单选，由父组件保证） */
+    /** 附图指标（'' = 关闭指标层；互斥单选，由父组件保证）。 */
     subIndicator?: string;
-    /** 当前周期（外部可控；变化时经 service 重新拉取该周期数据；
-     *  传 ''（v1.7.1）= 周期未设置，不发起数据请求，就位后重新拉取） */
+    /**
+     * 当前周期（外部可控；变化时经 service 重新拉取该周期数据）。
+     *
+     * @remarks
+     * 传 '' = 周期未设置（v1.7.1），不发起数据请求，周期就位后重新拉取。
+     */
     period?: PeriodValueOrEmpty;
-    /** 数据服务（默认 MockChartDataService 单例；传 HttpChartDataService 接入真实行情） */
+    /** 数据服务（默认 MockChartDataService 单例；传 HttpChartDataService 接入真实行情）。 */
     service?: ChartDataService;
-    /** 外部自定义数据（v1.6.28）：提供时优先渲染 data，跳过 service 拉取 / 分页 / 实时 */
+    /** 外部自定义数据：提供时优先渲染 data，跳过 service 拉取 / 分页 / 实时。 */
     data?: ChartDataPoint[];
-    /** 时间格式模板（v1.6.9）：如 'YYYY-MM-DD' / 'YYYY-MM-DD HH:mm'；缺省按周期自动 */
+    /** 时间格式模板（如 'YYYY-MM-DD' / 'YYYY-MM-DD HH:mm'）；缺省按周期自动。 */
     format?: string;
-    /** 最后价线显隐（v1.7.1）：默认 true 显示 K 线主图 priceLine；false 隐藏 */
+    /** 最后价线显隐：默认 true 显示 K 线主图 priceLine；false 隐藏。 */
     priceLineVisible?: boolean;
-    /** 成交量组显隐（v1.7.2）：默认 true（pane2 信息行 + pane3 成交量图）；false 隐藏 */
+    /** 成交量组显隐：默认 true（pane2 信息行 + pane3 成交量图）；false 隐藏。 */
     volumeVisible?: boolean;
-    /** 分时均价线显隐（v1.7.4）：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价 */
+    /** 分时均价线显隐：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价。 */
     avgLineVisible?: boolean;
-    /** 全屏（v1.7.1）：true 时组件铺满浏览器视口（fixed 覆盖），false 保持父容器布局 */
+    /** 全屏：true 时组件铺满浏览器视口（fixed 覆盖），false 保持父容器布局。 */
     fullscreen?: boolean;
   }>(),
   {
@@ -107,34 +96,31 @@ const props = withDefaults(
   },
 );
 
-/** 容器 ref（需有确定宽高，由父组件 CSS 保证） */
+// 容器 ref（需有确定宽高，由父组件 CSS 保证）。
 const containerRef = ref<HTMLDivElement | null>(null);
 
-/** 控制器实例（父组件 ref 访问：放大 / 缩小 / 左移 / 右移） */
+// 控制器实例（父组件 ref 访问：放大 / 缩小 / 左移 / 右移等瞬时动作）。
 const controller = ref<KLineChartController | null>(null);
 
-/** 数据请求防抖（v1.7.1）：周期 / 标的 / 服务快速切换时合并为最后一次 init，
- *  避免并发 fetchHistory 数据争抢；setPeriod / setSymbol 等 UI 状态仍立即生效，
- *  仅数据拉取延迟 SWITCH_DEBOUNCE_MS（controller 内部 loadSeq 仍作兜底丢弃过期响应）。
- *  - 声明在 controller 之后（闭包引用不触发 TDZ；首次挂载前 props 变化 → 判空跳过）。 */
+// 数据请求防抖：周期 / 标的 / 服务快速切换时合并为最后一次 init，避免并发
+// fetchHistory 数据争抢；setPeriod / setSymbol 等 UI 状态仍立即生效，仅数据拉取
+// 延迟 SWITCH_DEBOUNCE_MS（controller 内部 loadSeq 仍作兜底丢弃过期响应）。
+// 声明在 controller 之后（闭包引用不触发 TDZ；首次挂载前 props 变化 → 判空跳过）。
 const debouncedInit = debounce(() => {
   void controller.value?.init();
 }, SWITCH_DEBOUNCE_MS);
 
-/** ESC 退出全屏（v1.7.1）：仅 props.fullscreen 为 true 时响应；
- *  经 fullscreen-change 回传父组件关闭（受控 prop 同步，与退出按钮一致） */
-/** 方向键按住自动重复节拍（ms/根，v1.7.1）：
- *  浏览器 keydown 原生重复有 ~500ms 初始延迟且受系统重复速率限制（移动偏慢），
- *  改为自定义节拍：首次按下立即移动 1 根，随后每 KEYBOARD_REPEAT_MS 移动 1 根
- *  （keyup / 窗口失焦 / 组件卸载停止；可按需调快 / 调慢） */
+// 方向键按住自动重复节拍（ms/根）：浏览器 keydown 原生重复有 ~500ms 初始延迟且
+// 受系统重复速率限制（移动偏慢），改为自定义节拍：首次按下立即移动 1 根，
+// 随后每 KEYBOARD_REPEAT_MS 移动 1 根（keyup / 窗口失焦 / 组件卸载停止）。
 const KEYBOARD_REPEAT_MS = 160;
 
-/** 方向键按住加速定时器句柄（null = 未按住） */
+// 方向键按住加速定时器句柄（null = 未按住）。
 let keyRepeatTimer: ReturnType<typeof setInterval> | null = null;
-/** 当前按住方向（interval 节拍回调使用；keydown 切换方向时更新） */
+// 当前按住方向（interval 节拍回调使用；keydown 切换方向时更新）。
 let keyRepeatDirection: -1 | 1 | null = null;
 
-/** 启动方向键按住节拍（首次 keydown 已移动一次，这里负责后续连续移动） */
+// 启动方向键按住节拍（首次 keydown 已移动一次，这里负责后续连续移动）。
 const startKeyRepeat = (direction: -1 | 1): void => {
   stopKeyRepeat();
   keyRepeatDirection = direction;
@@ -143,7 +129,7 @@ const startKeyRepeat = (direction: -1 | 1): void => {
   }, KEYBOARD_REPEAT_MS);
 };
 
-/** 停止方向键按住节拍（keyup / window blur / 卸载，防泄漏与残留移动） */
+// 停止方向键按住节拍（keyup / window blur / 卸载，防泄漏与残留移动）。
 const stopKeyRepeat = (): void => {
   if (keyRepeatTimer !== null) {
     clearInterval(keyRepeatTimer);
@@ -152,14 +138,13 @@ const stopKeyRepeat = (): void => {
   keyRepeatDirection = null;
 };
 
-/** 键盘全局按键（v1.7.1）：ESC 退出全屏 + 左右方向键移动十字星（每次 1 根 bar；
- *  按住自动加速 = 自定义节拍，见 KEYBOARD_REPEAT_MS） */
+// 键盘全局按键：ESC 退出全屏 + 左右方向键移动十字星（每次 1 根 bar；按住自动加速）。
 const handleKeydown = (event: KeyboardEvent): void => {
   if (event.key === "Escape" && props.fullscreen) {
     emit("fullscreen-change", false);
   }
-  // 左右方向键 → 十字星移动（v1.7.1）：不劫持输入控件内的方向键（组件无输入框，
-  // 防御外部监听共用同一 window 事件时的误劫持）
+  // 左右方向键 → 十字星移动：不劫持输入控件内的方向键（组件无输入框，
+  // 防御外部监听共用同一 window 事件时的误劫持）。
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
     const target = event.target as HTMLElement | null;
     if (
@@ -170,62 +155,62 @@ const handleKeydown = (event: KeyboardEvent): void => {
     ) {
       return;
     }
-    // 阻止页面默认滚动（方向键在非聚焦区域会滚动页面 / 切换焦点）
+    // 阻止页面默认滚动（方向键在非聚焦区域会滚动页面 / 切换焦点）。
     event.preventDefault();
     // 浏览器自动重复（按住不放触发的 repeat keydown）→ 忽略：
-    // 自定义节拍 interval 已在持续移动，避免双重加速
+    // 自定义节拍 interval 已在持续移动，避免双重加速。
     if (event.repeat) return;
     const direction = event.key === "ArrowLeft" ? -1 : 1;
     controller.value?.moveCrosshairBy(direction);
-    // 按住加速：首次移动后启动节拍（后续 keydown 重复事件不再进入本分支）
+    // 按住加速：首次移动后启动节拍（后续 keydown 重复事件不再进入本分支）。
     startKeyRepeat(direction);
   }
 };
 
-/** 方向键松开：停止按住节拍 */
+// 方向键松开：停止按住节拍。
 const handleKeyup = (event: KeyboardEvent): void => {
   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
     stopKeyRepeat();
   }
 };
 
-/** 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步；
- *  v1.7.1 允许 '' 空值 = 周期未设置） */
+// 组件内当前周期（默认取 props.period；白名单按钮点击 / 外部 period 变化同步；
+// 允许 '' 空值 = 周期未设置）。
 const activePeriod = ref<PeriodValueOrEmpty>(props.period);
 
-// v1.6.24：props.theme 为 string，需断言到 ChartThemeName（与 applyTheme 调用一致）
+// props.theme 为 string，需断言到 ChartThemeName（与 applyTheme 调用一致）。
 const theme = computed(() => themeColors(props.theme as ChartThemeName));
 
 onMounted(() => {
-  // 实例保护：仅当控制器未创建（且容器未被标记）时才创建；
-  // 若已存在实例则复用（防重复挂载导致 chart 重复创建）
+  // 实例保护：仅当控制器未创建（且容器未被标记）时才创建；若已存在实例则复用
+  // （防重复挂载导致 chart 重复创建）。
   if (!containerRef.value || controller.value) return;
   controller.value = new KLineChartController({
     container: containerRef.value,
     symbol: props.symbol,
     name: props.name,
-    // v1.7.1：透传初始周期（默认分时时 controller 构造即按分时处理，
-    // 不再依赖 init 后的 setPeriod——首次挂载 watch 不触发）
+    // 透传初始周期（默认分时时 controller 构造即按分时处理，不再依赖 init 后的
+    // setPeriod——首次挂载 watch 不触发）。
     period: props.period,
-    // v1.6.9：时间格式模板透传（pane0 信息行时间；缺省按周期自动）
+    // 时间格式模板透传（pane0 信息行时间；缺省按周期自动）。
     format: props.format,
-    // v1.6.17：数据服务由组件注入（默认 Mock 兜底），controller.init 统一管理拉取 / 实时
+    // 数据服务由组件注入（默认 Mock 兜底），controller.init 统一管理拉取 / 实时。
     service: props.service ?? defaultService,
-    // v1.6.28：外部自定义数据直通（data 提供时跳过 service 拉取）
+    // 外部自定义数据直通（data 提供时跳过 service 拉取）。
     initialBars: props.data,
-    // v1.6.21：加载状态回调 → 组件内部 loadStatus 同步 + emit 'status-change'（父组件监听）
+    // 加载状态回调 → 组件内部 loadStatus 同步 + emit 'status-change'（父组件监听）。
     onStatusChange: (status) => {
       loadStatus.value = status;
       emit("status-change", status);
     },
-    // v1.7.1：最后价线显隐（构造即应用；watch 负责运行时切换）
+    // 最后价线显隐（构造即应用；watch 负责运行时切换）。
     priceLineVisible: props.priceLineVisible,
-    // v1.7.2：成交量组显隐（构造即应用；watch 负责运行时切换）
+    // 成交量组显隐（构造即应用；watch 负责运行时切换）。
     volumeVisible: props.volumeVisible,
-    // v1.7.4：分时均价线显隐（构造即应用；watch 负责运行时切换）
+    // 分时均价线显隐（构造即应用；watch 负责运行时切换）。
     avgLineVisible: props.avgLineVisible,
   });
-  // 创建后立即应用全部 Props 初始值（与控制器构造默认值一致时幂等无副作用）
+  // 创建后立即应用全部 Props 初始值（与控制器构造默认值一致时幂等无副作用）。
   controller.value.applyTheme(props.theme as ChartThemeName);
   controller.value.toggleTimeAxis(props.timeAxis);
   controller.value.setLeftScaleVisible(props.leftScale);
@@ -236,53 +221,50 @@ onMounted(() => {
   controller.value.setSubIndicator(
     props.subIndicator ? (props.subIndicator as SubIndicatorType) : null,
   );
-  // 数据层：controller.init 统一拉历史 + 订阅实时（v1.6.17）；
-  // v1.6.28：外部 data 直通时不 init（构造已 setKlineData，跳过 service）
+  // 数据层：controller.init 统一拉历史 + 订阅实时；外部 data 直通时不 init
+  // （构造已 setKlineData，跳过 service）。
   if (!useCustomData.value) void controller.value.init();
-  // ESC 退出全屏（v1.7.1）：挂 window（chart 任意区域/焦点均生效），
-  // 仅全屏态触发；onBeforeUnmount 移除（防泄漏）
+  // ESC 退出全屏：挂 window（chart 任意区域 / 焦点均生效），仅全屏态触发；
+  // onBeforeUnmount 移除（防泄漏）。
   window.addEventListener("keydown", handleKeydown);
-  // 方向键按住加速（v1.7.1）：keyup 停止节拍；window blur 停止（按住不放切出窗口
-  // 时防止后台持续移动）
+  // 方向键按住加速：keyup 停止节拍；window blur 停止（按住不放切出窗口时防止
+  // 后台持续移动）。
   window.addEventListener("keyup", handleKeyup);
   window.addEventListener("blur", stopKeyRepeat);
 });
 
 onBeforeUnmount(() => {
-  // 取消挂起的防抖 init（快速切换后立即卸载 → 不再发过期请求）
+  // 取消挂起的防抖 init（快速切换后立即卸载 → 不再发过期请求）。
   debouncedInit.cancel();
-  // 移除 ESC / 方向键监听（与 onMounted 配对，防泄漏）+ 停止按住节拍
+  // 移除 ESC / 方向键监听（与 onMounted 配对，防泄漏）+ 停止按住节拍。
   window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("keyup", handleKeyup);
   window.removeEventListener("blur", stopKeyRepeat);
   stopKeyRepeat();
-  // destroy 内部已退订实时推送（v1.6.17）
+  // destroy 内部已退订实时推送。
   controller.value?.destroy();
   controller.value = null;
 });
 
 /* ===== Props watch：状态变化 → 驱动控制器 / 数据层（单向数据流） ===== */
-/** 时间轴开关 */
 watch(
   () => props.timeAxis,
   (visible) => controller.value?.toggleTimeAxis(visible),
 );
-/** 左刻度区开关 */
 watch(
   () => props.leftScale,
   (visible) => controller.value?.setLeftScaleVisible(visible),
 );
-/** 右刻度区开关 */
 watch(
   () => props.rightScale,
   (visible) => controller.value?.setRightScaleVisible(visible),
 );
-/** 风格切换（图表主题；html 背景由父组件同步） */
+// 风格切换（图表主题；html 背景由父组件同步）。
 watch(
   () => props.theme,
   (value) => controller.value?.applyTheme(value as ChartThemeName),
 );
-/** 主图指标（'' → null = 关闭） */
+// 主图指标（'' → null = 关闭）。
 watch(
   () => props.mainIndicator,
   (value) =>
@@ -290,7 +272,7 @@ watch(
       value ? (value as MainIndicatorType) : null,
     ),
 );
-/** 附图指标（'' → null = 关闭指标层） */
+// 附图指标（'' → null = 关闭指标层）。
 watch(
   () => props.subIndicator,
   (value) =>
@@ -298,35 +280,35 @@ watch(
       value ? (value as SubIndicatorType) : null,
     ),
 );
-/** 最后价线显隐（v1.7.1）：运行时切换 priceLine（构造时已透传初始值） */
+// 最后价线显隐：运行时切换 priceLine（构造时已透传初始值）。
 watch(
   () => props.priceLineVisible,
   (value) => controller.value?.setPriceLineVisible(!!value),
 );
-/** 成交量组显隐（v1.7.2）：关闭销毁 pane2/3、开启重建 + 数据回放（构造时已透传初始值） */
+// 成交量组显隐：关闭销毁 pane2/3、开启重建 + 数据回放（构造时已透传初始值）。
 watch(
   () => props.volumeVisible,
   (value) => controller.value?.setVolumeVisible(!!value),
 );
-// v1.7.4：分时均价线显隐（默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价）
+// 分时均价线显隐：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价。
 watch(
   () => props.avgLineVisible,
   (value) => controller.value?.setAvgLineVisible(!!value),
 );
-/** 外部自定义数据变化 → 直接注入渲染（v1.6.28；data 模式不走 service） */
+// 外部自定义数据变化 → 直接注入渲染（data 模式不走 service）。
 watch(
   () => props.data,
   (data) => {
     if (data && data.length > 0) controller.value?.setKlineData(data);
   },
 );
-/** 外部周期变化 → 同步内部周期 + 防抖重新 init（拉历史 + 重订阅实时，重置边缘加载状态） */
+// 外部周期变化 → 同步内部周期 + 防抖重新 init（拉历史 + 重订阅实时，重置边缘加载状态）。
 watch(
   () => props.period,
   (value, oldValue) => {
     if (value === activePeriod.value) return;
     activePeriod.value = value;
-    // v1.6.9：周期切换 → pane0 信息行时间格式随周期变更（setPeriod 触发重绘，立即生效）
+    // 周期切换 → pane0 信息行时间格式随周期变更（setPeriod 触发重绘，立即生效）。
     controller.value?.setPeriod(value);
     // 分时 → K 线（v1.7.1 修复）：分时期间 indicatorManager.setMainIndicator 会被
     // 静默清空（分时无主图指标），而 props.mainIndicator 值未变 → watch 不触发、
@@ -337,44 +319,49 @@ watch(
         props.mainIndicator ? (props.mainIndicator as MainIndicatorType) : null,
       );
       // 附图指标同根因防御（v1.7.1）：分时下 CR 等被防御清空缓存（状态保留），
-      // data 直通模式切周期不触发 applyData → 显式重建（指标层关闭时空操作）
+      // data 直通模式切周期不触发 applyData → 显式重建（指标层关闭时空操作）。
       controller.value?.refreshSubIndicatorData();
     }
-    // v1.6.28：data 直通模式不拉取（数据以外部 data 为准）
+    // data 直通模式不拉取（数据以外部 data 为准）。
     if (useCustomData.value) return;
-    // v1.7.1 防抖：快速连续切换周期只发最后一次 init（loadSeq 兜底丢过期响应）
+    // 防抖：快速连续切换周期只发最后一次 init（loadSeq 兜底丢过期响应）。
     debouncedInit();
   },
 );
-/** symbol 变化 → 更新控制器标的 + 防抖重新 init（v1.6.22：init 使用新 symbol / name） */
+// symbol 变化 → 更新控制器标的 + 防抖重新 init（init 使用新 symbol / name）。
 watch(
   () => props.symbol,
   () => {
     controller.value?.setSymbol(props.symbol);
     controller.value?.setName(props.name);
-    // v1.6.28：data 直通模式不拉取
+    // data 直通模式不拉取。
     if (useCustomData.value) return;
     debouncedInit();
   },
 );
-/** name 变化 → 更新 pane0 信息行显示（无需重拉数据） */
+// name 变化 → 更新 pane0 信息行显示（无需重拉数据）。
 watch(
   () => props.name,
   (value) => controller.value?.setName(value),
 );
-/** service 实例变化 → 更新控制器服务 + 防抖重新 init（v1.6.22：init 使用新 service） */
+// service 实例变化 → 更新控制器服务 + 防抖重新 init（init 使用新 service）。
 watch(
   () => props.service,
   () => {
     controller.value?.setService(props.service ?? defaultService);
-    // v1.6.28：data 直通模式不拉取
+    // data 直通模式不拉取。
     if (useCustomData.value) return;
     debouncedInit();
   },
 );
 
-/** 向父组件暴露控制器（放大 / 缩小 / 左移 / 右移等瞬时动作） */
-/** 对外暴露：控制器 + 当前加载状态（父组件 chartRef.value.loadStatus 读取） */
+/**
+ * 对外暴露：控制器 + 当前加载状态。
+ *
+ * @remarks
+ * 父组件通过 chartRef.value.controller 访问放大 / 缩小 / 左移 / 右移等瞬时动作；
+ * chartRef.value.loadStatus 读取加载状态。
+ */
 defineExpose({ controller, loadStatus });
 </script>
 
@@ -399,8 +386,8 @@ defineExpose({ controller, loadStatus });
       正在加载更早数据…
     </div>
     <div ref="containerRef" class="kline-chart-container" />
-    <!-- 全屏退出按钮（v1.7.1）：全屏时组件铺满视口盖住页面其他区域，
-         此按钮为唯一出口（工具栏在视口外被盖住） -->
+    <!-- 全屏退出按钮：全屏时组件铺满视口盖住页面其他区域，此按钮为唯一出口
+         （工具栏在视口外被盖住） -->
     <button
       v-if="props.fullscreen"
       class="exit-fullscreen"
@@ -418,8 +405,8 @@ defineExpose({ controller, loadStatus });
   height: 100%;
 }
 
-/* 全屏态（v1.7.1）：fixed 铺满浏览器视口，盖住页面其他区域；
-   背景由库绘制（autoSize + ResizeObserver 自动跟随容器尺寸） */
+/* 全屏态：fixed 铺满浏览器视口，盖住页面其他区域；背景由库绘制
+   （autoSize + ResizeObserver 自动跟随容器尺寸） */
 .kline-chart.fullscreen {
   position: fixed;
   inset: 0;

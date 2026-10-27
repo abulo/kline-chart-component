@@ -1,16 +1,14 @@
 <script setup lang="ts">
-/**
- * App.vue —— 应用入口（v1.0.0 重构）
- *
- * 职责：
- *  - 页面背景跟随主题（html 背景色，深系 / 浅系切换）；
- *  - 图表容器占浏览器 80% 宽高、居中；
- *  - 全局控制按钮：时间轴 / 左刻度 / 右刻度 / 风格 / 主图指标 / 附图指标
- *    （按钮只维护状态，通过 Props 单向数据流驱动 KLineChart.vue）；
- *  - 放大 / 缩小 / 左移 / 右移（瞬时动作）经 chartRef 直接调用控制器。
- *
- * 所有开关操作不得破坏整体布局尺寸，仅控制可见性 / 样式。
- */
+// App.vue —— 应用入口（v1.0.0 重构）。
+//
+// 职责：
+//  - 页面背景跟随主题（html 背景色，深系 / 浅系切换）；
+//  - 图表容器占浏览器 80% 宽高、居中；
+//  - 全局控制按钮：时间轴 / 左刻度 / 右刻度 / 风格 / 主图指标 / 附图指标
+//    （按钮只维护状态，通过 Props 单向数据流驱动 KLineChart.vue）；
+//  - 放大 / 缩小 / 左移 / 右移（瞬时动作）经 chartRef 直接调用控制器。
+//
+// 所有开关操作不得破坏整体布局尺寸，仅控制可见性 / 样式。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
@@ -19,46 +17,42 @@ import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
 import { Periods, isTimesharePeriod, type PeriodValueOrEmpty } from './chart/periods'
 import { MockChartDataService } from './services/mockChartDataService'
 
-/** 图表组件 ref（访问控制器） */
+// 图表组件 ref（访问控制器）。
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 
-/**
- * 数据服务实例（v1.6.16）：App 层集中选择并注入组件，组件内部管理。
- * 当前为 MockChartDataService（内置模拟行情）；接入真实行情时替换为
- * HttpChartDataService 即可（组件 / 控制器零改动）。
- */
+// 数据服务实例（v1.6.16）：App 层集中选择并注入组件，组件内部管理。
+// 当前为 MockChartDataService（内置模拟行情）；接入真实行情时替换为
+// HttpChartDataService 即可（组件 / 控制器零改动）。
 const chartDataService = new MockChartDataService({ fetchLimit: 200 })
 
-/** 图表加载状态（v1.6.18 示例：可从 controller.init 收到 loading / ready / error） */
+// 图表加载状态（v1.6.18 示例：可从 controller.init 收到 loading / ready / error）。
 const onChartStatusChange = (status: string): void => {
   console.log('[KLineChart] status:', status)
 }
 
-/** 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入） */
+// 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入）。
 const activePeriod = ref<PeriodValueOrEmpty>('1d')
 
-/** 当前周期是否为分时（1d~5d，v1.7.0）：分时下隐藏平移 / 缩放按钮、主图指标栏、CR 附图指标 */
+// 当前周期是否为分时（1d~5d，v1.7.0）：分时下隐藏平移 / 缩放按钮、主图指标栏、CR 附图指标。
 const isTimeshare = computed(() => isTimesharePeriod(activePeriod.value))
 
-/** 周期切换（点击即选中，周期保持必选其一） */
+// 周期切换（点击即选中，周期保持必选其一）。
 const togglePeriod = (value: PeriodValueOrEmpty): void => {
   activePeriod.value = value
   applyDefaultScaleState(value)
 }
 
-/** 组件内白名单周期按钮切换 → 同步 App 高亮（period 经 prop 联动组件重拉） */
+// 组件内白名单周期按钮切换 → 同步 App 高亮（period 经 prop 联动组件重拉）。
 const onPeriodChange = (value: PeriodValueOrEmpty): void => {
   activePeriod.value = value
   applyDefaultScaleState(value)
 }
 
-/**
- * 周期切换时的左右刻度 / 主图指标默认状态（v1.7.1 用户口径）：
- *  - 切到分时（1d~5d）：左 / 右刻度都打开（分时右侧百分比刻度是主视觉，默认展示）；
- *  - 切到 K 线（day~1min）：左刻度打开、右刻度关闭（避免多余刻度干扰），
- *    并默认打开主图指标 MA（分时无主图，切回 K 线恢复 MA 展示）。
- * 仅设置默认值，用户仍可随时手动 toggle / 切换指标覆盖。
- */
+// 周期切换时的左右刻度 / 主图指标默认状态（v1.7.1 用户口径）：
+//  - 切到分时（1d~5d）：左 / 右刻度都打开（分时右侧百分比刻度是主视觉，默认展示）；
+//  - 切到 K 线（day~1min）：左刻度打开、右刻度关闭（避免多余刻度干扰），
+//    并默认打开主图指标 MA（分时无主图，切回 K 线恢复 MA 展示）。
+// 仅设置默认值，用户仍可随时手动 toggle / 切换指标覆盖。
 const applyDefaultScaleState = (value: PeriodValueOrEmpty): void => {
   if (isTimesharePeriod(value)) {
     showLeftScale.value = true
@@ -66,119 +60,117 @@ const applyDefaultScaleState = (value: PeriodValueOrEmpty): void => {
   } else {
     showLeftScale.value = true
     showRightScale.value = false
-    // 分时 → K 线：默认打开主图指标 MA
+    // 分时 → K 线：默认打开主图指标 MA。
     activeMainIndicator.value = 'ma'
   }
 }
 
-/** 当前主题 */
+// 当前主题。
 const theme = ref<ChartThemeName>('dark')
-/** 时间轴开关 */
+// 时间轴开关。
 const showTimeAxis = ref(true)
-/** 全屏开关（v1.7.1）：受控 prop 传给 KLineChart（组件内 fixed 铺满视口）；
- *  组件内"退出全屏"按钮经 fullscreen-change 回传关闭 */
+// 全屏开关（v1.7.1）：受控 prop 传给 KLineChart（组件内 fixed 铺满视口）；
+// 组件内"退出全屏"按钮经 fullscreen-change 回传关闭。
 const isFullscreen = ref(false)
-/** 附图指标（互斥单选，默认无选中 → 指标层关闭）。
- * 点击已选中指标 = 取消（关闭指标层）；点击其他指标 = 切换。 */
-const activeSubIndicator = ref<SubIndicatorType | null>("macd")
-/**
- * 左 / 右刻度区开关（v1.7.1）：初始值跟随初始周期（与 applyDefaultScaleState 同规则）——
- * 分时（1d~5d）左右都开；K 线左开右关。避免默认周期为分时时刻度未打开。
- */
+// 附图指标（互斥单选，默认无选中 → 指标层关闭）。
+// 点击已选中指标 = 取消（关闭指标层）；点击其他指标 = 切换。
+const activeSubIndicator = ref<SubIndicatorType | null>('macd')
+// 左 / 右刻度区开关（v1.7.1）：初始值跟随初始周期（与 applyDefaultScaleState 同规则）——
+// 分时（1d~5d）左右都开；K 线左开右关。避免默认周期为分时时刻度未打开。
 const showLeftScale = ref(true)
 const showRightScale = ref(isTimesharePeriod(activePeriod.value))
-/** 最后价线显隐（v1.7.1：K 线主图自绘 priceLine 开关，默认开） */
+// 最后价线显隐（v1.7.1：K 线主图自绘 priceLine 开关，默认开）。
 const showPriceLine = ref(true)
-/** 成交量组显隐（v1.7.2：pane2 信息行 + pane3 成交量图，默认开；仿附图指标移除式开关） */
+// 成交量组显隐（v1.7.2：pane2 信息行 + pane3 成交量图，默认开；仿附图指标移除式开关）。
 const showVolume = ref(true)
-/** 分时均价线显隐（v1.7.4）：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价 */
+// 分时均价线显隐（v1.7.4）：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价。
 const showAvgLine = ref(true)
-/** 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关） */
-const activeMainIndicator = ref<MainIndicatorType | null>("ma")
+// 主图指标开关（互斥：MA / EXPMA / BOLL / SAR / BBI，默认关）。
+const activeMainIndicator = ref<MainIndicatorType | null>('ma')
 
-/** 主图指标开关（互斥）：点击已激活指标 = 关闭；否则切换。
- * 仅维护状态，图表由 KLineChart.vue 的 mainIndicator Props watch 驱动 */
+// 主图指标开关（互斥）：点击已激活指标 = 关闭；否则切换。
+// 仅维护状态，图表由 KLineChart.vue 的 mainIndicator Props watch 驱动。
 const toggleMainIndicator = (name: MainIndicatorType): void => {
   const next = activeMainIndicator.value === name ? null : name
   activeMainIndicator.value = next
 }
 
-/** 主题切换：更新 html 背景 + 图表主题 */
+// 主题切换：更新 html 背景 + 图表主题。
 const toggleTheme = (): void => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
 }
 
-/** 主题变化 → 仅同步页面 html 背景（图表主题由 KLineChart.vue 的
- * theme Props watch 驱动，页面背景用独立 pageBackground：深系更深 / 浅系更浅） */
+// 主题变化 → 仅同步页面 html 背景（图表主题由 KLineChart.vue 的
+// theme Props watch 驱动，页面背景用独立 pageBackground：深系更深 / 浅系更浅）。
 watch(theme, (name) => {
   const themeColorSet = themeColors(name)
   document.documentElement.style.backgroundColor = themeColorSet.background
 })
 
-/** 时间轴开关：仅维护状态（图表由 KLineChart.vue 的 timeAxis Props watch 驱动） */
+// 时间轴开关：仅维护状态（图表由 KLineChart.vue 的 timeAxis Props watch 驱动）。
 const toggleTimeAxis = (): void => {
   showTimeAxis.value = !showTimeAxis.value
 }
 
-/** 全屏开关（v1.7.1）：取反 isFullscreen，经 prop 驱动组件全屏态 */
+// 全屏开关（v1.7.1）：取反 isFullscreen，经 prop 驱动组件全屏态。
 const toggleFullscreen = (): void => {
   isFullscreen.value = !isFullscreen.value
 }
 
-/** 组件内"退出全屏"按钮回调（受控 prop 同步回父状态） */
+// 组件内"退出全屏"按钮回调（受控 prop 同步回父状态）。
 const onFullscreenChange = (fullscreen: boolean): void => {
   isFullscreen.value = fullscreen
 }
 
-/** 附图指标开关（互斥）：点击已选中指标 = 关闭（null → 指标层关闭）；否则切换。
- * 仅维护状态，图表由 KLineChart.vue 的 subIndicator Props watch 驱动 */
+// 附图指标开关（互斥）：点击已选中指标 = 关闭（null → 指标层关闭）；否则切换。
+// 仅维护状态，图表由 KLineChart.vue 的 subIndicator Props watch 驱动。
 const toggleSubIndicator = (name: SubIndicatorType): void => {
   const next = activeSubIndicator.value === name ? null : name
   activeSubIndicator.value = next
 }
 
-/** 左刻度区开关：仅维护状态（图表由 KLineChart.vue 的 leftScale Props watch 驱动） */
+// 左刻度区开关：仅维护状态（图表由 KLineChart.vue 的 leftScale Props watch 驱动）。
 const toggleLeftScale = (): void => {
   showLeftScale.value = !showLeftScale.value
 }
 
-/** 右刻度区开关：仅维护状态（图表由 KLineChart.vue 的 rightScale Props watch 驱动） */
+// 右刻度区开关：仅维护状态（图表由 KLineChart.vue 的 rightScale Props watch 驱动）。
 const toggleRightScale = (): void => {
   showRightScale.value = !showRightScale.value
 }
 
-/** 最后价线开关（v1.7.1）：仅维护状态（图表由 KLineChart.vue 的 priceLineVisible Props watch 驱动） */
+// 最后价线开关（v1.7.1）：仅维护状态（图表由 KLineChart.vue 的 priceLineVisible Props watch 驱动）。
 const togglePriceLine = (): void => {
   showPriceLine.value = !showPriceLine.value
 }
 
-/** 成交量组开关（v1.7.2）：仅维护状态（图表由 KLineChart.vue 的 volumeVisible Props watch 驱动） */
+// 成交量组开关（v1.7.2）：仅维护状态（图表由 KLineChart.vue 的 volumeVisible Props watch 驱动）。
 const toggleVolume = (): void => {
   showVolume.value = !showVolume.value
 }
 
-/** 分时均价线开关（v1.7.4）：仅维护状态（图表由 KLineChart.vue 的 avgLineVisible Props watch 驱动） */
+// 分时均价线开关（v1.7.4）：仅维护状态（图表由 KLineChart.vue 的 avgLineVisible Props watch 驱动）。
 const toggleAvgLine = (): void => {
   showAvgLine.value = !showAvgLine.value
 }
 
-/** 放大 / 缩小 / 左移 / 右移（X 轴全局） */
+// 放大 / 缩小 / 左移 / 右移（X 轴全局）。
 const zoomIn = (): void => chartRef.value?.controller?.zoomIn()
 const zoomOut = (): void => chartRef.value?.controller?.zoomOut()
 const shiftLeft = (): void => chartRef.value?.controller?.shiftLeft()
 const shiftRight = (): void => chartRef.value?.controller?.shiftRight()
 
-/** 首次进入：设置页面背景 */
+// 首次进入：设置页面背景。
 onMounted(() => {
   document.documentElement.style.backgroundColor = themeColors(theme.value).background
 })
 
-/** 卸载：恢复默认背景 */
+// 卸载：恢复默认背景。
 onBeforeUnmount(() => {
   document.documentElement.style.backgroundColor = ''
 })
 
-/** 按钮 hover 色（从主题取，避免硬编码） */
+// 按钮 hover 色（从主题取，避免硬编码）。
 const hoverColor = (): string => themeColors(theme.value).buttonHover
 </script>
 

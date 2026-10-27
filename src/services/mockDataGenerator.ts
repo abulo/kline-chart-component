@@ -1,26 +1,18 @@
-/**
- * mockDataGenerator.ts —— Mock 行情数据生成层（v1.7.1 自 chartDataService.ts 拆分）
- *
- * 纯数据生成函数（无 UI / 无服务编排依赖，全部可单测）：
- *  - 日 K 池（约 3 年）+ A股情绪形态注入（一字板 1~10 连板 / 厂字板 / 尾盘上板 /
- *    地天板 / 天地天板 / 天底板 / 地天地板，涨跌停按主板 ±10%）；
- *  - 分时（1d~5d）按最近 N 个交易日生成 241 分钟分时点 / 交易日
- *    （价格线 / 均价线 / 量），`timesharePatternPath` 为 8 情绪形态确定性路径；
- *  - 分钟 K（60/30/15/5/1 分）按真实交易时段聚合、布朗桥锚定日 K 开收；
- *  - 周 / 月 K 由日 K 聚合。
- *
- * 调用方：MockChartDataService（mockChartDataService.ts，v1.7.16 拆出）——
- * 懒生成池 + 分页 / 实时编排。
- */
+// mockDataGenerator.ts —— Mock 行情数据生成层。
+// 纯数据生成函数（无 UI / 无服务编排依赖，全部可单测）：
+//  - 日 K 池（约 3 年）+ A 股情绪形态注入（一字板 1~10 连板 / 厂字板 / 尾盘上板 /
+//    地天板 / 天地天板 / 天底板 / 地天地板，涨跌停按主板 ±10%）；
+//  - 分时（1d~5d）按最近 N 个交易日生成 241 分钟分时点 / 交易日
+//    （价格线 / 均价线 / 量），timesharePatternPath 为 8 种情绪形态确定性路径；
+//  - 分钟 K（60/30/15/5/1 分）按真实交易时段聚合、布朗桥锚定日 K 开收；
+//  - 周 / 月 K 由日 K 聚合。
+// 调用方：MockChartDataService（懒生成池 + 分页 / 实时编排）。
 import type { ChartDataPoint } from '../types/chart'
 
+// 模拟网络延迟（ms），让分页 / 加载状态在 UI 上可见。
 export const NETWORK_DELAY = 220
 
-/** 分钟 K 周期 → 每根 K 线聚合的分钟数（60分/30分/15分/5分/1分） */
-/** 分钟 K 基础池覆盖的交易日数（250 日 ≈ 1 年，v1.6.34：60分 1000 根 / 30分 2000 /
- * 15分 4000 / 5分 12000 / 1分 6 万根，贴近东财分钟 K 历史量级） */
-export const MINUTE_POOL_DAYS = 250
-
+/** 分钟 K 周期 → 每根 K 线聚合的分钟数（60 分 / 30 分 / 15 分 / 5 分 / 1 分）。 */
 export const MINUTE_GRANULARITY: Record<string, number> = {
   '60min': 60,
   '30min': 30,
@@ -29,30 +21,52 @@ export const MINUTE_GRANULARITY: Record<string, number> = {
   '1min': 1,
 }
 
-/** 是否为分钟 K 周期（60min/30min/15min/5min/1min）。
- * @param period 周期标识
- * @returns true = 分钟 K 周期 */
+// 分钟 K 基础池覆盖的交易日数（250 日 ≈ 1 年）：60 分 1000 根 / 30 分 2000 /
+// 15 分 4000 / 5 分 12000 / 1 分 6 万根，贴近东财分钟 K 历史量级。
+export const MINUTE_POOL_DAYS = 250
+
+/**
+ * 判断是否为分钟 K 周期（60min/30min/15min/5min/1min）。
+ *
+ * @param period 周期标识。
+ * @returns true = 分钟 K 周期。
+ */
 export const isMinutePeriod = (period: string): boolean =>
   Object.prototype.hasOwnProperty.call(MINUTE_GRANULARITY, period)
 
 /**
- * 分钟 K 每日时段槽（[起, 止] 北京时间分钟，闭区间；止点 = 段收盘分钟，东财口径）：
- *  - 60 分：09:30-10:30 / 10:30-11:30 / 13:00-14:00 / 14:00-15:00（4 段，上午 2 段下午 2 段）；
- *  - 30 分：上午 4 段 + 下午 4 段（8 段）；
- *  - 15 分：上午 8 段 + 下午 8 段（16 段）；
- *  - 5 分：上午 24 段 + 下午 24 段（48 段）；
- *  - 1 分：逐分钟一段（241 段，不走本表）。
- * 段间不跨午休（11:30 → 13:00 直接断开）；相邻段 open ≈ 前段 close（分钟路径连续，
- * 13:01 价 = 11:30 价的下一步，无跳空），time 统一取段首分钟（规范时间轴显示）。
+ * 生成 [start, end] 闭区间内以 step 为步长的整数序列。
+ *
+ * @param start 起始值（含）。
+ * @param end 结束值（含）。
+ * @param step 步长。
+ * @returns 升序整数数组。
  */
 export const stepRange = (start: number, end: number, step: number): number[] => {
   const out: number[] = []
   for (let m = start; m <= end; m += step) out.push(m)
   return out
 }
+
+/**
+ * 将分钟序列转换为相邻对（[b_i, b_{i+1}]），用于生成交易时段槽。
+ *
+ * @param minutes 升序分钟数组。
+ * @returns 相邻分钟对数组，最后一分钟不作为起点（避免越界空段）。
+ */
 export const pairSlots = (minutes: number[]): [number, number][] =>
   minutes.slice(0, -1).map((b, i) => [b, minutes[i + 1]] as [number, number])
 
+/**
+ * 分钟 K 每日时段槽（[起, 止] 北京时间分钟，闭区间；止点 = 段收盘分钟，东财口径）。
+ *
+ * @remarks
+ * 60 分：09:30-10:30 / 10:30-11:30 / 13:00-14:00 / 14:00-15:00（4 段）；
+ * 30 分：上午 4 段 + 下午 4 段（8 段）；15 分：上午 8 段 + 下午 8 段（16 段）；
+ * 5 分：上午 24 段 + 下午 24 段（48 段）；1 分：逐分钟一段（241 段，不走本表）。
+ * 段间不跨午休（11:30 → 13:00 直接断开）；相邻段 open ≈ 前段 close（分钟路径连续，
+ * 13:01 价 = 11:30 价的下一步，无跳空）；time 统一取段首分钟（规范时间轴显示）。
+ */
 export const MINUTE_SESSION_SLOTS: Record<number, [number, number][]> = {
   60: [
     [570, 630],
@@ -64,7 +78,7 @@ export const MINUTE_SESSION_SLOTS: Record<number, [number, number][]> = {
     [570, 600], [600, 630], [630, 660], [660, 690],
     [780, 810], [810, 840], [840, 870], [870, 900],
   ],
-  // 上午 / 下午分别 pairSlots（避免拼接数组在午休 690→780 处生成空档段 [690,780)）
+  // 上午 / 下午分别 pairSlots（避免拼接数组在午休 690→780 处生成空档段 [690, 780)）。
   15: [
     ...pairSlots(stepRange(570, 690, 15)),
     ...pairSlots(stepRange(780, 900, 15)),
@@ -76,10 +90,17 @@ export const MINUTE_SESSION_SLOTS: Record<number, [number, number][]> = {
 }
 
 /**
- * 把一组「数据点」按桶聚合为 K 线（OHLC + 累计量额）。
- * @param points  升序数据点：分时点（price 口径）或日 K 点（open/high/low/close 口径）
- * @param bucketOf 返回该点所属桶的 key（秒级时间戳，同 key 的点聚合为同一根 K）
- * @param mode    'ts'：分时点聚合（price → OHLC）；'kline'：K 线点聚合（直接取 OHLC）
+ * 把一组数据点按桶聚合为 K 线（OHLC + 累计量额）。
+ *
+ * @remarks
+ * 新桶以当前点开新 K（OHLC 起始 = 当前点），后续同桶点更新 high / low / close
+ * 并累加 volume / amount。桶 key 可能为「周 / 月起点」时间戳（周一 00:00 /
+ * 1 日 00:00 本地口径），与库时间轴日 / 周 / 月线展示兼容。
+ *
+ * @param points 升序数据点：分时点（price 口径）或 K 线点（OHLC 口径）。
+ * @param bucketOf 返回该点所属桶的 key（秒级时间戳，同 key 的点聚合为同一根 K）。
+ * @param mode 'ts'：分时点聚合（price → OHLC）；'kline'：K 线点聚合（直接取 OHLC）。
+ * @returns 按桶聚合后的 K 线点数组（升序）。
  */
 export const aggregateToBars = (
   points: ChartDataPoint[],
@@ -95,7 +116,6 @@ export const aggregateToBars = (
     const l = mode === 'ts' ? p.price : p.low
     const c = mode === 'ts' ? p.price : p.close
     if (!last || last.time !== k) {
-      // 新桶：以当前点开新 K（OHLC 起始 = 当前点，后续点更新 high/low/close）
       out.push({
         time: k,
         tradeDate: p.tradeDate,
@@ -114,27 +134,32 @@ export const aggregateToBars = (
       last.close = c
       last.volume = (last.volume ?? 0) + (p.volume ?? 0)
       last.amount = (last.amount ?? 0) + (p.amount ?? 0)
-      last.tradeDate = p.tradeDate // 桶内最后点的交易日期（周/月 K 落在末交易日）
+      // 桶内最后点的交易日期（周 / 月 K 落在末交易日）。
+      last.tradeDate = p.tradeDate
     }
   }
-  // 桶 key 可能为「周/月起点」时间戳：周 K 落在周一 00:00、月 K 落在 1 日 00:00（本地口径），
-  // 与库时间轴日/周/月线展示兼容；分钟 K 桶 key 即段首分钟 time。
   return out
 }
 
-/** 北京时间分钟（段首分钟）→ 当日 UTC 秒级 time（与分时点口径一致：UTC 00:00 − 8h + 分钟×60）。
- * @param day 当日任意日 K 点（取 tradeDate）
- * @param minuteOfDay 北京时间分钟（如 570 = 09:30）
- * @returns 秒级 UTC 时间戳 */
+/**
+ * 北京时间分钟 → 当日 UTC 秒级 time（与分时点口径一致：UTC 00:00 − 8h + 分钟 × 60）。
+ *
+ * @param day 当日任意日 K 点（取 tradeDate）。
+ * @param minuteOfDay 北京时间分钟（如 570 = 09:30）。
+ * @returns 秒级 UTC 时间戳。
+ */
 export const minuteToTime = (day: ChartDataPoint, minuteOfDay: number): number => {
   const dayUtc0 = new Date(day.time * 1000)
   dayUtc0.setUTCHours(0, 0, 0, 0)
   return Math.round(dayUtc0.getTime() / 1000) - 8 * 3600 + minuteOfDay * 60
 }
 
-/** 日 K 点 → 桶 key：按自然周（周一 00:00 本地）。
- * @param p 日 K 点
- * @returns 该点所属周起点（周一 00:00 本地）的秒级时间戳 */
+/**
+ * 日 K 点 → 周桶 key（自然周，周一 00:00 本地）。
+ *
+ * @param p 日 K 点。
+ * @returns 该点所属周起点（周一 00:00 本地）的秒级时间戳。
+ */
 export const weekBucketOf = (p: ChartDataPoint): number => {
   const d = new Date(p.time * 1000)
   const day = d.getDay()
@@ -143,42 +168,44 @@ export const weekBucketOf = (p: ChartDataPoint): number => {
   return Math.round(monday.getTime() / 1000)
 }
 
-/** 日 K 点 → 桶 key：按自然月（当月 1 日 00:00 本地）。
- * @param p 日 K 点
- * @returns 该点所属月起点（1 日 00:00 本地）的秒级时间戳 */
+/**
+ * 日 K 点 → 月桶 key（自然月，当月 1 日 00:00 本地）。
+ *
+ * @param p 日 K 点。
+ * @returns 该点所属月起点（1 日 00:00 本地）的秒级时间戳。
+ */
 export const monthBucketOf = (p: ChartDataPoint): number => {
   const d = new Date(p.time * 1000)
   const first = new Date(d.getFullYear(), d.getMonth(), 1)
   return Math.round(first.getTime() / 1000)
 }
 
-
-/** 数据池总交易日数量（约 3 年多） */
+// 数据池总交易日数量（约 3 年多）。
 export const POOL_SIZE = 800
 
-/** 数据池截止日期（最近一个交易日：2026-10-02 周五） */
+// 数据池截止日期（最近一个交易日：2026-10-02 周五）。
 export const POOL_END_DATE = new Date(Date.UTC(2026, 9, 2))
 
-/** 实时 tick 间隔（ms） */
+// 实时 tick 间隔（ms）。
 export const REALTIME_INTERVAL = 1200
 
-/** 每 N 次 tick 产生一根新 K 线 */
+// 每 N 次 tick 产生一根新 K 线。
 export const NEW_BAR_EVERY = 8
 
-/** 分时实时 tick 间隔（ms） */
+// 分时实时 tick 间隔（ms）。
 export const TS_REALTIME_INTERVAL = 1200
-/** 分时每分钟刷新：每 N 次 tick 追加一根新分时分钟点（其余刷新最后一根） */
+
+// 分时每分钟刷新：每 N 次 tick 追加一根新分时分钟点（其余刷新最后一根）。
 export const TS_NEW_MINUTE_EVERY = 6
 
-/** 判断是否为分时周期（1日~5日分时，多日分时）——公共判定见 ../chart/periods（v1.7.0 统一） */
-
 /**
- * 生成一天 241 个分时分钟点（升序，单位分钟，东财口径）：
- *  - 09:30（1 个，开盘点：集合竞价撮合价，即首根分时点）；
- *  - 09:31 ~ 11:30（120 分钟，上午）；
- *  - 13:01 ~ 15:00（120 分钟，下午）。
- * 首分钟（09:30）为集合竞价开盘价所在点，末分钟（15:00）为收盘点。
- * @returns 升序的北京时间分钟数组（长度 241）
+ * 生成一天 241 个分时分钟点（升序，单位分钟，东财口径）。
+ *
+ * @remarks
+ * 09:30（1 个，开盘点：集合竞价撮合价，即首根分时点）→ 09:31~11:30（120 分钟，
+ * 上午）→ 13:01~15:00（120 分钟，下午）。首分钟为开盘价所在点，末分钟为收盘点。
+ *
+ * @returns 升序的北京时间分钟数组（长度 241）。
  */
 export const sessionMinutes = (): number[] => {
   const out: number[] = []
@@ -191,20 +218,26 @@ export const sessionMinutes = (): number[] => {
   return out
 }
 
-/** 分时可追加分钟的集合（升序分钟序列，实时仅追加序列内的分钟：
- *  11:30 后不追加（午休）、15:00 后不追加（收盘）） */
+// 分时可追加分钟的集合（实时仅追加序列内的分钟：11:30 后不追加（午休）、
+// 15:00 后不追加（收盘））。
 export const TS_APPEND_MINUTES = new Set(sessionMinutes())
 
-/** 深拷贝单个数据点（fetchHistory 返回前调用，防调用方污染内部池）。
- * @param p 源数据点
- * @returns 内容相同的新对象 */
+/**
+ * 深拷贝单个数据点（fetchHistory 返回前调用，防调用方污染内部池）。
+ *
+ * @param p 源数据点。
+ * @returns 内容相同的新对象。
+ */
 export const clone = (p: ChartDataPoint): ChartDataPoint => {
   return { ...p }
 }
 
-/** 字符串 → 正整数种子（同 symbol 同数据，确定性随机源）。
- * @param text 任意字符串（如 symbol）
- * @returns 稳定的正整数哈希 */
+/**
+ * 字符串 → 正整数种子（同 symbol 同数据，确定性随机源）。
+ *
+ * @param text 任意字符串（如 symbol）。
+ * @returns 稳定的正整数哈希（FNV-1a 变体）。
+ */
 export const hashSeed = (text: string): number => {
   let h = 2166136261
   for (let i = 0; i < text.length; i++) {
@@ -214,9 +247,12 @@ export const hashSeed = (text: string): number => {
   return (h >>> 0) || 1
 }
 
-/** 线性同余伪随机数发生器（确定性序列）。
- * @param seed 正整数种子（来自 hashSeed）
- * @returns 无参随机函数，每次调用返回 [0,1) 内的数 */
+/**
+ * 线性同余伪随机数发生器（确定性序列，便于测试复现）。
+ *
+ * @param seed 正整数种子（来自 {@link hashSeed}）。
+ * @returns 无参随机函数，每次调用返回 [0, 1) 内的数。
+ */
 export const createRandom = (seed: number): () => number => {
   let s = seed
   return () => {
@@ -225,13 +261,22 @@ export const createRandom = (seed: number): () => number => {
   }
 }
 
+/**
+ * 判断日期是否为周末（UTC）。
+ *
+ * @param d 待判断日期。
+ * @returns true = 周六或周日。
+ */
 export const isWeekend = (d: Date): boolean => {
   const day = d.getUTCDay()
   return day === 0 || day === 6
 }
 
-/** 生成截止 POOL_END_DATE、长度 POOL_SIZE 的交易日序列（升序，跳过周末）。
- * @returns 升序的 Date 数组（长度 POOL_SIZE） */
+/**
+ * 生成截止 POOL_END_DATE、长度 POOL_SIZE 的交易日序列（升序，跳过周末）。
+ *
+ * @returns 升序的 Date 数组（长度 POOL_SIZE）。
+ */
 export const buildTradingDates = (): Date[] => {
   const dates: Date[] = [new Date(POOL_END_DATE)]
   const cur = new Date(POOL_END_DATE)
@@ -242,9 +287,12 @@ export const buildTradingDates = (): Date[] => {
   return dates
 }
 
-/** 某日期之后的下一交易日（跳过周末）。
- * @param d 起始日期
- * @returns 下一个工作日 Date */
+/**
+ * 取某日期之后的下一交易日（跳过周末）。
+ *
+ * @param d 起始日期。
+ * @returns 下一个工作日 Date。
+ */
 export const nextTradingDay = (d: Date): Date => {
   const cur = new Date(d)
   do {
@@ -253,6 +301,12 @@ export const nextTradingDay = (d: Date): Date => {
   return cur
 }
 
+/**
+ * Date → 交易日期字符串 'YYYY-MM-DD'（UTC 口径）。
+ *
+ * @param d 待格式化日期。
+ * @returns 'YYYY-MM-DD' 字符串。
+ */
 export const toTradeDate = (d: Date): string => {
   return [
     d.getUTCFullYear(),
@@ -261,9 +315,16 @@ export const toTradeDate = (d: Date): string => {
   ].join('-')
 }
 
-/* ============================== A股情绪形态（v1.6.56） ============================== */
+/* ============================== A 股情绪形态（v1.6.56） ============================== */
 
-/** 涨跌停情绪形态（仿东方财富日 K：连板 / 天地板等） */
+/**
+ * 涨跌停情绪形态（仿东方财富日 K：连板 / 天地板等）。
+ *
+ * @remarks
+ * 各形态 OHLC 关系：limit-up / limit-down 一字封死；factory-up 一字开板回封；
+ * tail-up / tail-down 尾盘拉升 / 砸盘；ground-sky 地天；sky-ground-sky 天地天；
+ * sky-ground 天地反转；ground-sky-ground 地天地。
+ */
 export type LimitPattern =
   | 'limit-up' // 一字板（涨停）：O=H=L=C=涨停价，1~10 连板
   | 'factory-up' // 厂字板：涨停一字开盘 → 盘中开板（L 回落 2%~5%）→ 尾盘回封
@@ -275,15 +336,32 @@ export type LimitPattern =
   | 'sky-ground' // 天底板：涨停开盘 → 跌停收盘（天地反转）
   | 'ground-sky-ground' // 地天地板：跌停开盘 → 盘中拉涨停 → 跌停收盘
 
-/** 主板涨停价（昨收 × 1.10，四舍五入到分） */
+/**
+ * 主板涨停价（昨收 × 1.10，四舍五入到分）。
+ *
+ * @param p 昨收价。
+ * @returns 涨停价。
+ */
 export const limitUp = (p: number): number => +Math.round(p * 1.1 * 100) / 100
 
-/** 主板跌停价（昨收 × 0.90，四舍五入到分） */
+/**
+ * 主板跌停价（昨收 × 0.90，四舍五入到分）。
+ *
+ * @param p 昨收价。
+ * @returns 跌停价。
+ */
 export const limitDown = (p: number): number => +Math.round(p * 0.9 * 100) / 100
 
 /**
- * 形态 K 线（基于昨收计算涨停/跌停价，OHLC 自洽）：
- *  - 一字板封死缩量（买/卖不到）；开板 / 天地板放量（情绪剧烈）。
+ * 生成形态 K 线（基于昨收计算涨停 / 跌停价，OHLC 自洽）。
+ *
+ * @remarks
+ * 一字板封死缩量（买 / 卖不到）；开板 / 天地板放量（情绪剧烈）。
+ *
+ * @param pattern 情绪形态，见 {@link LimitPattern}。
+ * @param preClose 昨收价。
+ * @param rand [0, 1) 随机函数（确定性序列）。
+ * @returns 自洽的 OHLC + volume。
  */
 export const patternBar = (
   pattern: LimitPattern,
@@ -295,48 +373,53 @@ export const patternBar = (
   switch (pattern) {
     case 'limit-up':
     case 'limit-down': {
-      // 一字板：O=H=L=C=涨/跌停价，封死缩量
+      // 一字板：O=H=L=C=涨 / 跌停价，封死缩量。
       const px = pattern === 'limit-up' ? up : down
       return { open: px, high: px, low: px, close: px, volume: Math.round(200_000 + rand() * 600_000) }
     }
     case 'factory-up': {
-      // 厂字板：涨停一字开盘 → 盘中开板（L 回落 2%~5%）→ 尾盘回封
+      // 厂字板：涨停一字开盘 → 盘中开板（L 回落 2%~5%）→ 尾盘回封。
       const low = +Math.max(up * (1 - (0.02 + rand() * 0.03)), 0.01).toFixed(2)
       return { open: up, high: up, low, close: up, volume: Math.round(3_000_000 + rand() * 15_000_000) }
     }
     case 'tail-up': {
-      // 尾盘上板：平开/微高开震荡，尾盘拉涨停（长下影大阳）
+      // 尾盘上板：平开 / 微高开震荡，尾盘拉涨停（长下影大阳）。
       const open = +Math.max(preClose * (1 + (rand() - 0.55) * 0.012), 0.01).toFixed(2)
       const low = +Math.max(Math.min(open, up) * (1 - rand() * 0.02), 0.01).toFixed(2)
       return { open, high: up, low, close: up, volume: Math.round(5_000_000 + rand() * 20_000_000) }
     }
     case 'ground-sky': {
-      // 地天板：跌停一字开盘 → 尾盘拉涨停
+      // 地天板：跌停一字开盘 → 尾盘拉涨停。
       return { open: down, high: up, low: down, close: up, volume: Math.round(8_000_000 + rand() * 25_000_000) }
     }
     case 'sky-ground-sky': {
-      // 天地天板：涨停开盘 → 盘中砸跌停 → 尾盘拉回涨停
+      // 天地天板：涨停开盘 → 盘中砸跌停 → 尾盘拉回涨停。
       return { open: up, high: up, low: down, close: up, volume: Math.round(10_000_000 + rand() * 30_000_000) }
     }
     case 'tail-down': {
-      // 尾盘下板：微高开震荡，尾盘砸跌停（长上影大阴）
+      // 尾盘下板：微高开震荡，尾盘砸跌停（长上影大阴）。
       const open = +Math.max(preClose * (1 + (rand() - 0.45) * 0.012), 0.01).toFixed(2)
       const high = +Math.max(open * (1 + rand() * 0.02), 0.01).toFixed(2)
       return { open, high, low: down, close: down, volume: Math.round(5_000_000 + rand() * 20_000_000) }
     }
     case 'sky-ground': {
-      // 天底板：涨停一字开盘 → 砸至跌停收盘（天地反转）
+      // 天底板：涨停一字开盘 → 砸至跌停收盘（天地反转）。
       return { open: up, high: up, low: down, close: down, volume: Math.round(8_000_000 + rand() * 25_000_000) }
     }
     case 'ground-sky-ground': {
-      // 地天地板：跌停开盘 → 盘中拉涨停 → 收盘再砸跌停
+      // 地天地板：跌停开盘 → 盘中拉涨停 → 收盘再砸跌停。
       return { open: down, high: up, low: down, close: down, volume: Math.round(10_000_000 + rand() * 30_000_000) }
     }
   }
 }
 
-/** 9 种情绪形态的固定顺序（用于覆盖保证：形态段优先选择未出现过的形态，
- * 确保每个标的的数据池内 9 种形态全部齐全，确定性可测，v1.6.56） */
+/**
+ * 9 种情绪形态的固定顺序。
+ *
+ * @remarks
+ * 用于覆盖保证：形态段优先选择未出现过的形态，确保每个标的的数据池内 9 种形态
+ * 全部齐全，确定性可测。
+ */
 export const PATTERN_SEQUENCE: LimitPattern[] = [
   'limit-up',
   'factory-up',
@@ -351,7 +434,9 @@ export const PATTERN_SEQUENCE: LimitPattern[] = [
 
 /* ============================== 分时情绪形态（v1.7.0） ============================== */
 
-/** 分时情绪形态（日 K 情绪形态的分钟路径版，路径围绕昨收的涨停/跌停价自洽） */
+/**
+ * 分时情绪形态（日 K 情绪形态的分钟路径版，路径围绕昨收的涨停 / 跌停价自洽）。
+ */
 export type TimesharePattern =
   | 'half-day'          // 半日数据：仅上午 09:31~11:30 共 120 条（无 09:30 开盘点）
   | 'factory-up'        // 厂字板：涨停一字开盘 → 盘中开板回落 → 尾盘回封涨停
@@ -362,7 +447,12 @@ export type TimesharePattern =
   | 'streak-up'         // 连板涨：高开震荡上行 → 尾盘封涨停
   | 'streak-down'       // 连板跌：高开震荡下行 → 尾盘封跌停
 
-/** 分时形态固定序列（确定性覆盖：不同 symbol 偏移分配不同形态，8 种齐全可测） */
+/**
+ * 分时形态固定序列。
+ *
+ * @remarks
+ * 确定性覆盖：不同 symbol 偏移分配不同形态，8 种齐全可测。
+ */
 export const TS_PATTERN_SEQUENCE: TimesharePattern[] = [
   'half-day',
   'factory-up',
@@ -374,14 +464,20 @@ export const TS_PATTERN_SEQUENCE: TimesharePattern[] = [
   'streak-down',
 ]
 
-/** 形态分钟放量系数（封板缩量 / 开板、天地震荡、尾盘拉升放量） */
+/**
+ * 形态分钟放量系数（封板缩量 / 开板、天地震荡、尾盘拉升放量）。
+ *
+ * @param pattern 分时形态。
+ * @param m 北京时间分钟。
+ * @returns 该分钟的量能放大系数。
+ */
 export const timeshareVolumeK = (pattern: TimesharePattern, m: number): number => {
   switch (pattern) {
     case 'limit-up':
     case 'limit-down':
       return 0.4 // 一字封死缩量
     case 'factory-up':
-      // 开板段（09:46~13:59）放量
+      // 开板段（09:46~13:59）放量。
       return m >= 9 * 60 + 46 && m <= 13 * 60 + 59 ? 3 : 1
     case 'sky-ground-sky':
     case 'ground-sky-ground':
@@ -395,11 +491,18 @@ export const timeshareVolumeK = (pattern: TimesharePattern, m: number): number =
 }
 
 /**
- * 形态分时分钟路径（纯函数，可单测）：
- *  - 围绕昨收的涨停价 / 跌停价构造阶段关键点（waypoints），逐分钟向目标点
- *    线性逼近 + 小幅噪声（0.3%），命中节点精确对齐（末端无累计误差）；
- *  - 分钟序列由调用方传入（最新日完整 / 久远日缺首分钟 / 半日 120 条）；
- *  - 返回与 minutes 等长的 { minute, price, volume }[]（价格自洽、升序）。
+ * 生成形态分时分钟路径（纯函数，可单测）。
+ *
+ * @remarks
+ * 围绕昨收的涨停价 / 跌停价构造阶段关键点（waypoints），逐分钟向目标点线性逼近
+ * 并加小幅噪声（0.3%），区间起点 / 终点精确对齐节点价（转折点无累计误差）；
+ * 一字板封死形态无插值，全天恒为涨 / 跌停价。
+ *
+ * @param pattern 分时形态，见 {@link TimesharePattern}。
+ * @param preClose 昨收价。
+ * @param minutes 分钟序列（最新日完整 / 久远日缺首分钟 / 半日 120 条）。
+ * @param rand [0, 1) 随机函数（确定性序列）。
+ * @returns 与 minutes 等长的 { minute, price, volume }[]（价格自洽、升序）。
  */
 export const timesharePatternPath = (
   pattern: TimesharePattern,
@@ -409,7 +512,7 @@ export const timesharePatternPath = (
 ): { minute: number; price: number; volume: number }[] => {
   const up = limitUp(preClose)
   const down = limitDown(preClose)
-  // 一字板（封死形态）：全天恒为涨停 / 跌停价（无插值，价格精确对齐可断言）
+  // 一字板（封死形态）：全天恒为涨停 / 跌停价（无插值，价格精确对齐可断言）。
   if (pattern === 'limit-up' || pattern === 'limit-down') {
     const px = pattern === 'limit-up' ? up : down
     const out: { minute: number; price: number; volume: number }[] = []
@@ -423,7 +526,7 @@ export const timesharePatternPath = (
   let waypoints: [number, number][]
   switch (pattern) {
     case 'factory-up': {
-      // 一字涨停开盘（09:30~09:45）→ 开板回落 2%~5% → 尾盘 14:00 后回封涨停
+      // 一字涨停开盘（09:30~09:45）→ 开板回落 2%~5% → 尾盘 14:00 后回封涨停。
       const dip = +Math.max(up * (1 - (0.02 + rand() * 0.03)), 0.01).toFixed(2)
       waypoints = [
         node(9 * 60 + 30, up), node(9 * 60 + 45, up), node(9 * 60 + 46, dip),
@@ -432,21 +535,21 @@ export const timesharePatternPath = (
       break
     }
     case 'sky-ground-sky':
-      // 涨停开盘 → 上午砸至跌停 → 尾盘拉回涨停
+      // 涨停开盘 → 上午砸至跌停 → 尾盘拉回涨停。
       waypoints = [
         node(9 * 60 + 30, up), node(10 * 60, up), node(11 * 60 + 30, down),
         node(14 * 60, down), node(15 * 60, up),
       ]
       break
     case 'ground-sky-ground':
-      // 跌停开盘 → 上午拉至涨停 → 尾盘砸回跌停
+      // 跌停开盘 → 上午拉至涨停 → 尾盘砸回跌停。
       waypoints = [
         node(9 * 60 + 30, down), node(10 * 60, down), node(11 * 60 + 30, up),
         node(14 * 60, up), node(15 * 60, down),
       ]
       break
     case 'streak-up': {
-      // 连板涨：高开 +3% → 震荡上行 → 尾盘封涨停
+      // 连板涨：高开 +3% → 震荡上行 → 尾盘封涨停。
       const open = +Math.max(preClose * 1.03, 0.01).toFixed(2)
       const mid = +((open + up) / 2).toFixed(2)
       waypoints = [
@@ -455,7 +558,7 @@ export const timesharePatternPath = (
       break
     }
     case 'streak-down': {
-      // 连板跌：高开 +1% → 震荡下行 → 尾盘封跌停
+      // 连板跌：高开 +1% → 震荡下行 → 尾盘封跌停。
       const open = +Math.max(preClose * 1.01, 0.01).toFixed(2)
       const mid = +((open + down) / 2).toFixed(2)
       waypoints = [
@@ -464,7 +567,7 @@ export const timesharePatternPath = (
       break
     }
     case 'half-day':
-      // 半日：上午小幅高开 → 11:30 收平 / 小涨（120 条）
+      // 半日：上午小幅高开 → 11:30 收平 / 小涨（120 条）。
       waypoints = [
         node(minutes[0], +Math.max(preClose * 1.002, 0.01).toFixed(2)),
         node(minutes[minutes.length - 1], +Math.max(preClose * 1.004, 0.01).toFixed(2)),
@@ -475,12 +578,12 @@ export const timesharePatternPath = (
   let price = waypoints[0][1]
   let wi = 0
   for (const m of minutes) {
-    // 命中已过节点：推进至对应区间
+    // 命中已过节点：推进至对应区间。
     while (wi < waypoints.length - 1 && m >= waypoints[wi + 1][0]) {
       wi += 1
     }
     if (wi === waypoints.length - 1) {
-      // 已过最后一个节点：价格保持该节点价（回封 / 终点后剩余分钟恒定）
+      // 已过最后一个节点：价格保持该节点价（回封 / 终点后剩余分钟恒定）。
       price = waypoints[wi][1]
     } else {
       const [startM, startP] = waypoints[wi]
@@ -488,7 +591,8 @@ export const timesharePatternPath = (
       const span = endM - startM
       const progress = span > 0 ? Math.min((m - startM) / span, 1) : 1
       const target = startP + (endP - startP) * progress
-      // 区间起点 / 终点精确对齐节点价（转折点无噪声误差）；中间向目标逼近 40% + 噪声（0.3%）
+      // 区间起点 / 终点精确对齐节点价（转折点无噪声误差）；中间向目标逼近
+      // 40% + 噪声（0.3%）。
       if (m === startM) {
         price = startP
       } else if (m === endM) {
@@ -502,4 +606,3 @@ export const timesharePatternPath = (
   }
   return out
 }
-

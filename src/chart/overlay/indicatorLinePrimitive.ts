@@ -1,28 +1,23 @@
-/**
- * indicatorLinePrimitive.ts —— 指标折线 primitive（top 层自绘，v1.4.65）
- *
- * 背景（库渲染层级，已从 dist 源码确认 PaneWidget._internal_paint）：
- *  - bottom canvas：背景 → bottomPaneViews → 栅格 → series（含其 normal 层
- *    primitive）→ labelPaneViews；
- *  - top canvas：清屏 → **十字星（drawCrosshair）** → topPaneViews → labelPaneViews。
- * 因此普通 series / normal primitive 永远画在十字星**之下** —— 十字星横线穿过
- * 指标线时会把指标线盖住"一部分看不见"。
- *
- * 本 primitive 用 **zOrder 'top'**（topPaneViews）自绘指标折线：
- * 绘制在十字星**之上** → 指标线完整可见，满足"指标绘图 → 十字星 → K线/成交量"
- * 的叠加顺序（用户要求）。
- *
- * 坐标转换：
- *  - x = timeScale.timeToCoordinate(time)（锚点 series 关联的 timeScale）；
- *  - y = anchorSeries.priceToCoordinate(value)（同 pane 同 scale 的任意 series，
- *    如 pane1 klineSeries / pane3 volumeSeries）。
- *  top canvas 与 bottom canvas 尺寸一致，media 坐标可直接互用。
- *
- * 性能：绘制前按 timeScale.getVisibleRange() 裁剪可视点区间（数据升序线性扫描），
- * 只对可视点做坐标转换与连线。
- *
- * 依赖：渲染逻辑委托给 IndicatorLinePaneView（同目录独立文件）。
- */
+// indicatorLinePrimitive.ts —— 指标折线 primitive（top 层自绘）。
+// 背景（库渲染层级，已从 dist 源码确认 PaneWidget._internal_paint）：
+//  - bottom canvas：背景 → bottomPaneViews → 栅格 → series（含其 normal 层
+//    primitive）→ labelPaneViews；
+//  - top canvas：清屏 → 十字星（drawCrosshair）→ topPaneViews → labelPaneViews。
+// 因此普通 series / normal primitive 永远画在十字星之下 —— 十字星横线穿过
+// 指标线时会把指标线盖住"一部分看不见"。
+//
+// 本 primitive 用 zOrder 'top'（topPaneViews）自绘指标折线：
+// 绘制在十字星之上 → 指标线完整可见，满足"指标绘图 → 十字星 → K线/成交量"
+// 的叠加顺序（用户要求）。
+//
+// 坐标转换：
+//  - x = timeScale.timeToCoordinate(time)（锚点 series 关联的 timeScale）；
+//  - y = anchorSeries.priceToCoordinate(value)（同 pane 同 scale 的任意 series，
+//    如 pane1 klineSeries / pane3 volumeSeries）。
+//  top canvas 与 bottom canvas 尺寸一致，media 坐标可直接互用。
+//
+// 性能：绘制前按 timeScale.getVisibleRange() 裁剪可视点区间（数据升序线性扫描），
+// 只对可视点做坐标转换与连线。
 import {
   type ISeriesPrimitive,
   type IPrimitivePaneView,
@@ -34,17 +29,17 @@ import {
 import { type IndicatorLine } from '../indicator'
 import { IndicatorLinePaneView } from './indicatorLinePaneView'
 
-/** 指标线数据源（draw 时现取；颜色 = 指标线颜色，points = 升序数据点） */
+/** 指标线数据源（draw 时现取；颜色 = 指标线颜色，points = 升序数据点）。 */
 export interface IndicatorLineSet {
-  /** 各条指标线（颜色 + 数据点） */
+  /** 各条指标线（颜色 + 数据点）。 */
   lines: { color: string; points: IndicatorLine[] }[]
-  /** x 坐标转换 timeScale（chart.timeScale()；ISeriesApi 无公开 timeScale 方法） */
+  /** x 坐标转换 timeScale（chart.timeScale()；ISeriesApi 无公开 timeScale 方法）。 */
   getTimeScale: () => ITimeScaleApi<Time>
-  /** price → y 坐标转换锚点 series（同 pane 同 priceScale 的任意 series） */
+  /** price → y 坐标转换锚点 series（同 pane 同 priceScale 的任意 series）。 */
   anchorSeries: () => ISeriesApi<SeriesType>
 }
 
-/** 指标线 primitive 构造选项（可选） */
+/** 指标线 primitive 构造选项（可选）。 */
 export interface IndicatorLinePrimitiveOptions {
   /**
    * 绘制层级获取器（可选，默认 'top'）：
@@ -56,11 +51,18 @@ export interface IndicatorLinePrimitiveOptions {
   getZOrder?: () => 'top' | 'normal'
 }
 
+/**
+ * 指标折线 primitive（top 层自绘）。
+ *
+ * @remarks
+ * 绘制在十字星之上 → 指标线完整可见（不被十字星横线遮挡）；
+ * 按可视时间范围裁剪后只对可视点做坐标转换与连线（长数据下性能优化）。
+ */
 export class IndicatorLinePrimitive implements ISeriesPrimitive<Time> {
-  /** 指标线数据源获取器（只读，draw 时现取 —— 切换指标 / 换数据后自动跟随） */
+  /** 指标线数据源获取器（只读，draw 时现取 —— 切换指标 / 换数据后自动跟随）。 */
   public readonly getSource: () => IndicatorLineSet
 
-  /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象） */
+  /** 渲染视图（单例：构造时创建一次，paneViews 每次返回同一实例，避免每帧重复创建对象）。 */
   private readonly paneView: IndicatorLinePaneView
 
   constructor(
@@ -71,7 +73,7 @@ export class IndicatorLinePrimitive implements ISeriesPrimitive<Time> {
     this.paneView = new IndicatorLinePaneView(this, options?.getZOrder ?? (() => 'top'))
   }
 
-  /** pane 视图（层级由构造选项决定，见 IndicatorLinePrimitiveOptions） */
+  /** pane 视图（层级由构造选项决定，见 IndicatorLinePrimitiveOptions）。 */
   paneViews = (): readonly IPrimitivePaneView[]  => {
     return [this.paneView]
   }

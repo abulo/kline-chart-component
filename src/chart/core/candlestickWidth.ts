@@ -1,21 +1,18 @@
-/**
- * candlestickWidth.ts —— 蜡烛柱体真实像素宽度（v1.4.10）
- *
- * 与 lightweight-charts v5.2.1 库源码（PaneRendererCandlesticks）**完全一致**：
- *  - optimalCandlestickWidth：库源码原版（coeff 分母为 Math.PI * 0.5，
- *    并含 min(res, barSpacing×dpr) 与 max(floor(dpr)) 裁剪）；
- *  - candlestickBarWidth：再叠加库的**奇偶修正**（柱宽与影线宽同奇偶，
- *    保证十字星叠加对称）。
- * 自绘成交量使用同一函数 → 柱宽 / 间隔与 pane1 绝对一致。
- * 说明：返回值为**位图像素**宽度（已乘 devicePixelRatio），
- * 转 CSS 像素需除以 pixelRatio；绘制坐标同样按 bitmap 取整对齐。
- */
+// candlestickWidth.ts —— 蜡烛柱体真实像素宽度计算。
+// 与 lightweight-charts v5.2.1 库源码（PaneRendererCandlesticks）完全一致：
+//  - optimalCandlestickWidth：库源码原版（coeff 分母为 Math.PI * 0.5，
+//    并含 min(res, barSpacing×dpr) 与 max(floor(dpr)) 裁剪）；
+//  - candlestickBarWidth：再叠加库的奇偶修正（柱宽与影线宽同奇偶，保证十字星叠加对称）。
+// 自绘成交量使用同一函数 → 柱宽 / 间隔与 pane1 绝对一致。
+// 说明：返回值为位图像素宽度（已乘 devicePixelRatio），转 CSS 像素需除以 pixelRatio；
+// 绘制坐标同样按 bitmap 取整对齐。
 
 /**
- * 库源码原版 optimalCandlestickWidth（位图像素宽度）
- * @param barSpacing  timeScale barSpacing（CSS 像素）
- * @param pixelRatio  window.devicePixelRatio
- * @returns 柱体位图像素宽度（未做奇偶修正）
+ * 库源码原版 optimalCandlestickWidth（位图像素宽度）。
+ *
+ * @param barSpacing timeScale barSpacing（CSS 像素）。
+ * @param pixelRatio window.devicePixelRatio。
+ * @returns 柱体位图像素宽度（未做奇偶修正）。
  */
 export const optimalCandlestickWidth = (barSpacing: number, pixelRatio: number): number => {
   const barSpacingSpecialCaseFrom = 2.5
@@ -37,12 +34,15 @@ export const optimalCandlestickWidth = (barSpacing: number, pixelRatio: number):
 }
 
 /**
- * 库渲染最终柱宽：optimalCandlestickWidth + 奇偶修正
- * （PaneRendererCandlesticks 中：柱宽 >= 2 时与影线宽 wickWidth = floor(dpr) 同奇偶，
- * 否则柱宽 -1，保证十字星叠加对称）。
- * @param barSpacing  timeScale barSpacing（CSS 像素）
- * @param pixelRatio  window.devicePixelRatio
- * @returns 实际绘制的柱体位图像素宽度
+ * 库渲染最终柱宽：optimalCandlestickWidth + 奇偶修正。
+ *
+ * @remarks
+ * PaneRendererCandlesticks 中：柱宽 >= 2 时与影线宽 wickWidth = floor(dpr) 同奇偶，
+ * 否则柱宽 -1，保证十字星叠加对称。
+ *
+ * @param barSpacing timeScale barSpacing（CSS 像素）。
+ * @param pixelRatio window.devicePixelRatio。
+ * @returns 实际绘制的柱体位图像素宽度。
  */
 export const candlestickBarWidth = (barSpacing: number, pixelRatio: number): number => {
   let barWidth = optimalCandlestickWidth(barSpacing, pixelRatio)
@@ -56,13 +56,16 @@ export const candlestickBarWidth = (barSpacing: number, pixelRatio: number): num
 }
 
 /**
- * 分时柱宽（v1.7.1）：按 barSpacing 自适应（×0.45）+ 保底 2 bitmap px。
- * 背景：v1.7.0 分时量柱 / MACD 柱固定 1px，在 retina（DPR 2）下仅 0.5 CSS px，
+ * 分时柱宽：按 barSpacing 自适应（×0.45）+ 保底 2 bitmap px。
+ *
+ * @remarks
+ * 背景：分时量柱 / MACD 柱若固定 1px，在 retina（DPR 2）下仅 0.5 CSS px，
  * 红绿柱几乎不可见 → 不清晰。改为与 K 线柱宽同源的按间距缩放，任意 DPR 下
  * 保证 ≥1 CSS px（保底 2 bitmap），柱体清晰可见且随缩放档位同步增宽。
- * @param barSpacing timeScale barSpacing（CSS 像素）
- * @param pixelRatio window.devicePixelRatio
- * @returns 分时柱位图像素宽度
+ *
+ * @param barSpacing timeScale barSpacing（CSS 像素）。
+ * @param pixelRatio window.devicePixelRatio。
+ * @returns 分时柱位图像素宽度。
  */
 export const timeshareBarWidth = (barSpacing: number, pixelRatio: number): number =>
   Math.max(2, Math.round(barSpacing * 0.45 * pixelRatio))

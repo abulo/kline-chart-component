@@ -1,19 +1,24 @@
-/**
- * cr.ts —— 带状能量指标 CR（Pane2 附图指标）
- *
- * 东财算法（参数 26，均线 5/10/20）：
- *   UP = MAX(0, H - REF(C,1))
- *   DN = MAX(0, REF(C,1) - L)
- *   CR = SUM(UP, 26) / SUM(DN, 26) * 100
- *   CRMA1/2/3 = MA(CR, 5/10/20)
- * 返回四条线（下标 0=CR、1/2/3=MA5/MA10/MA20）。
- * 颜色见控制器 SUB_INDICATOR_META：
- *   CR #666666 / MA1 #F4AA0A / MA2 #FF1DFF / MA3 #007130。
- */
+// cr.ts —— 带状能量指标 CR（附图指标）。
+// 东财算法（参数 26，均线 5/10/20）：
+//   UP = MAX(0, H - REF(C,1))
+//   DN = MAX(0, REF(C,1) - L)
+//   CR = SUM(UP, 26) / SUM(DN, 26) * 100
+//   CRMA1/2/3 = MA(CR, 5/10/20)
+// 返回四条线（下标 0=CR、1/2/3=MA5/MA10/MA20）。
+// 颜色见主题 SUB_INDICATOR_META：CR / MA1 / MA2 / MA3。
 import type { IndicatorLine, K } from './types'
 import { tdxSum, toLines } from './utils'
 
-/** 计算 CR 四条线（CR / MA5 / MA10 / MA20） */
+/**
+ * 计算 CR 四条线（CR / MA5 / MA10 / MA20）。
+ *
+ * @remarks
+ * 公式：UP = MAX(0, H − REF(C,1))、DN = MAX(0, REF(C,1) − L)，
+ * CR = SUM(UP,26) / SUM(DN,26) × 100；CRMA = MA(CR, 5/10/20)。
+ *
+ * @param bars 升序 K 线数组。
+ * @returns [CR, MA5, MA10, MA20] 四条线。
+ */
 export const calcCR = (bars: K[]): IndicatorLine[][] => {
   const n = bars.length
   const times = bars.map((b) => b.time)

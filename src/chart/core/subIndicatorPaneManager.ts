@@ -1,20 +1,15 @@
-/**
- * subIndicatorPaneManager.ts —— 附图指标 Pane 管理器（v1.4.89 拆分自 indicatorManager.ts）
- *
- * 集中管理附图指标层的两个 Pane：
- *  - pane4：指标信息行（空 Pane，自绘所选附图指标各线数值，高度与 pane0 / pane2 绝对相等）；
- *  - pane5：指标图（红绿柱 + 指标线 + 对称刻度，高度与 pane3 一致）。
- *
- * 职责（全部 top 层 / normal 层自绘，不创建可见 series）：
- *  - 创建 / 销毁：setSubIndicator 打开（创建 pane4 + pane5）或关闭（移除整组）；
- *  - 数据重建：线 / 红绿柱 / Y 轴对称锚点 / 信息行值缓存（applyData 与切换指标时全量重建）；
- *  - 信息行分段文字构建（随十字星现取，O(1)）；
- *  - 主题同步（锚点 series 保持全透明、不覆盖自绘内容）。
- *
- * 依赖注入（IndicatorManager 提供，series 惰性 getter —— 构造时 series 可能尚未创建，
- * getter 在 draw / 调用时才求值，保证构建顺序安全）：
- *  - chart / getBars / getTheme / getOverlayTime / crosshairRegistry。
- */
+// subIndicatorPaneManager.ts —— 附图指标 Pane 管理器（自 indicatorManager.ts 拆分）。
+// 集中管理附图指标层的两个 Pane：
+//  - pane4：指标信息行（空 Pane，自绘所选附图指标各线数值，高度与 pane0 / pane2 绝对相等）；
+//  - pane5：指标图（红绿柱 + 指标线 + 对称刻度，高度与 pane3 一致）。
+// 职责（全部 top 层 / normal 层自绘，不创建可见 series）：
+//  - 创建 / 销毁：setSubIndicator 打开（创建 pane4 + pane5）或关闭（移除整组）；
+//  - 数据重建：线 / 红绿柱 / Y 轴对称锚点 / 信息行值缓存（applyData 与切换指标时全量重建）；
+//  - 信息行分段文字构建（随十字星现取，O(1)）；
+//  - 主题同步（锚点 series 保持全透明、不覆盖自绘内容）。
+// 依赖注入（IndicatorManager 提供，series 惰性 getter —— 构造时 series 可能尚未创建，
+// getter 在 draw / 调用时才求值，保证构建顺序安全）：
+//  - chart / getBars / getTheme / getOverlayTime / crosshairRegistry。
 import {
   LineSeries,
   HistogramSeries,
@@ -37,52 +32,54 @@ import { subIndicatorLabels } from './indicatorMeta'
 import type { CrosshairPrimitiveRegistry, IndicatorLineSpec, IndicatorValueMap } from './types'
 import type { TextSegment } from '../overlay/topPaneOverlayPrimitive'
 
-/**
- * 以 0 为对称中心的附图指标集合：
- *  - MACD：DIF/DEA/柱以 0 轴为正负分界（柱 base=0），scale 值域 [-absMax, +absMax]、
- *    中间刻度固定 0、首尾刻度固定 ±absMax（|max| = |min|）；
- *  - CCI：以 0 为中心正负摆动（常用 ±100 / ±200），同样要求刻度对称、中间为 0。
- * 其余指标（RSI 0-100、KDJ 0-100 等）按实际值域显示。
- */
+// 以 0 为对称中心的附图指标集合：
+//  - MACD：DIF/DEA/柱以 0 轴为正负分界（柱 base=0），scale 值域 [-absMax, +absMax]、
+//    中间刻度固定 0、首尾刻度固定 ±absMax（|max| = |min|）；
+//  - CCI：以 0 为中心正负摆动（常用 ±100 / ±200），同样要求刻度对称、中间为 0。
+// 其余指标（RSI 0-100、KDJ 0-100 等）按实际值域显示。
 const zeroCenteredSubIndicators = ['macd', 'cci'] as const
 
-/** 判断指标是否要求 0 对称刻度（scale 值域 [-absMax, +absMax] + 中间固定 0） */
+/**
+ * 判断指标是否要求 0 对称刻度（scale 值域 [-absMax, +absMax] + 中间固定 0）。
+ *
+ * @param name 附图指标名。
+ * @returns true = MACD / CCI（要求对称）；false = 其余按实际值域。
+ */
 export const isZeroCenteredSubIndicator = (name: string): boolean =>
   (zeroCenteredSubIndicators as readonly string[]).includes(name)
 
-/**
- * 不可见 series 颜色（全透明）：
- * 建 scale 的锚点 series 用透明色而非背景色 —— 透明不产生像素、不会覆盖
- * 同 canvas 上的自绘内容（v1.4.83 起 MACD 柱 / 指标线在 normal / top 层绘制，
- * 若锚点柱用不透明背景色，会在 main canvas 逐根覆盖红绿柱与灰黄线，
- * 表现为"柱被切割、线不连贯"）；scale 值域只取数据值，与颜色无关。
- */
+// 不可见 series 颜色（全透明）：建 scale 的锚点 series 用透明色而非背景色 ——
+// 透明不产生像素、不会覆盖同 canvas 上的自绘内容（MACD 柱 / 指标线在 normal / top
+// 层绘制，若锚点柱用不透明背景色，会在 main canvas 逐根覆盖红绿柱与灰黄线，
+// 表现为"柱被切割、线不连贯"）；scale 值域只取数据值，与颜色无关。
 
-/** 附图指标 Pane 管理器构造依赖 */
+/** 附图指标 Pane 管理器构造依赖。 */
 export interface SubIndicatorPaneManagerDeps {
-  /** chart 实例（addSeries / applyOptions / removePane / priceScale） */
+  /** chart 实例（addSeries / applyOptions / removePane / priceScale）。 */
   chart: ReturnType<typeof import('lightweight-charts').createChart>
-  /** K 线数据（ChartDataPoint[]，K 线周期 pointType='kline'；分时周期为 timeshare 点。
-   *  指标库共用：分时下换算为 K 口径（close = price）再计算） */
+  /**
+   * K 线数据（ChartDataPoint[]，K 线周期 pointType='kline'；分时周期为 timeshare 点。
+   * 指标库共用：分时下换算为 K 口径（close = price）再计算）。
+   */
   getBars: () => ChartDataPoint[]
-  /** 当前主题名（深浅系切换时 updateThemeColors 使用） */
+  /** 当前主题名（深浅系切换时 updateThemeColors 使用）。 */
   getTheme: () => ChartThemeName
-  /** 十字星当前时间（null = 未命中 → 显示最新 bar；CrosshairManager 提供） */
+  /** 十字星当前时间（null = 未命中 → 显示最新 bar；CrosshairManager 提供）。 */
   getOverlayTime: () => number | null
-  /** 十字星指示值注册表（CrosshairManager；pane5 的注册 / 移除走这里） */
+  /** 十字星指示值注册表（CrosshairManager；pane5 的注册 / 移除走这里）。 */
   crosshairRegistry: CrosshairPrimitiveRegistry
-  /** 当前周期是否为分时（v1.7.0）：MACD 红绿柱改库直方图 / 附图指标无 CR /
-   *  指标计算按价格序列（timeshare → K 口径） */
+  /**
+   * 当前周期是否为分时：MACD 红绿柱改库直方图 / 附图指标无 CR /
+   * 指标计算按价格序列（timeshare → K 口径）。
+   */
   getIsTimeshare: () => boolean
-  /** 竖向栅格等分数（v1.7.0）：K 线 4 / 分时按周期份数，draw 时现取 */
+  /** 竖向栅格等分数：K 线 4 / 分时按周期份数，draw 时现取。 */
   getVerticalCount: () => number
 }
 
-/**
- * 分时点 → K 线口径（v1.7.0）：附图指标库基于 OHLC（b.close!），分时点无 OHLC；
- * 分时指标按价格序列计算（东财分时副图惯例），换算 close = price（OHLC 同价，
- * 对 MA/EMA 类仅用 close 的指标无影响；对用 high/low 的 WR/KDJ 等退化为单值）。
- */
+// 分时点 → K 线口径：附图指标库基于 OHLC（b.close!），分时点无 OHLC；
+// 分时指标按价格序列计算（东财分时副图惯例），换算 close = price（OHLC 同价，
+// 对 MA/EMA 类仅用 close 的指标无影响；对用 high/low 的 WR/KDJ 等退化为单值）。
 const toIndicatorBars = (bars: ChartDataPoint[]): ChartDataPoint[] =>
   bars.map((bar) =>
     bar.pointType === 'timeshare'
@@ -97,9 +94,18 @@ const toIndicatorBars = (bars: ChartDataPoint[]): ChartDataPoint[] =>
       : bar,
   )
 
-/** 分时下不可用的附图指标（v1.7.0）：CR 基于多日高低点累计，分时单日无意义 → 禁用 */
+// 分时下不可用的附图指标：CR 基于多日高低点累计，分时单日无意义 → 禁用。
 const TIMESHARE_DISABLED_SUB_INDICATORS: ReadonlySet<string> = new Set(['cr'])
 
+/**
+ * 附图指标 Pane 管理器。
+ *
+ * @remarks
+ * 管理 pane4（指标信息行）+ pane5（指标图）的创建 / 销毁 / 数据重建 / 信息行 /
+ * 主题同步。全部可见内容由 top / normal 层 primitive 自绘，库 series 仅作
+ * scale 锚点（全透明不可见）。0 对称指标（MACD / CCI）强制 Y 轴对称 + 0 值线
+ * 固定，防止平移 / 切换指标时刻度漂移。
+ */
 export class SubIndicatorPaneManager {
   /* ===== 依赖（构造注入，只读） ===== */
   private readonly chart: SubIndicatorPaneManagerDeps['chart']
@@ -107,47 +113,43 @@ export class SubIndicatorPaneManager {
   private readonly getTheme: SubIndicatorPaneManagerDeps['getTheme']
   private readonly getOverlayTime: SubIndicatorPaneManagerDeps['getOverlayTime']
   private readonly crosshairRegistry: CrosshairPrimitiveRegistry
-  /** 当前周期是否为分时（v1.7.0，deps 注入） */
+  /** 当前周期是否为分时（deps 注入）。 */
   private readonly getIsTimeshare: SubIndicatorPaneManagerDeps['getIsTimeshare']
-  /** 竖向栅格等分数（v1.7.0，deps 注入） */
+  /** 竖向栅格等分数（deps 注入）。 */
   private readonly getVerticalCount: SubIndicatorPaneManagerDeps['getVerticalCount']
 
   /* ===== 附图指标状态 ===== */
-  /** 当前激活的附图指标（null = 关闭指标层；互斥） */
+  // 当前激活的附图指标（null = 关闭指标层；互斥）。
   private activeSubIndicator: SubIndicatorType | null = null
-  /** 指标 Pane 开关状态（true = 显示 pane4 / pane5；由 activeSubIndicator 驱动） */
+  // 指标 Pane 开关状态（true = 显示 pane4 / pane5；由 activeSubIndicator 驱动）。
   private showIndicator = false
-  /** pane5 指标柱（Histogram，指标通用；开启时创建，关闭时销毁置 null） */
+  // pane5 指标柱（Histogram，指标通用；开启时创建，关闭时销毁置 null）。
   private indicatorsBarSeries: ISeriesApi<'Histogram'> | null = null
-  /**
-   * pane5 刻度对称锚点 series（Line，不可见）：
-   * 数据 = 全部时间点交替 ±absMax（i 偶 = +maxValue、i 奇 = -minValue），
-   * 使可视区内**任意窗口**都同时含正 / 负锚点 → priceScale autoScale 并集恒为
-   * [-absMax, +absMax]：平移 / 缩放 / 切换指标时 0 值线（中间刻度）固定不漂移，
-   * 首尾刻度对称（|max| = |min|）。若只用首尾两根锚点，平移后可视区不含锚点，
-   * 库按可视区数据重算值域，DIF/DEA/MACD 线条会整体上下漂移。
-   */
+  // pane5 刻度对称锚点 series（Line，不可见）：
+  // 数据 = 全部时间点交替 ±absMax（i 偶 = +maxValue、i 奇 = -minValue），
+  // 使可视区内任意窗口都同时含正 / 负锚点 → priceScale autoScale 并集恒为
+  // [-absMax, +absMax]：平移 / 缩放 / 切换指标时 0 值线（中间刻度）固定不漂移，
+  // 首尾刻度对称（|max| = |min|）。若只用首尾两根锚点，平移后可视区不含锚点，
+  // 库按可视区数据重算值域，DIF/DEA/MACD 线条会整体上下漂移。
   private indicatorScaleAnchorSeries: ISeriesApi<'Line'> | null = null
-  /**
-   * 当前附图指标 scale 值域边界（rebuildData 每次重建时缓存）：
-   * 供 pane5 左刻度**首尾固定值**显示（getEdgeFixedValues → ±absMax），
-   * 保证刻度 |max| = |min| 严格成立、与平移 / 内嵌偏移无关。
-   */
+  // 当前附图指标 scale 值域边界（rebuildData 每次重建时缓存）：
+  // 供 pane5 左刻度首尾固定值显示（getEdgeFixedValues → ±absMax），
+  // 保证刻度 |max| = |min| 严格成立、与平移 / 内嵌偏移无关。
   private subScaleMax = 0
   private subScaleMin = 0
-  /** pane5 附图指标各线数据缓存（{ 线色, 数据点 }[]；top 层自绘现取） */
+  // pane5 附图指标各线数据缓存（{ 线色, 数据点 }[]；top 层自绘现取）。
   private subIndicatorLines: IndicatorLineSpec[] = []
-  /** pane5 附图指标线自绘 primitive（挂 indicatorsBarSeries，zOrder 'top'） */
+  // pane5 附图指标线自绘 primitive（挂 indicatorsBarSeries，zOrder 'top'）。
   private subIndicatorLinePrimitive: IndicatorLinePrimitive | null = null
-  /** pane4 十字星竖线自绘 primitive（v1.7.6，挂 pane4InfoSeries） */
+  // pane4 十字星竖线自绘 primitive（挂 pane4InfoSeries）。
   private pane4LinePrimitive: CrosshairLinePrimitive | null = null
-  /** pane5 十字星竖线自绘 primitive（v1.7.6，挂 indicatorsBarSeries，指标线之上） */
+  // pane5 十字星竖线自绘 primitive（挂 indicatorsBarSeries，指标线之上）。
   private pane5LinePrimitive: CrosshairLinePrimitive | null = null
-  /** pane5 MACD 柱自绘 primitive（非 MACD 时 macdPoints 为空不绘制） */
+  // pane5 MACD 柱自绘 primitive（非 MACD 时 macdPoints 为空不绘制）。
   private macdBarPrimitive: MacdBarPrimitive | null = null
-  /** pane4 指标信息行值缓存（label + 线色 + time→value Map，现取 O(1)） */
+  // pane4 指标信息行值缓存（label + 线色 + time→value Map，现取 O(1)）。
   private subIndicatorValueMaps: IndicatorValueMap[] = []
-  /** MACD 指标点缓存（MacdBarPrimitive 自绘现取；仅 MACD 有值） */
+  // MACD 指标点缓存（MacdBarPrimitive 自绘现取；仅 MACD 有值）。
   private macdPoints: MacdPoint[] = []
 
   constructor(deps: SubIndicatorPaneManagerDeps) {
@@ -162,52 +164,56 @@ export class SubIndicatorPaneManager {
 
   /* ===================== 对外数据源（controller / primitive 注入） ===================== */
 
-  /** 指标层开关状态（controller 布局 / 栅格横线等分数使用） */
+  /** 指标层开关状态（controller 布局 / 栅格横线等分数使用）。 */
   getShowIndicator = (): boolean => this.showIndicator
 
-  /** 当前选中附图指标（v1.7.2：volume 开关协调需在临时移除 / 重建指标组时恢复） */
+  /** 当前选中附图指标（volume 开关协调需在临时移除 / 重建指标组时恢复）。 */
   getActiveSubIndicator = (): SubIndicatorType | null => this.activeSubIndicator
 
   /**
-   * 设置附图指标（互斥单选）：
-   *  - name = null：关闭指标层（移除 pane4 / pane5，布局 80:20）；
-   *  - name = 指标：打开指标层（若未开则创建 pane4 / pane5）并重建该指标数据
-   *    （pane5 线 / 柱 / Y 轴锚点 + pane4 信息行值，布局 60:20:20）。
+   * 设置附图指标（互斥单选）。
+   *
+   * @remarks
+   * - name = null：关闭指标层（移除 pane4 / pane5，布局 80:20）；
+   * - name = 指标：打开指标层（若未开则创建 pane4 / pane5）并重建该指标数据
+   *   （pane5 线 / 柱 / Y 轴锚点 + pane4 信息行值，布局 60:20:20）。
    * 由 App.vue 十按钮驱动：点击已选中指标 = 取消（null）、点击其他指标 = 切换。
    * 状态变化后由调用方（IndicatorManager）触发 onIndicatorStateChange 重算布局。
+   *
+   * @param name 附图指标名（null = 关闭指标层）。
    */
   setSubIndicator = (name: SubIndicatorType | null): void => {
     if (this.activeSubIndicator === name) return
     this.activeSubIndicator = name
     if (name === null) {
-      // 取消选中：关闭指标层
+      // 取消选中：关闭指标层。
       this.removePanes()
-      // 清空指标缓存（防残留旧指标数据 / 引用泄漏）
+      // 清空指标缓存（防残留旧指标数据 / 引用泄漏）。
       this.subIndicatorLines = []
       this.subIndicatorValueMaps = []
       this.macdPoints = []
       return
     }
-    // 选中指标：指标层未开则先创建 pane4 / pane5，再重建数据
+    // 选中指标：指标层未开则先创建 pane4 / pane5，再重建数据。
     if (!this.showIndicator) {
       this.createPanes()
     }
     this.rebuildData()
   }
 
-  /** 创建指标组 Pane（指标信息行 + 附图指标，恒位于图表末尾）。
-   *  v1.7.2 动态化：paneIndex 用追加语义（panes.length 起步）——成交量组关闭时
-   *  指标组顺移 pane2/3、仅 K 线时末尾追加，固定 4/5 会与 volume 共享 pane /
-   *  产生空白中间 pane。追加式 addSeries：paneIndex == 当前 pane 数 → 库建新
-   *  pane 于末尾（无空白），顺序恒为 main → volume → indicator。 */
+  // 创建指标组 Pane（指标信息行 + 附图指标，恒位于图表末尾）。
+  // 动态化：paneIndex 用追加语义（panes.length 起步）——成交量组关闭时
+  // 指标组顺移 pane2/3、仅 K 线时末尾追加，固定 4/5 会与 volume 共享 pane /
+  // 产生空白中间 pane。追加式 addSeries：paneIndex == 当前 pane 数 → 库建新
+  // pane 于末尾（无空白），顺序恒为 main → volume → indicator。
   private createPanes = (): void => {
     // 指标层开启标记：pane 数量变化后布局按 6 Pane / 60:20:20 分配高度，
-    // 且 pane1 栅格横线等分数（6）随指标开状态同步
+    // 且 pane1 栅格横线等分数（6）随指标开状态同步。
     this.showIndicator = true
-    // 指标组首 Pane 索引 = 末尾追加（当前 pane 数，非 length-2）
+    // 指标组首 Pane 索引 = 末尾追加（当前 pane 数，非 length-2）。
     const startIndex = this.chart.panes().length
     // pane4：指标信息行空 Pane（自绘所选附图指标各线数值，设置与 pane0 一致，
-    // 高度 topPaneHeight 绝对相等）
+    // 高度 topPaneHeight 绝对相等）。
     const pane4InfoSeries = this.chart.addSeries(
       LineSeries,
       {
@@ -220,7 +226,7 @@ export class SubIndicatorPaneManager {
     )
     pane4InfoSeries.attachPrimitive(
       // 用 InfoLabelPrimitive（不填背景）——十字星竖线贯穿 pane4（与 pane2 一致）；
-      // 数值 = buildInfoSegments 现取（label + 线色，随十字星命中 bar / 最新 bar）
+      // 数值 = buildInfoSegments 现取（label + 线色，随十字星命中 bar / 最新 bar）。
       new InfoLabelPrimitive(() => this.buildInfoSegments()),
     )
 
@@ -239,11 +245,11 @@ export class SubIndicatorPaneManager {
         priceScaleId: 'left',
         base: 0, // 柱从 0 轴绘制（正负双方向）
         // 全透明不可见（仅建 scale）：锚点柱不产生像素，避免在 normal 层
-        // 逐根覆盖自绘的 MACD 红绿柱与指标线（见 transparentColor 说明）
+        // 逐根覆盖自绘的 MACD 红绿柱与指标线（见 transparentColor 说明）。
         color: transparentColor,
         priceLineVisible: false,
         lastValueVisible: false,
-        // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐
+        // 隐藏库刻度标签（刻度区保留）：刻度值由 AxisLabelPrimitive 自绘并与栅格横线对齐。
         priceFormat: {
           type: 'custom',
           formatter: () => '',
@@ -262,13 +268,13 @@ export class SubIndicatorPaneManager {
     })
     // pane5 刻度对称锚点 series（不可见）：全部时间点交替 ±absMax，
     // 使任意可视窗口都含正 / 负锚点 → autoScale 并集恒为对称 [-absMax, +absMax]，
-    // 0 值线固定不漂移（数据由 rebuildData 同步更新）
+    // 0 值线固定不漂移（数据由 rebuildData 同步更新）。
     this.indicatorScaleAnchorSeries = this.chart.addSeries(
       LineSeries,
       {
         priceScaleId: 'left',
         // 全透明不可见（仅撑 scale 值域）：1px 背景色线在 normal 层也会与自绘内容
-        // 叠加产生遮挡，统一用透明色（见 transparentColor 说明）
+        // 叠加产生遮挡，统一用透明色（见 transparentColor 说明）。
         color: transparentColor,
         lineWidth: 1,
         priceLineVisible: false,
@@ -281,19 +287,19 @@ export class SubIndicatorPaneManager {
       startIndex + 1,
     )
     // MACD 红绿柱自绘（仅激活 MACD 时有数据；柱体 > 0 空心红 / < 0 绿实心）。
-    // v1.7.0 分时抽取：分时周期柱宽自适应（getIsTimeshare 注入 MacdBarPrimitive，v1.7.1 加宽），
-    // 与 K 线周期共用自绘 primitive（库直方图仅作透明锚点）
+    // 分时抽取：分时周期柱宽自适应（getIsTimeshare 注入 MacdBarPrimitive，加宽），
+    // 与 K 线周期共用自绘 primitive（库直方图仅作透明锚点）。
     this.macdBarPrimitive = new MacdBarPrimitive(
       () => this.macdPoints,
       () => themeColors(this.getTheme()),
       () => this.getIsTimeshare(),
     )
     this.indicatorsBarSeries.attachPrimitive(this.macdBarPrimitive)
-    // 内容 Pane 边框（pane5）：自绘 1px 矩形，颜色随主题（深浅系区分）
+    // 内容 Pane 边框（pane5）：自绘 1px 矩形，颜色随主题（深浅系区分）。
     this.indicatorsBarSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.getTheme()).paneBorder),
     )
-    // pane5 栅格：竖 4 等分（分时按周期份数，getVerticalCount 动态）；横向 2 等分（中间 1 条）
+    // pane5 栅格：竖 4 等分（分时按周期份数，getVerticalCount 动态）；横向 2 等分（中间 1 条）。
     this.indicatorsBarSeries.attachPrimitive(
       new GridPrimitive({
         getColor: () => themeColors(this.getTheme()).grid,
@@ -303,7 +309,7 @@ export class SubIndicatorPaneManager {
     )
     // pane5 左刻度标签：与栅格横线对齐（值 = 横线处指标值，大数缩写 / 自适应小数）。
     // 中间刻度：MACD 柱以 0 轴为正负分界 → 固定显示 0（getFixedMiddleValue 动态获取，
-    // 切换指标无需重建刻度 primitive）；其他指标按 scale 中间值显示
+    // 切换指标无需重建刻度 primitive）；其他指标按 scale 中间值显示。
     this.indicatorsBarSeries.attachPrimitive(
       new AxisLabelPrimitive({
         series: this.indicatorsBarSeries,
@@ -316,14 +322,14 @@ export class SubIndicatorPaneManager {
         getFixedMiddleValue: () => (isZeroCenteredSubIndicator(this.activeSubIndicator ?? '') ? 0 : undefined),
         // 首尾刻度固定显示 scale 边界值（±absMax）：避免内嵌 8px 位置经
         // coordinateToPrice 反推产生顶/底不同溢出率导致 |max| ≠ |min|（0.27/-0.28）；
-        // MACD 与全部附图指标通用（RSI 等首尾显示其值域边界，更直观）
+        // MACD 与全部附图指标通用（RSI 等首尾显示其值域边界，更直观）。
         getEdgeFixedValues: () => ({
           topValue: this.subScaleMax,
           bottomValue: this.subScaleMin,
         }),
       }),
     )
-    // pane5 十字星左刻度指示值：十字星横线所在指标值（大数缩写 / 自适应小数）
+    // pane5 十字星左刻度指示值：十字星横线所在指标值（大数缩写 / 自适应小数）。
     const pane5CrosshairLabel = new CrosshairAxisLabelPrimitive({
       series: this.indicatorsBarSeries,
       getPaneIndex: () => this.chart.panes().length - 1,
@@ -336,7 +342,7 @@ export class SubIndicatorPaneManager {
     this.crosshairRegistry.registerPrimitive(pane5CrosshairLabel)
     // pane5 指标线：IndicatorLinePrimitive 自绘（zOrder 'top' → 十字星之上，
     // 与 pane3 成交量均量线一致：指标线完整可见、不被十字星横线遮挡；
-    // MACD 红绿柱（MacdBarPaneView 'normal'）仍在十字星之下，十字星穿过柱区可见）
+    // MACD 红绿柱（MacdBarPaneView 'normal'）仍在十字星之下，十字星穿过柱区可见）。
     this.subIndicatorLinePrimitive = new IndicatorLinePrimitive(
       () => ({
         lines: this.subIndicatorLines,
@@ -345,9 +351,9 @@ export class SubIndicatorPaneManager {
       }),
     )
     this.indicatorsBarSeries.attachPrimitive(this.subIndicatorLinePrimitive)
-    // pane4 / pane5 十字星竖线自绘（v1.7.6）：信息行 + 指标 Pane 各挂一条，
-    // **最后挂载**（zOrder 'top' 同层内后绘制在上 → 竖线在 MACD 柱 / 指标线 /
-    // 信息行文字之上，贯穿 pane 全高，逐刻度移动无缺失 / 无被柱体盖住）
+    // pane4 / pane5 十字星竖线自绘：信息行 + 指标 Pane 各挂一条，
+    // 最后挂载（zOrder 'top' 同层内后绘制在上 → 竖线在 MACD 柱 / 指标线 /
+    // 信息行文字之上，贯穿 pane 全高，逐刻度移动无缺失 / 无被柱体盖住）。
     const pane4LinePrimitive = new CrosshairLinePrimitive(4)
     pane4InfoSeries.attachPrimitive(pane4LinePrimitive)
     this.crosshairRegistry.registerLinePrimitive(pane4LinePrimitive)
@@ -358,24 +364,24 @@ export class SubIndicatorPaneManager {
     this.pane5LinePrimitive = pane5LinePrimitive
   }
 
-  /** 关闭指标层：移除 pane4 / pane5 并清空相关 series 引用（防内存泄漏）。
-   *  库 removePane 从 panes 数组 splice，pane 上 series（含 primitive）的强引用
-   *  随之断开可被 GC；管理器再置 null 解除自身引用，保证反复开 / 关无泄漏。
-   *  removePane(4) 两次：删 pane4 后原 pane5 顺移到 index 4，再删一次即移除整组。 */
+  // 关闭指标层：移除 pane4 / pane5 并清空相关 series 引用（防内存泄漏）。
+  // 库 removePane 从 panes 数组 splice，pane 上 series（含 primitive）的强引用
+  // 随之断开可被 GC；管理器再置 null 解除自身引用，保证反复开 / 关无泄漏。
+  // removePane(startIndex) 两次：删 pane4 后原 pane5 顺移到 startIndex，再删一次即移除整组。
   private removePanes = (): void => {
     // 指标层关闭标记：先置 false 再移除 Pane，布局按 4 Pane / 80:20 分配，
-    // 避免 Pane 移除瞬间仍按 6 Pane 布局计算
+    // 避免 Pane 移除瞬间仍按 6 Pane 布局计算。
     this.showIndicator = false
-    // v1.7.2 动态索引：指标组恒在末尾两位（成交量开 4/5、成交量关 2/3）。
+    // 动态索引：指标组恒在末尾两位（成交量开 4/5、成交量关 2/3）。
     // 固定 removePane(4) 在成交量组关闭后越界（库断言 Invalid pane index），
-    // 改为按实际 Pane 数计算；删 startIndex 两次（删后末尾顺移补位）
+    // 改为按实际 Pane 数计算；删 startIndex 两次（删后末尾顺移补位）。
     const startIndex = Math.max(2, this.chart.panes().length - 2)
-    // ★ 顺序守卫（v1.7.2 质量收尾）：十字星指示值注销必须先于 removePane——
+    // ★ 顺序守卫：十字星指示值注销必须先于 removePane——
     // removePane 后成交量组 getPaneIndex()=3 不变、但指标组顺移后动态值变化，
     // 后置注销会误删/漏删；先注销（此时各 primitive 仍在原位，getPaneIndex()
-    // 取当前真实 pane 索引）只删指标组指示值
+    // 取当前真实 pane 索引）只删指标组指示值。
     this.crosshairRegistry.removeByPaneIndex(startIndex + 1)
-    // v1.7.6：注销指标组自绘竖线 primitive（防泄漏 / 防对已销毁 series 注入）
+    // 注销指标组自绘竖线 primitive（防泄漏 / 防对已销毁 series 注入）。
     if (this.pane4LinePrimitive !== null) {
       this.crosshairRegistry.unregisterLinePrimitive(this.pane4LinePrimitive)
       this.pane4LinePrimitive = null
@@ -384,7 +390,7 @@ export class SubIndicatorPaneManager {
       this.crosshairRegistry.unregisterLinePrimitive(this.pane5LinePrimitive)
       this.pane5LinePrimitive = null
     }
-    // ★ v1.7.14 修复（指标组版）：先清空指标组（startIndex / startIndex+1）所有
+    // ★ 修复（指标组版）：先清空指标组（startIndex / startIndex+1）所有
     // series 数据再移除 pane——库 removePane 只从 panes 数组 splice，被移除
     // series 的 points 仍残留挂 timeScale（K 线 ~400 点残留 → 切分时 fitContent
     // 视口被撑到 1.5 年，时间轴错乱 / 主图指标被压缩）。触发路径："日K → 成交量
@@ -407,16 +413,14 @@ export class SubIndicatorPaneManager {
     this.subIndicatorLinePrimitive = null
   }
 
-  /**
-   * 重建当前附图指标数据缓存（pane5 线 / 柱 / Y 轴锚点 + pane4 信息行值）。
-   * 仅指标层开启且存在选中指标时调用；数据变化（applyData）与切换指标
-   * （setSubIndicator）时全量重建，避免旧指标残留（防内存泄漏与串色）。
-   */
+  // 重建当前附图指标数据缓存（pane5 线 / 柱 / Y 轴锚点 + pane4 信息行值）。
+  // 仅指标层开启且存在选中指标时调用；数据变化（applyData）与切换指标
+  // （setSubIndicator）时全量重建，避免旧指标残留（防内存泄漏与串色）。
   private rebuildData = (): void => {
     if (this.indicatorsBarSeries === null) return
     const name = this.activeSubIndicator
     if (name === null) return
-    // 分时禁用指标（CR）防御：分时下选中 CR 不渲染（App 已隐藏按钮，此处兜底）
+    // 分时禁用指标（CR）防御：分时下选中 CR 不渲染（App 已隐藏按钮，此处兜底）。
     if (this.getIsTimeshare() && TIMESHARE_DISABLED_SUB_INDICATORS.has(name)) {
       this.subIndicatorLines = []
       this.subIndicatorValueMaps = []
@@ -424,13 +428,13 @@ export class SubIndicatorPaneManager {
       return
     }
     // 指标数据源：K 线周期直接用 bars；分时周期换算为 K 口径（close = price，
-    // 附图指标按价格序列计算，v1.7.0）
+    // 附图指标按价格序列计算）。
     const sourceBars = this.getIsTimeshare() ? toIndicatorBars(this.getBars()) : this.getBars()
-    // 东财指标库：按选中指标单算（v1.7.0 性能：避免十指标全量重算，长数据下计算量 1/10）
+    // 东财指标库：按选中指标单算（性能：避免十指标全量重算，长数据下计算量 1/10）。
     const lines = calcSubIndicator(name, sourceBars)
     if (lines.length === 0 || lines[0].length === 0) return
     const colors = subIndicatorColors[name]
-    // pane5 线缓存（IndicatorLinePrimitive 自绘现取；线色 = subIndicatorColors 对应下标）
+    // pane5 线缓存（IndicatorLinePrimitive 自绘现取；线色 = subIndicatorColors 对应下标）。
     // MACD：只画 DIF / DEA 两条线，MACD 柱（第三条）由 MacdBarPrimitive 红绿柱自绘，
     // 不再画线（避免柱与线重复叠加）；其余指标全部线型绘制。
     const lineCount = name === 'macd' ? Math.min(2, lines.length) : lines.length
@@ -440,7 +444,7 @@ export class SubIndicatorPaneManager {
     }))
     // Y 轴锚点：不可见 Histogram setData 以第 0 条线为骨架，
     // 首 / 尾两点替换为全部线的最大 / 最小值 → scale 值域覆盖全部线（正负双方向），
-    // 避免中间极值线超出 Y 轴被裁剪
+    // 避免中间极值线超出 Y 轴被裁剪。
     const allValues = lines.flat().map((point) => point.value)
     // 0 对称指标（MACD / CCI）特殊：MACD 首根 DIF/DEA/柱 = 0（EMA 首日以收盘起步）
     // 且柱以 0 轴为正负分界，若全正 / 全负值域不含 0 → 首根（0 值）线起点与柱被
@@ -448,7 +452,7 @@ export class SubIndicatorPaneManager {
     // 统一处理：强制 scale 覆盖 0 且对称（见下方）。
     // 其他指标（OBV 等累计值）按实际值域，避免 0 拉宽 scale 压缩图形。
     const forceZero = isZeroCenteredSubIndicator(name)
-    // 单趟扫描极值（数据量小；用循环避免 spread 大数组栈风险）
+    // 单趟扫描极值（数据量小；用循环避免 spread 大数组栈风险）。
     let maxValue = -Infinity
     let minValue = Infinity
     for (const value of allValues) {
@@ -458,13 +462,13 @@ export class SubIndicatorPaneManager {
     if (forceZero) {
       // 0 对称指标刻度对称：Y 轴以 0 为对称中心，左刻度最大值与最小值绝对值相等
       // （|max| = |min| = 全量极值绝对值的最大值；如 MACD DIF 最大 2.1 / 柱最小 -1.3
-      //  → 刻度范围 [-2.1, +2.1]；CCI 同理，±值镜像对齐）
+      //  → 刻度范围 [-2.1, +2.1]；CCI 同理，±值镜像对齐）。
       const absMax = Math.max(Math.abs(maxValue), Math.abs(minValue), 0)
       maxValue = absMax
       minValue = -absMax
     }
     // 缓存 scale 值域边界（pane5 首尾刻度固定显示用；首尾标签不再反推，
-    // 避免内嵌偏移顶/底溢出率不同导致 |max| ≠ |min|）
+    // 避免内嵌偏移顶/底溢出率不同导致 |max| ≠ |min|）。
     this.subScaleMax = maxValue
     this.subScaleMin = minValue
     const anchorPoints = lines[0].map((point) => ({
@@ -477,10 +481,10 @@ export class SubIndicatorPaneManager {
       value: minValue,
     }
     // pane5 柱数据写入：统一透明锚点（可见柱由 MacdBarPrimitive 自绘红绿柱；
-    // 分时周期柱宽由 getIsTimeshare 注入（timeshareBarWidth 自适应），v1.7.0）
+    // 分时周期柱宽由 getIsTimeshare 注入（timeshareBarWidth 自适应））。
     this.indicatorsBarSeries.setData(anchorPoints)
     // 刻度对称锚点 series：全部时间点交替 ±absMax（可视区任意窗口恒含正 / 负锚点，
-    // scale 值域恒为 [-absMax, +absMax] → 0 值线固定；平移 / 切换指标均不漂移）
+    // scale 值域恒为 [-absMax, +absMax] → 0 值线固定；平移 / 切换指标均不漂移）。
     if (this.indicatorScaleAnchorSeries !== null) {
       this.indicatorScaleAnchorSeries.setData(
         lines[0].map((point, index) => ({
@@ -489,7 +493,7 @@ export class SubIndicatorPaneManager {
         })),
       )
     }
-    // MACD 柱点缓存（MacdBarPrimitive 自绘现取；仅 MACD 有值，其他指标为空不画柱）
+    // MACD 柱点缓存（MacdBarPrimitive 自绘现取；仅 MACD 有值，其他指标为空不画柱）。
     if (name === 'macd') {
       const [difLine, deaLine, histLine] = lines
       this.macdPoints = difLine.map((point, index) => ({
@@ -501,17 +505,17 @@ export class SubIndicatorPaneManager {
     } else {
       this.macdPoints = []
     }
-    // pane4 信息行值缓存（label + 线色 + time→value Map，现取 O(1)）
+    // pane4 信息行值缓存（label + 线色 + time→value Map，现取 O(1)）。
     this.subIndicatorValueMaps = lines.map((points, index) => ({
       label: subIndicatorLabels[name][index] ?? `LINE${index}`,
       color: colors[index] ?? colors[0],
       values: new Map(points.map((point) => [point.time, point.value])),
     }))
-    // 强制一帧全量重绘：切换指标后线 / 柱 / 刻度中间值全部更新
+    // 强制一帧全量重绘：切换指标后线 / 柱 / 刻度中间值全部更新。
     this.chart.applyOptions({})
   }
 
-  /** 附图指标数据重建入口（controller.applyData 调用；指标层关闭时为空操作） */
+  /** 附图指标数据重建入口（controller.applyData 调用；指标层关闭时为空操作）。 */
   rebuildDataIfOpen = (): void => {
     if (this.indicatorsBarSeries !== null) {
       this.rebuildData()
@@ -520,9 +524,13 @@ export class SubIndicatorPaneManager {
 
   /* ===================== 主题同步（applyTheme 调用） ===================== */
 
-  /** 主题切换后同步指标相关颜色（数据不变，仅换色 + 触发重绘）。
-   *  锚点 series 保持全透明（仅建 scale，不可见不覆盖，与主题无关）；
-   *  可见柱体由 MacdBarPrimitive 动态取新主题色（其内部 getTheme 现取）。 */
+  /**
+   * 主题切换后同步指标相关颜色（数据不变，仅换色 + 触发重绘）。
+   *
+   * @remarks
+   * 锚点 series 保持全透明（仅建 scale，不可见不覆盖，与主题无关）；
+   * 可见柱体由 MacdBarPrimitive 动态取新主题色（其内部 getTheme 现取）。
+   */
   updateThemeColors = (): void => {
     this.indicatorsBarSeries?.applyOptions({ color: transparentColor })
     this.indicatorScaleAnchorSeries?.applyOptions({ color: transparentColor })
@@ -533,9 +541,13 @@ export class SubIndicatorPaneManager {
   /**
    * 构建 pane4 指标信息行分段（所选附图指标各线数值，label + 线色，随十字星命中 bar /
    * 最新 bar）；指标层关闭（pane4 已移除）时不会被调用。
+   *
+   * @remarks
    * 分段间距与 pane2 成交量信息行一致：后续段前导 1 空格
    * （InfoLabelPaneView 按 measureText 无缝拼接，间距完全由文本决定）。
    * MACD 三段：DIF / DEA / MACD 柱值（柱值文本色取 subIndicatorColors.macd[2]）。
+   *
+   * @returns 分段文字数组（供 InfoLabelPrimitive 绘制）。
    */
   buildInfoSegments = (): TextSegment[] => {
     const bars = this.getBars()
@@ -546,7 +558,7 @@ export class SubIndicatorPaneManager {
       const value = line.values.get(time)
       if (value === undefined) return
       segments.push({
-        // 首段无前导空格、后续段前导 1 空格（与 pane2"成交量: x  MA5: x"一致）
+        // 首段无前导空格、后续段前导 1 空格（与 pane2"成交量: x  MA5: x"一致）。
         text: `${index === 0 ? '' : ' '}${line.label}: ${formatAxisSmart(value)}`,
         color: line.color,
       })
@@ -554,7 +566,13 @@ export class SubIndicatorPaneManager {
     return segments
   }
 
-  /** 销毁：清空全部内部引用 / 缓存（series 由控制器统一 chart.remove 释放） */
+  /**
+   * 销毁：清空全部内部引用 / 缓存。
+   *
+   * @remarks
+   * series 由控制器统一 chart.remove 释放，本方法只清空管理器自身持有的
+   * 数据缓存与 primitive 引用（防内存泄漏）。
+   */
   destroy = (): void => {
     this.activeSubIndicator = null
     this.showIndicator = false

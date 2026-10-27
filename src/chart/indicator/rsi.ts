@@ -1,19 +1,21 @@
-/**
- * rsi.ts —— 相对强弱指标 RSI（Pane2 附图指标）
- *
- * 东财算法（通达信公式内核）：
- *   RSI(N) = SMA(MAX(C-LC,0),N,1) * 100 / SMA(ABS(C-LC),N,1)
- * 其中 LC=REF(C,1)（首根取自身，涨/跌为 0）；SMA 为通达信递推平滑。
- * 默认参数 6/12/24，返回三条线（下标 0/1/2）。
- * 颜色见控制器 SUB_INDICATOR_META：
- *   RSI6 #666666 / RSI12 #F4AA0A / RSI24 #FF1DFF。
- */
+// rsi.ts —— 相对强弱指标 RSI（附图指标）。
+// 东财算法（通达信公式内核）：
+//   RSI(N) = SMA(MAX(C-LC,0),N,1) * 100 / SMA(ABS(C-LC),N,1)
+// 其中 LC=REF(C,1)（首根取自身，涨/跌为 0）；SMA 为通达信递推平滑。
+// 默认参数 6/12/24，返回三条线（下标 0/1/2）。
+// 颜色见主题 SUB_INDICATOR_META：RSI6 / RSI12 / RSI24。
 import type { IndicatorLine, K } from './types'
 import { tdxSMA, toLines } from './utils'
 
 /**
  * 计算 RSI 三条线（6/12/24）。
- * @param bars 升序 K 线数组
+ *
+ * @remarks
+ * 公式：RSI(N) = SMA(MAX(C−LC, 0), N, 1) × 100 / SMA(ABS(C−LC), N, 1)，
+ * LC = REF(C,1)（首根取自身）；SMA 为通达信递推平滑（见 utils.tdxSMA）。
+ *
+ * @param bars 升序 K 线数组。
+ * @returns [RSI6, RSI12, RSI24] 三条线。
  */
 export const calcRSI = (bars: K[]): IndicatorLine[][] => {
   const n = bars.length

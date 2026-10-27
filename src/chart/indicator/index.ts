@@ -1,23 +1,8 @@
-/**
- * index.ts —— 技术指标统一出口（indicators/）
- *
- * 目录规划（K 线 + 分时共用同一套指标文件，每个指标一个 ts 文件）：
- *   src/chart/indicators/
- *   ├── index.ts     ← 本文件：统一出口（K 线主图/附图 + 分时附图全部从这里导入）
- *   ├── types.ts     ← 公共类型（IndicatorLine/K/MainIndicators/SubIndicatorType/分时类型）
- *   ├── utils.ts     ← 共享计算工具（SMA/EMA/滚动最值等，v1.6.32 起无分时适配）
- *   ├── ma.ts expma.ts boll.ts sar.ts bbi.ts volumeMa.ts cr.ts   ← K 线专属
- *   └── rsi.ts kdj.ts macd.ts wr.ts dmi.ts bias.ts obv.ts cci.ts roc.ts
- *       └── 每文件导出 K 线版（calcX）
- *
- * v1.6.32：分时附图层（calcTS、toK、toKBars）已清理（当前 K 线组件未接线分时指标），
- * 后续接入分时副图时按需恢复。
- *
- * 新增指标步骤：
- *   1. 在 indicators/ 下新建 <name>.ts（导出 calc<Name>）；
- *   2. 附图指标：扩展 types.ts 的 SubIndicatorType 联合类型；
- *   3. 本文件 import + re-export。
- */
+// index.ts —— 技术指标统一出口。
+// K 线主图五指标（MA/EXPMA/BOLL/SAR/BBI）+ 附图十指标（含 CR）+ 类型 / 配置 / 工具
+// 全部从这里导出，外部只允许通过本文件导入指标能力。
+// 新增指标步骤：1. 新建 <name>.ts（导出 calc<Name>）；2. 附图指标扩展 types.ts 的
+// SubIndicatorType 联合；3. 本文件 import + re-export。
 import type { ChartDataPoint } from '../../types/chart'
 
 // ---- 类型 ----
@@ -71,10 +56,14 @@ import { calcCR } from './cr'
 
 /**
  * 计算单个附图指标（RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR，东财算法）。
- * 按名分发到对应 calc 函数，避免全量计算十指标（v1.7.0 性能：数据变化 / 指标切换
- * 时只重算当前选中指标，长数据（10000 根）下计算量降为 1/10）。
- * @param name 指标名（SubIndicatorType 联合类型之一）
- * @param bars 升序 K 线点数组（pointType='kline'）
+ *
+ * @remarks
+ * 按名分发到对应 calc 函数，避免全量计算十指标：数据变化 / 指标切换时只重算
+ * 当前选中指标，长数据（10000 根）下计算量降为 1/10。
+ *
+ * @param name 指标名，{@link SubIndicatorType} 联合类型之一。
+ * @param bars 升序 K 线点数组（pointType = 'kline'）。
+ * @returns 按线序的指标线数组，下标顺序见各指标 calc 文件注释。
  */
 export const calcSubIndicator = (
   name: SubIndicatorType,
