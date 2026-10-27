@@ -510,7 +510,7 @@ src/
 3. 遵循 §9.3 工程约束（驼峰命名 / 主题色集中 / 注释含入参出参）
 4. 提交信息建议格式：`v<版本> <变更摘要>（\n- 明细）`
 
-> 完整的 PR / Issue 流程约定将整理到独立的 `CONTRIBUTING.md`。
+> 完整的 PR / Issue 流程约定见 [CONTRIBUTING.md](CONTRIBUTING.md)（开发环境 / 命令 / 工程约束 / 测试要求 / 提交规范 / PR 与 Issue 流程）。
 
 ---
 

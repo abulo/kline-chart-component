@@ -510,7 +510,7 @@ PRs and issues are welcome. Before submitting:
 3. Follow the §9.3 engineering constraints (camelCase / centralized theme colors / comments with inputs & outputs)
 4. Suggested commit format: `v<version> <change summary>（\n- details）`
 
-> Full PR / issue process conventions will be consolidated into a separate `CONTRIBUTING.md`.
+> Full PR / issue process conventions are documented in [CONTRIBUTING.md](CONTRIBUTING.md) (development environment / commands / engineering constraints / test requirements / commit conventions / PR & issue flows).
 
 ---
 
