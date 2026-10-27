@@ -1,255 +1,322 @@
-# K 线图表组件（KLineChart）
+# KLineChart（kline-chart-component）
 
-> 仿东方财富 / 通达信风格的多 Pane K 线与分时图组件，基于 **Vue3 + TypeScript + lightweight-charts v5.2.1** 深度定制。
+> 仿东方财富 / 通达信风格的多 Pane K 线 + 分时（1d~5d）图表组件。基于 **Vue 3 + TypeScript + lightweight-charts v5.2.1** 深度定制，开箱即用、接口与实现分离，接入真实行情零改动。
 
-## 一、项目介绍
-
-### 1.1 这是什么
-
-一个开箱即用的**多 Pane K 线 / 分时图表组件**：单个 `<KLineChart>` 组件内通过 lightweight-charts v5 原生多 Pane 能力承载完整的行情图表，覆盖 **K 线主图、成交量、附图指标、分时（1d~5d）** 四大视图，支持深 / 浅双主题、十字星联动、tooltip 拖拽、键盘导航、实时数据订阅等交易软件级交互。
-
-组件遵循「**接口与实现分离**」设计：数据层统一走 `ChartDataService` 接口（历史分页拉取 + 实时订阅），内置 Mock 服务开箱即用，接入真实行情只需替换为 `HttpChartDataService`，组件零改动。
-
-### 1.2 技术栈
-
-| 依赖 | 版本 | 用途 |
-|---|---|---|
-| Vue | 3.5.x | 组件框架（Composition API） |
-| TypeScript | 5.x | 全仓强类型（`vue-tsc` 零错误） |
-| lightweight-charts | **5.2.1（锁定）** | 图表内核（原生多 Pane / timeScale / series） |
-| Vite | 5.x | 开发与构建 |
-| Vitest | 2.x | 单元测试（27 文件 / 257 用例） |
-
-包管理器：**pnpm**（`packageManager` 锁定 `pnpm@12.15.0`）；Node ≥ 24。
-
-### 1.3 核心能力总览
-
-- **多 Pane 布局**：pane0 信息行 → pane1 K 线主图 → pane2 成交量信息行 → pane3 成交量图 → pane4 指标信息行 → pane5 附图指标图；`main : volume : indicator = 60 : 20 : 20`，成交量组 / 指标组可独立开关（四态布局，见 §7）。
-- **K 线主图**：Candlestick 蜡烛 + 主图指标叠加（MA / EXPMA / BOLL / SAR / BBI 互斥）+ 最高 / 最低价标注 + 最后价线（priceLine）+ 空心红柱（上涨柱背景填充 + 红框）。
-- **分时图（1d~5d）**：pane1 用 LineSeries 双线（价格 + 均价），成交量 / MACD 用 1px 直方图，栅格竖线按周期 4/2/3/4/5 等分，左右刻度以「首根 preClose」为中值对称等差扩展，右侧同步百分比刻度。
-- **附图指标**：RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR 十指标互斥单选（分时无 CR），指标信息行 + 自绘指标图。
-- **十字星联动**：竖 / 横线 + 左 / 右刻度指示值 + 数据浮层 tooltip（K 线 OHLC / 分时价格均价，含涨跌着色）；tooltip 可拖拽、文字可选中，边界 clamp 在 pane1~pane5 数据区。
-- **键盘导航**：左右方向键移动十字星（每按 1 bar、按住 40ms 自动连发），到可视区边缘自动滚动视口跟随。
-- **主题**：深 / 浅双系，所有颜色集中在 `theme.ts` 公共文件（页面零散落硬编码色值）；红涨绿跌、平盘白 / 黑。
-- **数据服务**：Mock 服务（约 3 年日 K + 分时 + 分钟 K 聚合 + A股情绪形态注入 + 模拟实时推送，LRU 内存上限防溢出）；Http 服务（HTTP 历史 + WS / SSE / Poll 三种实时模式）；`data` prop 直通自定义数据。
-
-### 1.4 架构分层
-
-```
-┌─────────────────────────────────────────────────────┐
-│ 接入层  App.vue（工具栏 / 周期栏 / 语言 / 主题）        │
-│         KLineChart.vue（组件：Props / 事件 / 控制器 ref）│
-├─────────────────────────────────────────────────────┤
-│ 控制器层  KLineChartController（数据 / 生命周期 / API） │
-│   ├─ chartDataBridge（历史 / 翻页 / 实时订阅编排）      │
-│   ├─ realtimePipeline（实时增量管线 / 节流消费）        │
-│   ├─ indicatorManager / subIndicatorPaneManager       │
-│   ├─ crosshairManager / timeshareManager              │
-│   └─ paneFactory / paneLayout / viewport              │
-├─────────────────────────────────────────────────────┤
-│ 数据层    ChartDataService（接口）                     │
-│   ├─ MockChartDataService（本地模拟）                  │
-│   ├─ HttpChartDataService（HTTP/SSE/WS/Poll 真实行情） │
-│   └─ mockDataGenerator（纯数据生成，可单测）            │
-├─────────────────────────────────────────────────────┤
-│ 渲染层    lightweight-charts v5 内核 + 自绘 Primitive   │
-│   （栅格 / 左刻度标签 / 成交量柱 / MACD 柱 / 指标线 /    │
-│     SAR 点 / 高低价标注 / priceLine / tooltip / 边框）  │
-└─────────────────────────────────────────────────────┘
-```
-
-数据流：`init()` 拉最新页 → `setKlineData` 重绘 + fitContent → 订阅实时 → 实时点经 `realtimePipeline` 节流增量更新；平移到达最左自动 `loadEarlier` 分页拉更早历史（`before` 锚点 + 去重升序前置插入）。
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-blue)](https://www.typescriptlang.org/)
+[![Vue](https://img.shields.io/badge/Vue-3.5.44-42b883)](https://vuejs.org/)
+[![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.2.1-0593ff)](https://github.com/tradingview/lightweight-charts)
+[![pnpm](https://img.shields.io/badge/pnpm-12.15.0-orange)](https://pnpm.io/)
+[![Tests](https://img.shields.io/badge/tests-257%20passed-brightgreen)](tests/)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-success)](https://abulo.github.io/kline-chart-component/)
 
 ---
 
-## 二、快速开始
+## 目录
 
-### 2.1 安装依赖
+- [1. 特性 Features](#1-特性-features)
+- [2. 安装 Installation](#2-安装-installation)
+- [3. 快速上手 Quick Start](#3-快速上手-quick-start)
+- [4. 文档入口 Documentation](#4-文档入口-documentation)
+- [5. API 参考 API Reference](#5-api-参考-api-reference)
+- [6. 配置项 Options](#6-配置项-options)
+- [7. 类型导出 Types](#7-类型导出-types)
+- [8. 示例 Examples](#8-示例-examples)
+- [9. 本地开发 Development](#9-本地开发-development)
+- [10. 贡献指南 Contributing](#10-贡献指南-contributing)
+- [11. 变更日志 Changelog](#11-变更日志-changelog)
+- [12. 常见问题 FAQ](#12-常见问题-faq)
+- [13. 致谢 Credits](#13-致谢-credits)
+- [14. 许可证 License](#14-许可证-license)
+
+---
+
+## 1. 特性 Features
+
+- 💪 **100% TypeScript**：全仓强类型（`vue-tsc --noEmit` 零错误），组件 Props / 事件 / 控制器方法均有完整类型签名；统一数据点类型 `ChartDataPoint` + `pointType` 类型守卫，三种数据（K 线 / 分时 / 集合竞价）共用同一数组
+- 🧬 **接口与实现分离**：数据层统一走 `ChartDataService` 接口（历史分页 + 实时订阅），内置 Mock 服务开箱即用，接入真实行情只需替换 `HttpChartDataService`，组件零改动
+- 📦 **多 Pane 布局**：pane0 信息行 → pane1 主图 → pane2 量信息行 → pane3 成交量图 → pane4 指标信息行 → pane5 附图指标图；`60 : 20 : 20` 可配，成交量组 / 指标组独立开关（四态布局）
+- 🕯️ **K 线主图**：Candlestick + 主图指标（MA / EXPMA / BOLL / SAR / BBI 互斥）+ 最高 / 最低价标注 + 最后价线（priceLine，虚线可开关）+ 空心红柱
+- ⏱️ **分时图（1d~5d）**：LineSeries 双线（价格 + 均价，均价可开关）、成交量 / MACD 1px 直方图、栅格竖线 4/2/3/4/5 等分、左右刻度以首根 preClose 为中值对称等差扩展（右侧同步百分比）、涨跌三态着色
+- 📈 **十种附图指标**：RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR 互斥单选（分时无 CR），各指标纯函数独立可单测
+- 🎯 **十字星联动**：竖 / 横虚线（6px 线 / 4px 空）+ 左 / 右刻度指示值 + 可拖拽 tooltip（含涨跌着色）；速度自适应——快速移动像素级跟手、慢速停驻磁吸吸附
+- ⌨️ **键盘导航**：左右方向键逐 bar 移动，到可视区边缘自动平移跟随，按住 40ms 自动连发
+- 🎨 **深 / 浅双主题**：全部颜色集中在 `theme.ts` 公共文件（页面零散落硬编码色值），红涨绿跌、平盘深系白 / 浅系黑
+- 🧠 **内存与性能**：十字星 rAF 节流、primitive 视图单例复用、可视区渲染裁剪（10000 条数据下每帧仅绘制可视 ~120 根）、Mock 池 LRU 淘汰（`touchCache`）、Http 历史缓存 LRU + 已知 total 上限，`destroy()` 完整退订防泄漏
+- ✅ **严格模式**：`strict: true` 下类型检查零错误；vitest 27 文件 / 257 用例全绿（含 LRU 缓存、分时、指标、内存相关专测）
+
+---
+
+## 2. 安装 Installation
+
+当前以**源码仓库**形态交付（GitHub Pages 演示在线可用）；npm 包发布形态见 [Roadmap](#）。
 
 ```bash
-pnpm install        # 锁定 lightweight-charts 5.2.1 / vue 3.5.x
-pnpm dev            # 开发预览 http://127.0.0.1:5210
-pnpm test           # vitest 单元测试
-pnpm build          # vue-tsc 类型检查 + 构建（产物 dist/）
+git clone git@github.com:abulo/kline-chart-component.git
+cd kline-chart-component
+pnpm install
 ```
 
-### 2.2 最小用法
+环境要求：
 
-```html
-<KLineChart
-  symbol="300750"
-  name="宁德时代"
-  theme="dark"
-  :period="'day'"
-  main-indicator="ma"
-  sub-indicator="macd"
-  @period-change="onPeriodChange"
-/>
-```
+| 项 | 要求 |
+|---|---|
+| Node.js | ≥ 24（开发环境锁定 24.16.0） |
+| pnpm | 12.15.0（`packageManager` 字段锁定 `pnpm@12.15.0`） |
+| TypeScript | 6.0.3（devDependency 锁定，`strict: true`） |
 
-父组件只需维护状态并传 Props（单向数据流）；放大 / 缩小 / 左移 / 右移等瞬时动作经 `ref` 直接调用控制器：
-
-```ts
-const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
-chartRef.value?.controller?.zoomIn()
-chartRef.value?.controller?.setPeriod('1d')
-```
-
-### 2.3 无后端直通自定义数据
-
-```html
-<KLineChart
-  symbol="600519"
-  name="贵州茅台"
-  :period="'day'"
-  :data="myBars"          <!-- ChartDataPoint[]，提供时跳过 service 拉取 / 分页 / 实时 -->
-/>
-```
+> 依赖锁定：`lightweight-charts@5.2.1`（图表内核，版本锁定防 API 漂移）、`vue@3.5.44`、`vite@8.3.5`、`vitest@5.0.5`、`vue-tsc@3.3.13`。
 
 ---
 
-## 三、组件 API 文档（KLineChart.vue）
+## 3. 快速上手 Quick Start
 
-### 3.1 Props（入参总表）
+### 3.1 最小用法（Vue 组件）
 
-| Prop | 类型 | 默认 | 说明 |
-|---|---|---|---|
-| `symbol` | `string` | `''` | 股票代码（pane0 信息行：名称 [代码]；`setSymbol` 可更新） |
-| `name` | `string` | `''` | 股票名称（pane0 信息行显示） |
-| `period` | `PeriodValueOrEmpty` | `'day'` | 当前周期（外部可控；变化时经 service 重新拉取该周期数据；`''` = 周期未设置，组件不发起请求） |
-| `theme` | `ChartThemeName` | `'dark'` | 主题：`'dark'` 深系 / `'light'` 浅系（全部颜色见 `theme.ts`） |
-| `timeAxis` | `boolean` | `true` | 底部时间轴显隐（切换时重算 pane 高度） |
-| `leftScale` | `boolean` | `false` | 左刻度区显隐（统一宽 72px，切换后 fitContent） |
-| `rightScale` | `boolean` | `false` | 右刻度区显隐（同左） |
-| `mainIndicator` | `MainIndicatorType \| ''` | `''` | 主图指标：`'ma' / 'expma' / 'boll' / 'sar' / 'bbi'`（`''` = 关；互斥，点击已激活项关闭） |
-| `subIndicator` | `SubIndicatorType \| ''` | `''` | 附图指标：`'rsi' / 'kdj' / 'macd' / 'wr' / 'dmi' / 'bias' / 'obv' / 'cci' / 'roc' / 'cr'`（`''` = 关指标层；互斥） |
-| `service` | `ChartDataService` | `MockChartDataService` 单例 | 数据服务实现（接入真实行情传 `HttpChartDataService` 实例，组件零改动） |
-| `data` | `ChartDataPoint[]` | `undefined` | 外部自定义数据（提供时优先渲染，跳过 service 拉取 / 分页 / 实时，v1.6.28） |
-| `format` | `string` | `''` | 时间格式模板（如 `'YYYY-MM-DD'` / `'YYYY-MM-DD HH:mm'`）；缺省按周期自动：K 线 `YYYY-MM-DD`、分时 `HH:mm` |
-| `priceLineVisible` | `boolean` | `true` | 最后价线显隐（K 线主图自绘 priceLine） |
-| `volumeVisible` | `boolean` | `true` | 成交量组显隐（pane2 信息行 + pane3 成交量图；关闭销毁整组 + 布局重算；关闭时 tooltip 与 pane0 信息行隐藏量额） |
-| `avgLineVisible` | `boolean` | `true` | 分时均价线显隐（关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价；仅分时周期生效） |
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import KLineChart from './components/KLineChart.vue'
+import type { PeriodValue } from './chart/periods'
 
-### 3.2 事件（出参总表）
+const period = ref<PeriodValue>('day')
+const onPeriodChange = (value: PeriodValue) => {
+  period.value = value
+}
+</script>
 
-| 事件 | 出参 | 触发时机 |
+<template>
+  <KLineChart
+    symbol="300750"
+    name="宁德时代"
+    :period="period"
+    theme="dark"
+    main-indicator="ma"
+    sub-indicator="macd"
+    @period-change="onPeriodChange"
+  />
+</template>
+```
+
+> 父组件只维护状态并传 Props（单向数据流）；放大 / 缩小 / 左移 / 右移等瞬时动作经 `ref` 直接调控制器（见 [示例 Examples](#8-示例-examples)）。
+
+### 3.2 无后端直通自定义数据
+
+```vue
+<script setup lang="ts">
+import KLineChart from './components/KLineChart.vue'
+import type { ChartDataPoint } from './types/chart'
+
+const myBars: ChartDataPoint[] = [
+  // { time: 1728000000, open: 10, high: 10.5, low: 9.8, close: 10.2, volume: 12345, amount: 126000000, ... }
+]
+</script>
+
+<template>
+  <KLineChart symbol="600519" name="贵州茅台" :period="'day'" :data="myBars" />
+</template>
+```
+
+> 提供 `data` 时组件**跳过 service 拉取 / 分页 / 实时订阅**，直接渲染自定义数据。
+
+---
+
+## 4. 文档入口 Documentation
+
+- **在线预览（GitHub Pages）**：https://abulo.github.io/kline-chart-component/
+- **英文版 README**：[README.en.md](README.en.md)
+- **版本记录（Changelog）**：本文件底部 [版本记录](#11-变更日志-changelog)
+- **源码目录索引**：见 [本地开发 Development](#9-本地开发-development) 的目录结构
+
+---
+
+## 5. API 参考 API Reference
+
+### 5.1 组件 Props（入参）
+
+```ts
+interface KLineChartProps {
+  symbol?: string            // 股票代码
+  name?: string              // 股票名称
+  period?: PeriodValueOrEmpty // 当前周期（'' = 未设置，不发起请求）
+  theme?: string             // 'dark' | 'light'
+  timeAxis?: boolean         // 底部时间轴
+  leftScale?: boolean        // 左刻度区
+  rightScale?: boolean       // 右刻度区
+  mainIndicator?: string     // 主图指标（'' = 关）
+  subIndicator?: string      // 附图指标（'' = 关）
+  service?: ChartDataService // 数据服务（默认 Mock 单例）
+  data?: ChartDataPoint[]    // 外部自定义数据（优先渲染）
+  format?: string            // 时间格式模板（缺省按周期自动）
+  priceLineVisible?: boolean // 最后价线
+  volumeVisible?: boolean    // 成交量组
+  avgLineVisible?: boolean   // 分时均价线
+  fullscreen?: boolean       // 全屏
+}
+```
+
+完整入参总表见 [6. 配置项 Options](#6-配置项-options)。
+
+### 5.2 组件事件（出参）
+
+| 事件 | 出参类型 | 触发时机 |
 |---|---|---|
-| `period-change` | `value: PeriodValue` | 周期变化时触发（App 周期栏点击 / 内部切换） |
-| `status-change` | `status: ChartLoadStatus` | 加载状态变化：`'idle' / 'loading'（首载）/ 'loading-older'（左滑分页）/ 'ready' / 'error'` |
+| `period-change` | `(value: PeriodValue) => void` | 周期变化时触发 |
+| `status-change` | `(status: ChartLoadStatus) => void` | 加载状态变化：`'idle' \| 'loading' \| 'loading-older' \| 'ready' \| 'error'` |
+| `fullscreen-change` | `(fullscreen: boolean) => void` | 组件内"退出全屏"按钮触发 |
 
-### 3.3 控制器方法（ref 访问，入参 → 出参）
+### 5.3 控制器方法（ref 访问，入参 → 出参）
 
 ```ts
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 
 // —— 瞬时动作（无入参） ——
-chartRef.value?.controller?.zoomIn()        // 放大（barSpacing 限幅 2~80）
-chartRef.value?.controller?.zoomOut()       // 缩小
-chartRef.value?.controller?.shiftLeft()     // 左移（逻辑范围平移一屏宽，到最左自然停）
-chartRef.value?.controller?.shiftRight()    // 右移（同左）
+chartRef.value?.controller?.zoomIn()      // 放大（barSpacing 限幅 2~80）
+chartRef.value?.controller?.zoomOut()     // 缩小
+chartRef.value?.controller?.shiftLeft()   // 左移一屏宽（到最左自然停）
+chartRef.value?.controller?.shiftRight()  // 右移
 
 // —— 数据与标的（入参后生效） ——
-chartRef.value?.controller?.init()                     // 无入参：拉历史 + 重绘 + 订阅实时（组件自动调用）
-chartRef.value?.controller?.setSymbol('600519')        // 入参 symbol: string —— 更新股票代码（pane0 显示 + 后续 init 生效）
-chartRef.value?.controller?.setName('贵州茅台')         // 入参 name: string —— 更新股票名称
-chartRef.value?.controller?.setService(mockService)    // 入参 service: ChartDataService —— 更新数据服务实例（后续 init 生效）
-chartRef.value?.controller?.setPeriod('day')           // 入参 period: PeriodValue —— 更新周期（时间格式随之切换）
+chartRef.value?.controller?.init()                    // 无入参：拉历史 + 重绘 + 订阅实时（组件自动调用）
+chartRef.value?.controller?.setSymbol('600519')       // (symbol: string) → 更新股票代码
+chartRef.value?.controller?.setName('贵州茅台')        // (name: string) → 更新股票名称
+chartRef.value?.controller?.setService(mockService)   // (service: ChartDataService) → 换数据服务
+chartRef.value?.controller?.setPeriod('day')          // (period: PeriodValue) → 切换周期（时间格式联动）
 
 // —— 状态设置（Props watch 已自动调用；手动仅用于编程式控制） ——
-chartRef.value?.controller?.applyTheme('light')                  // 入参 theme: ChartThemeName
-chartRef.value?.controller?.toggleTimeAxis(false)                // 入参 visible: boolean
-chartRef.value?.controller?.setLeftScaleVisible(true)            // 入参 visible: boolean
-chartRef.value?.controller?.setRightScaleVisible(true)           // 入参 visible: boolean
-chartRef.value?.controller?.setMainIndicator('boll')             // 入参 name: MainIndicatorType | null
-chartRef.value?.controller?.setSubIndicator('kdj')               // 入参 name: SubIndicatorType | null（null = 关指标层）
+chartRef.value?.controller?.applyTheme('light')       // (theme: ChartThemeName)
+chartRef.value?.controller?.toggleTimeAxis(false)     // (visible: boolean)
+chartRef.value?.controller?.setLeftScaleVisible(true) // (visible: boolean)
+chartRef.value?.controller?.setRightScaleVisible(true)
+chartRef.value?.controller?.setMainIndicator('boll')  // (name: MainIndicatorType | null)
+chartRef.value?.controller?.setSubIndicator('kdj')    // (name: SubIndicatorType | null, null = 关)
 
 // —— 生命周期（组件卸载自动调用） ——
-chartRef.value?.controller?.destroy()          // 无入参：移除监听 / 断开 ResizeObserver / detach primitive / chart.remove()
+chartRef.value?.controller?.destroy()                 // 无入参：退订实时 / 断开 ResizeObserver / detach primitive / chart.remove()
 
 // —— 加载状态（ref 访问当前值） ——
-chartRef.value?.loadStatus                     // 'idle' | 'loading' | 'loading-older' | 'ready' | 'error'
+chartRef.value?.loadStatus                            // 'idle' | 'loading' | 'loading-older' | 'ready' | 'error'
 ```
 
 ---
 
-## 四、数据接入（src/services）
+## 6. 配置项 Options
 
-### 4.1 服务接口（chartDataService.ts）
+### 6.1 组件 Props 总表
 
-组件数据层统一走 `ChartDataService` 接口，组件 / 控制器零依赖具体实现：
-
-| 成员 | 签名 | 入参说明 | 出参说明 |
+| Prop | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `fetchLimit` | `readonly number` | 构造时必填（每页拉取条数） | — |
-| `fetchHistory` | `(query: HistoryQuery) => Promise<ChartDataPoint[]>` | `query` 见下 | 按 `time` 升序的数据点数组；**返回条数 < `limit` 表示已无更早数据** |
-| `subscribeRealtime` | `(symbol: string, period: string, handler: RealtimeHandler) => () => void` | `symbol` 证券代码 / `period` 周期 | 返回**取消订阅函数**（组件 / 控制器退订时调用，防泄漏） |
+| `symbol` | `string` | `''` | 股票代码（pane0 信息行：名称 [代码]） |
+| `name` | `string` | `''` | 股票名称 |
+| `period` | `PeriodValueOrEmpty` | `'day'` | 当前周期；变化时经 service 重新拉取；`''` = 周期未设置，组件不发起请求 |
+| `theme` | `ChartThemeName` | `'dark'` | `'dark'` 深系 / `'light'` 浅系（颜色集中在 `theme.ts`） |
+| `timeAxis` | `boolean` | `true` | 底部时间轴显隐（切换时重算 pane 高度） |
+| `leftScale` | `boolean` | `false` | 左刻度区显隐（统一宽 72px，切换后 fitContent） |
+| `rightScale` | `boolean` | `false` | 右刻度区显隐 |
+| `mainIndicator` | `MainIndicatorType \| ''` | `''` | 主图指标 `'ma' / 'expma' / 'boll' / 'sar' / 'bbi'`（互斥，点击已激活项关闭） |
+| `subIndicator` | `SubIndicatorType \| ''` | `''` | 附图指标 `'rsi' / 'kdj' / 'macd' / 'wr' / 'dmi' / 'bias' / 'obv' / 'cci' / 'roc' / 'cr'`（互斥） |
+| `service` | `ChartDataService` | Mock 单例 | 数据服务实现（真实行情传 `HttpChartDataService`） |
+| `data` | `ChartDataPoint[]` | `undefined` | 外部自定义数据（提供时优先渲染，跳过 service） |
+| `format` | `string` | `''` | 时间格式模板（如 `'YYYY-MM-DD'` / `'YYYY-MM-DD HH:mm'`）；缺省按周期自动 |
+| `priceLineVisible` | `boolean` | `true` | 最后价线显隐（K 线主图） |
+| `volumeVisible` | `boolean` | `true` | 成交量组（pane2 信息行 + pane3 图；关闭销毁整组 + 布局重算 + tooltip / 信息行隐藏量额） |
+| `avgLineVisible` | `boolean` | `true` | 分时均价线（关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价；仅分时生效） |
+| `fullscreen` | `boolean` | `false` | 全屏（true 铺满浏览器视口；Esc 退出） |
 
-`HistoryQuery`（历史查询入参）：
-
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `symbol` | `string` | ✓ | 证券代码，如 `'600000.SH'` |
-| `period` | `string` | ✓ | 周期：`'1d'`（日线）/ `'1m' / '5m' / '15m' / '60m'` 分钟 K |
-| `before` | `number` | ✗ | 拉取该时间戳（秒）**之前**的数据；不传取最新一页 |
-| `limit` | `number` | ✓ | 每页条数 |
-| `total` | `number` | ✗ | 当前已持有数据条数；**HttpChartDataService 自动计算**（累计去重数 与 后端上次 `total` 较大值），以 `total=<n>` 附加到请求 URL 供后端增量 / 续传判断；调用方可显式传入覆盖 |
-
-`RealtimeHandler`（实时回调出参）：`(point: ChartDataPoint) => void` —— 实时推送数据点，`time` 与最后一根相同 = 刷新该根，更大 = 追加新 K 线。
-
-### 4.2 MockChartDataService（默认，本地模拟）
+### 6.2 MockChartDataService 构造参数
 
 ```ts
-new MockChartDataService({ fetchLimit: 200 })   // 必填：每页拉取条数
+interface MockChartDataServiceOptions {
+  /** 每页拉取条数（历史 / 左滑分页共用，必填） */
+  fetchLimit: number
+}
 ```
 
-- 内置约 3 年日 K 池 + A股情绪形态注入（一字板 1~10 连板 / 厂字板 / 尾盘上板 / 地天板 / 天地天板 / 尾盘下板 / 天底板 / 地天地板，涨跌停按主板 ±10%）；
-- 分时（1d~5d）按最近 N 个交易日生成 241 分钟分时点 / 交易日（价格线 / 均价线 / 量，`timesharePatternPath` 8 种确定性情绪路径）；
-- 分钟 K（60/30/15/5/1 分）按真实交易时段聚合、布朗桥锚定日 K 开收（跨周期价格自洽）；周 / 月 K 由日 K 聚合；
-- 模拟实时推送（K 线 tick / 分时每分钟刷新）；
-- **内存管理**：`touchCache` LRU 淘汰——日 K / 分时池最多 4 个 symbol、派生周期池最多 8 个 key、实时定时器最多 8 个订阅，超限淘汰最久未使用（防多 symbol 切换内存无限增长）。
-
-### 4.3 HttpChartDataService（接入真实行情）
+### 6.3 HttpChartDataService 构造参数
 
 ```ts
-new HttpChartDataService({
-  fetchLimit: 200,                    // 必填：每页拉取条数（历史 / 左滑分页共用）
-  historyUrl: 'http://<host>/api/kline/history', // 必填：历史完整地址（含自有路由 / query）
-  realtimeTransport: 'ws',            // 可选：'ws'（默认）| 'sse' | 'poll'
-  wsUrl: 'wss://<host>/ws',           // 'ws' 模式必填完整地址
-  sseUrl: 'https://<host>/sse',       // 'sse' 模式必填完整地址
-  sseEventName: 'message',            // 可选：SSE 事件名，默认 'message'
-  pollUrl: 'https://<host>/api/kline/latest', // 'poll' 模式必填完整地址
-  pollIntervalMs: 3000,               // 可选：轮询频率 ms，默认 3000
-  timeoutMs: 8000,                    // 可选：fetch 超时 ms，默认 8000
-  headers: { Authorization: 'Bearer <token>' },  // 可选：注入所有 HTTP 请求头
-  cookies: { session: 'abc123' },     // 可选：对象形式，序列化注入 Cookie 头
-  params: { market: 'SH' },           // 可选：附加所有请求的 URL query
-  cache: true,                        // 可选：历史缓存开关，默认 true
-  maxCacheEntries: 12,                // 可选：LRU 缓存条目上限（symbol|period 组合数）
-  maxKnownTotals: 64,                 // 可选：「已知总条数」记录上限（防内存无限增长）
-  cacheTtlMs: 30000,                  // 可选：最新页缓存有效期 ms（更早分页不受限）
-})
+interface HttpChartDataServiceOptions {
+  fetchLimit: number                  // 必填：每页拉取条数
+  historyUrl: string                  // 必填：历史完整地址（GET?symbol=&period=&before=&limit=&total=）
+  realtimeTransport?: 'ws' | 'sse' | 'poll' // 实时模式，默认 'ws'
+  wsUrl?: string                      // 'ws' 模式必填完整地址
+  sseUrl?: string                     // 'sse' 模式必填完整地址
+  sseEventName?: string               // SSE 事件名，默认 'message'
+  pollUrl?: string                    // 'poll' 模式必填完整地址
+  pollIntervalMs?: number             // 轮询频率 ms，默认 3000
+  timeoutMs?: number                  // fetch 超时 ms，默认 8000
+  headers?: Record<string, string>    // 注入所有 HTTP 请求头
+  cookies?: Record<string, string>    // 对象形式，序列化注入 Cookie 头
+  params?: Record<string, string>     // 附加所有请求的 URL query
+  cache?: boolean                     // 历史缓存开关，默认 true
+  maxCacheEntries?: number            // LRU 缓存条目上限（symbol|period 组合数）
+  maxKnownTotals?: number             // 「已知总条数」记录上限（防内存无限增长）
+  cacheTtlMs?: number                 // 最新页缓存有效期 ms（更早分页不受限）
+}
 ```
-
-**后端接口约定**：`GET {historyUrl}?symbol=&period=&before=&limit=[&total=]` 返回 `{ code: 200, data: ChartDataPoint[] }`（`time` 升序；返回条数 < `limit` 表示无更早数据）。
-
-**实时模式**：
-- `ws`：WebSocket，无法注入自定义请求头（浏览器限制），鉴权依赖自定义头时改用 `sse` / `poll`；
-- `sse`：基于 `@microsoft/fetch-event-source`（fetch 流式读取），可携带自定义 `headers` / `cookies`，断线自动 3s 重连；HTTP 401/403 中止订阅防死循环；
-- `poll`：HTTP 轮询 `pollUrl`，间隔 `pollIntervalMs`。
 
 ---
 
-## 五、数据点格式（ChartDataPoint）
+## 7. 类型导出 Types
 
-统一数据点类型（`src/types/chart.ts`），三种数据类型合并为同一数组，通过 `pointType` 字段做类型守卫：
+公共类型全部带 `export` 声明，消费方可从源码直接 import（npm 发布后将同步 `.d.ts`）：
+
+| 类型 | 定义位置 | 说明 |
+|---|---|---|
+| `ChartDataPoint` | `src/types/chart.ts` | 统一数据点（K 线 / 分时 / 集合竞价），`pointType` 类型守卫 |
+| `HistoryQuery` | `src/services/chartDataService.ts` | 历史查询入参（symbol / period / before / limit / total） |
+| `RealtimeHandler` | `src/services/chartDataService.ts` | 实时回调出参：`(point: ChartDataPoint) => void` |
+| `ChartDataService` | `src/services/chartDataService.ts` | 数据服务接口（组件只依赖它） |
+| `MainIndicatorType` | `src/chart/indicator/` | 主图指标名联合类型：`'ma' \| 'expma' \| 'boll' \| 'sar' \| 'bbi'` |
+| `SubIndicatorType` | `src/chart/indicator/` | 附图指标名联合类型：10 项 |
+| `PeriodValue / PeriodValueOrEmpty` | `src/chart/periods.ts` | 周期值 / 周期值或空 |
+| `ChartThemeName` | `src/chart/core/theme.ts` | 主题名：`'dark' \| 'light'` |
+| `ChartLoadStatus` | `src/chart/core/types.ts` | 加载状态联合类型 |
+
+`ChartDataPoint` 核心字段（完整字段表见 [8.3 数据点格式](#83-数据点格式chartdatapoint)）：
+
+```ts
+export interface ChartDataPoint {
+  /** 秒级时间戳（lightweight-charts 标准时间格式） */
+  time: number
+  /** 交易日期 'YYYY-MM-DD' */
+  tradeDate: string
+  /** 昨收价（涨跌幅 / 涨跌着色基准） */
+  preClose: number
+  /** 类型守卫：'kline' | 'timeshare' | 'auction' */
+  pointType: 'kline' | 'timeshare' | 'auction'
+  // K 线：open / high / low / close / volume / amount / risePrice / riseRate
+  // 分时：price / avgPrice / volume / amount
+  // 集合竞价：matched / unMatched / matchType / isAuction
+  [key: string]: any
+}
+```
+
+---
+
+## 8. 示例 Examples
+
+### 8.1 基础 K 线（默认 Mock 数据）
+
+```vue
+<KLineChart symbol="600000" name="浦发银行" :period="'day'" theme="dark" />
+```
+
+### 8.2 分时图（1d~5d）
+
+```vue
+<KLineChart symbol="300750" name="宁德时代" :period="'1d'" theme="dark" />
+```
+
+> 分时状态下：平移 / 放大缩小按钮隐藏、无主图指标、附图无 CR、时间格式 `YYYY-MM-DD HH:mm`、均价线可关。
+
+### 8.3 数据点格式（ChartDataPoint）
 
 | 字段 | 类型 | pointType | 说明 |
 |---|---|---|---|
-| `time` | `number` | 全部 | 秒级时间戳（lightweight-charts 标准时间格式） |
+| `time` | `number` | 全部 | 秒级时间戳（严格递增，库断言要求） |
 | `tradeDate` | `string` | 全部 | 交易日期 `YYYY-MM-DD` |
-| `preClose` | `number` | 全部 | 昨收价（涨跌幅 / 涨跌着色基准） |
-| `pointType` | `'kline' \| 'timeshare' \| 'auction'` | 全部 | 数据点类型标记（类型守卫） |
+| `preClose` | `number` | 全部 | 昨收价（涨跌着色 / 分时刻度中值 / 涨跌幅基准） |
+| `pointType` | `'kline' \| 'timeshare' \| 'auction'` | 全部 | 数据点类型标记 |
 | `open / high / low / close` | `number` | kline | 开 / 高 / 低 / 收 |
 | `volume` | `number` | kline | 成交量（手 / 股） |
 | `amount` | `number` | kline | 成交额 |
@@ -260,95 +327,60 @@ new HttpChartDataService({
 | `matchType` | `-1 \| 1` | auction | 买卖方向：-1 卖多（绿）/ 1 买多（红） |
 | `isAuction` | `boolean` | auction | 是否集合竞价时段 |
 
----
+### 8.4 接入真实行情（HttpChartDataService）
 
-## 六、周期与指标
+```ts
+import { HttpChartDataService } from './services/httpChartDataService'
 
-### 6.1 周期表（periods.ts）
+const service = new HttpChartDataService({
+  fetchLimit: 200,
+  historyUrl: 'http://<host>/api/kline/history',
+  realtimeTransport: 'ws',
+  wsUrl: 'wss://<host>/ws',
+})
 
-| value | label | 说明 |
-|---|---|---|
-| `1d ~ 5d` | 1日分时 ~ 5日分时 | 分时图（栅格竖线 4/2/3/4/5 等分，时间轴 `HH:mm`，241 分钟点/日） |
-| `day` | 日K | 时间轴 `YYYY-MM-DD` |
-| `week / month` | 周K / 月K | 由日 K 聚合 |
-| `60min / 30min / 15min / 5min / 1min` | 60分K ~ 1分K | 按真实交易时段聚合 |
-
-### 6.2 主图指标（pane1，互斥）
-
-| 指标 | 线 | 说明 |
-|---|---|---|
-| MA | 5 / 10 / 20 / 30 / 60 | 简单移动平均 |
-| EXPMA | 12 / 50 | 指数平滑移动平均 |
-| BOLL | 上 / 中 / 下轨（N=20, K=2） | 布林带 |
-| SAR | 抛物点 | 多头红 / 空头绿圆点 |
-| BBI | 单线 | 多空指标 (MA3+MA6+MA12+MA24)/4 |
-
-### 6.3 附图指标（pane5，互斥；分时无 CR）
-
-RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR；MACD 红绿柱 K 线为空心红柱 + 绿实心，分时为 1px 直方图。
-
-### 6.4 分时特殊规则（v1.7.0~v1.7.4）
-
-- pane1 用 LineSeries 双线（价格 + 均价），无 K 线主图指标；
-- pane3 成交量用直方图（Histogram，1px），不用 K 线柱体自绘；MACD 同；
-- 附图指标无 CR；App 平移 / 缩放按钮隐藏；分时不可平移；
-- 时间格式 `YYYY-MM-DD HH:mm`（tooltip / 信息行）；
-- 成交量红绿柱：第一根按「本分钟价 vs preClose」；其余按「本分钟价 vs 上一分钟价」（上涨红 / 下跌绿 / 平盘白黑）；
-- 均价线可开关（`avgLineVisible`，v1.7.4）；关闭时 pane0 信息行 / tooltip 同步隐藏均价。
-
----
-
-## 七、布局结构
-
-指标开启（6 Pane，`main : volume : indicator = 60 : 20 : 20`）：
-
-```
-┌──────────────────────────────────────┐
-│ pane0  信息行（名称[代码] 时间 + 指标值）│
-│ pane1  K 线主图（Candlestick）         │  ← main 组 60%
-│ pane2  成交量信息行（成交量 + MA5/MA10）│
-│ pane3  成交量（自绘红绿柱）             │  ← volume 组 20%
-│ pane4  指标信息行（各线数值，固定 22px）│
-│ pane5  附图指标（十指标互斥）           │  ← indicator 组 20%
-└──────────────────────────────────────┘
-    底部：共享时间轴（timeScale，可开关）
+// 组件内直接传入 service；控制器 init 时按需分页 + 订阅实时
+<KLineChart :service="service" symbol="600000" name="浦发银行" :period="'day'" />
 ```
 
-成交量组 / 指标组开关组合出**四态布局**：
+### 8.5 编程式控制（ref 调用控制器）
 
-| 成交量组 | 附图指标 | Pane 数 | 内容比例 |
-|---|---|---|---|
-| 开 | 开 | 6 | main : volume : indicator = 60 : 20 : 20 |
-| 开 | 关 | 4 | main : volume = 80 : 20 |
-| 关 | 开 | 4 | main : indicator = 80 : 20 |
-| 关 | 关 | 2 | main = 100%（仅 K 线） |
+```ts
+const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 
-**数据面联动**：成交量组关闭时，tooltip 隐藏「成交量 / 成交额」行、pane0 信息行隐藏量额段；指标组关闭时对应 pane4/pane5 移除，主图 / 成交量比例自动调整为 80:20。
-
----
-
-## 八、主题与配色（theme.ts）
-
-- **主题切换**：深 / 浅两套配色全部集中在 `src/chart/core/theme.ts`（`ChartThemeColors` + `chartThemes`，页面无散落硬编码色值）；
-- **红涨绿跌**：上涨 `#FF0000`、下跌 `#008000`（深浅系一致）；**平盘**深系白 / 浅系黑（`flatColor`）；
-- **上涨柱空心**：K 线 / 成交量 / MACD 柱 > 0 均为「背景色填充 + 红框」空心红柱，下跌绿色实心；
-- **分时双线**：深系价格线白 / 均价线亮黄；浅系价格线深灰 / 均价线深金黄；
-- 指标配色（主图 / 附图）深浅系通用，集中于 `mainIndicatorColors` / `subIndicatorColors`。
+const onZoomIn = () => chartRef.value?.controller?.zoomIn()
+const onShiftLeft = () => chartRef.value?.controller?.shiftLeft()
+const switchToTimeshare = () => chartRef.value?.controller?.setPeriod('1d')
+const toggleRightScale = () => chartRef.value?.controller?.setRightScaleVisible(true)
+```
 
 ---
 
-## 九、目录结构
+## 9. 本地开发 Development
+
+### 9.1 环境与命令
+
+| 命令 | 说明 |
+|---|---|
+| `pnpm install` | 安装依赖（锁定 `pnpm-lock.yaml`，lightweight-charts 5.2.1） |
+| `pnpm dev` | 开发预览 http://127.0.0.1:5199（`/api` 代理到后端，`ws: true` 代理 WebSocket） |
+| `pnpm type-check` | 类型检查（`vue-tsc --noEmit`，strict 零错误） |
+| `pnpm test` | 单元测试（vitest，27 文件 / 257 用例） |
+| `pnpm build` | 类型检查 + 构建（`vite build`，产物 `dist/`，base `/kline-chart-component/`） |
+| `pnpm preview` | 预览构建产物 http://127.0.0.1:4173/kline-chart-component/ |
+
+### 9.2 目录结构
 
 ```
 src/
-├── App.vue                    # 工具栏 + 容器（80% 宽高居中）
+├── App.vue                    # 工具栏 + 容器（周期栏 / 主题 / 开关 / 全屏）
 ├── main.ts                    # 入口
 ├── components/
 │   └── KLineChart.vue         # 图表组件（Props / 事件 / 控制器 ref）
 ├── chart/                     # 按功能分组的图表源码
 │   ├── periods.ts             # 周期配置（13 项 + periodMap O(1) 查询 + 分时栅格等分数）
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / 数据桥
-│   │   ├── kLineChartController.ts   # 控制器（<1000 行）：数据 / 生命周期 / 对外 API
+│   │   ├── kLineChartController.ts   # 控制器：数据 / 生命周期 / 对外 API
 │   │   ├── chartDataBridge.ts        # 数据 IO 桥（历史 / 翻页 / 实时订阅编排 + 竞态守卫）
 │   │   ├── realtimePipeline.ts       # 实时增量管线（节流 → 批量消费 → 增量更新）
 │   │   ├── indicatorManager.ts       # 主图指标 + 成交量均量线 + 信息行
@@ -371,53 +403,86 @@ src/
 └── types/chart.ts             # 统一数据点类型（ChartDataPoint）
 ```
 
----
+### 9.3 工程约束（贡献前必读）
 
-## 十、构建 / 测试 / 打包
-
-```bash
-pnpm dev           # 开发（http://127.0.0.1:5210）
-pnpm test          # vitest 单测（27 文件 / 257 用例，含拆分模块 splitModules.test.ts）
-pnpm build         # vue-tsc 类型检查（零错误）+ 构建
-npx vite preview   # 预览构建产物（http://127.0.0.1:4173/kline-chart-component/）
-```
-
-打包 zip（交付物约定，zip 不入 git）：
-
-```bash
-zip -r kline-chart-component-v<版本>.zip . -x "node_modules/*" -x "dist/*" -x ".git/*" -x "*.zip" -x "coverage/*" -x ".DS_Store" -x "*.log"
-```
+- **构建**：Vite 8 + `@vitejs/plugin-vue`；`vue-tsc` 类型检查在 build 前置
+- **测试**：Vitest 5 + jsdom（图表内核测试不依赖浏览器渲染）
+- **代码风格**：函数名驼峰语义化；类方法用箭头字段（this 绑实例、被库回调调用不丢 this）
+- **颜色**：全部集中在 `src/chart/core/theme.ts`，页面零散落硬编码色值
+- **文件**：超 1000 行的 TS 文件拆分；文件名不包含数字；文件系统大小写敏感（import 必须精确匹配）
+- **版本**：变更需同步 `package.json` + README 版本记录
 
 ---
 
-## 十一、内存与性能
+## 10. 贡献指南 Contributing
 
-- **十字星事件 rAF 节流**：同帧多次 crosshairMove 合并为一次处理（每帧至多一次重绘）；`setCrosshairY` 同值跳过；
-- **primitive 视图单例复用**：`paneViews()` / `priceAxisPaneViews()` 返回构造时创建的单例视图，避免每帧 `new` 对象产生 GC 压力；
-- **渲染裁剪**：成交量 / MACD 柱、SAR 圆点、指标折线均按可见逻辑范围裁剪——长数据（10000 条）下每帧仅绘制可视 ~120 根，平移 / 缩放不因数据总量线性变慢；
-- **指标值 O(1) 现取**：信息行按 `Map<time, value>` 现取，切换指标 / 清空时重建 / 置空，无累积；
-- **标签缓存**：刻度标签在 `updateAllViews` 时重建，渲染 draw 只读缓存集合；
-- **生命周期**：`destroy()` 移除十字星监听、断开 ResizeObserver、detach 全部 primitive、`chart.remove()`、清除容器标记；`dataset.lwcMounted` 防止重复创建 chart 实例；
-- **Mock 缓存 LRU**：见 §4.2（`touchCache` 纯函数，模块级可单测）；
-- **函数风格**：全库统一箭头函数（类方法箭头字段，this 绑实例、被库回调调用不丢 this）。
+欢迎 PR 与 Issue。提交前请：
+
+1. 运行 `pnpm type-check`（类型零错误）与 `pnpm test`（全绿）
+2. 新增功能**必须**提供类型定义与测试用例（含边界 / 内存场景）
+3. 遵循 §9.3 工程约束（驼峰命名 / 主题色集中 / 注释含入参出参）
+4. 提交信息建议格式：`v<版本> <变更摘要>（\n- 明细）`
+
+> 完整的 PR / Issue 流程约定将整理到独立的 `CONTRIBUTING.md`。
 
 ---
 
-## 十二、GitHub Pages 在线预览
+## 11. 变更日志 Changelog
 
-- **部署地址**：`https://abulo.github.io/kline-chart-component/`（Pages 项目路径 = 仓库名）
-- **触发**：push 到 `main` 分支（或 Actions 页手动 Run workflow）
-- **流程**：`pnpm install --frozen-lockfile` → `pnpm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
-- **环境**：node 24.16.0 + pnpm 12.15.0（`packageManager` 锁定 `pnpm@12.15.0`，Actions 用 `pnpm/action-setup@v4` 12.15.0 + `actions/setup-node@v4` node 24.16.0）
-- **首次启用（一次性）**：repo `Settings → Pages → Build and deployment → Source` 选择 `GitHub Actions`
+版本记录**内置于本文件底部**（不单设 CHANGELOG 文件），见 [版本记录](#版本记录)。
 
-> 包管理说明：项目使用 **pnpm**（锁定 `pnpm-lock.yaml`）；如需迁移回 npm，删掉 `pnpm-lock.yaml` 后 `npm install` 重新生成即可。
+- 完整历史：v1.7.4 ~ v1.7.18（分时图 / 刻度算法 / 十字星 / 成交量开关 / 布局重构 / 数据服务拆分 / README 迭代等）
+- 发布流程：commit → push `main` → GitHub Pages Actions 自动部署 https://abulo.github.io/kline-chart-component/
+
+---
+
+## 12. 常见问题 FAQ
+
+**Q1：`period` 传空字符串会发生什么？**
+组件视为"周期未设置"：不发起数据请求，`tickMarkFormatter` 按 K 线口径兜底；就位后传入有效周期会重新拉取。首次请求 `symbol` / `total` 为空属正常（HistoryQuery 首次未持有数据），后续请求自动携带。
+
+**Q2：切换周期后数据没有铺满（分时尤其明显）？**
+周期切换 / 成交量组开关后控制器会 `fitContent`；若观察到未铺满，多为先关成交量组再切分时的组合路径，相关修复见版本记录 v1.7.14 / v1.7.15（removePane 前清空 series 防 timeScale 残留）。
+
+**Q3：`HttpChartDataService` 的 `total` 参数是怎么来的？**
+自动计算：取「该 symbol|period 累计拉取去重条数」与「后端上次返回的 total 字段」的较大值，以 `total=<n>` 附加到请求 URL，供后端增量 / 续传判断；调用方也可显式传入覆盖。
+
+**Q4：十字星竖线在快速移动时为什么有时偏离柱体中心？**
+速度自适应：快速移动用像素级（跟手零偏差），慢速 / 停驻用磁吸吸附（停在 bar 中心）。这是 v1.7.9~v1.7.11 按需求迭代的混合行为。
+
+**Q5：分时状态下为什么没有平移 / 放大缩小按钮？**
+分时周期（1d~5d）按产品语义固定满铺，不可平移缩放；App 工具栏对应按钮隐藏。
+
+**Q6：为什么文件系统上 import 会报错？**
+仓库按大小写敏感文件系统维护，import 路径必须与文件名精确一致（如 `kLineChartController.ts` 的大小写）。
+
+---
+
+## 13. 致谢 Credits
+
+- 图表内核：[lightweight-charts](https://github.com/tradingview/lightweight-charts)（v5.2.1）
+- UI / 交互参考：东方财富、通达信桌面端
+- 实时接入依赖：[@microsoft/fetch-event-source](https://www.npmjs.com/package/@microsoft/fetch-event-source)（SSE）、fancy-canvas
+
+---
+
+## 14. 许可证 License
+
+本项目采用 **MIT License** 开源（LICENSE 文件待补充，代码与文档可自由使用、修改与分发，注明出处即可）。
 
 ---
 
 ## 版本记录
 
-- **v1.7.17（当前）**：README 全面重写 + 核心代码注释升级。README 重构为标准开源
+- **v1.7.18（当前）**：README 按「TypeScript 开源项目标准模板」重写——先价值后上手再细节：
+  头部横幅 + 徽章 → 特性（TS 卖点：类型守卫 / 接口分离 / strict 零错误）→ 安装（源码仓库形态 +
+  Node/pnpm/TS 版本要求）→ 快速上手（最小用法 + 自定义数据直通）→ 文档入口（Pages / 英文
+  README）→ API 参考（Props / 事件 / 控制器方法含类型签名）→ 配置项（Props 总表 + Mock/Http
+  构造参数表）→ 类型导出（9 项公共类型清单）→ 示例（6 场景）→ 本地开发（命令表 + 目录结构 +
+  工程约束）→ 贡献指南 → 变更日志（内置版本记录）→ FAQ（6 条真实高频问题）→ 致谢 → 许可证。
+  完整版本记录保留。验证：tsc 0 错误、vitest 27 文件 257 tests 全绿。
+
+- **v1.7.17**：README 全面重写 + 核心代码注释升级。README 重构为标准开源
   文档：项目介绍（定位 / 技术栈 / 核心能力 / 架构分层）、快速开始（安装 / 最小用法 /
   自定义数据直通）、组件 API（Props 入参总表 / 事件出参总表 / 控制器方法入参→出参）、
   数据接入（ChartDataService 接口文档：HistoryQuery 入参、fetchHistory 出参、
@@ -430,7 +495,6 @@ zip -r kline-chart-component-v<版本>.zip . -x "node_modules/*" -x "dist/*" -x 
   `services/mockDataGenerator.ts`（核心生成函数 @param/@returns）、
   `chart/periods.ts`、`chart/util/format.ts`。验证：tsc 0 错误、vitest 27 文件
   257 tests 全绿。
-
 - **v1.7.16**：services 层重构——`chartDataService.ts` 只保留接口定义
   （`HistoryQuery` / `RealtimeHandler` / `ChartDataService`），Mock 实现整体迁出：
   `MockChartDataService` 类 + `touchCache`（LRU 缓存管理）+ `MockChartDataServiceOptions`
