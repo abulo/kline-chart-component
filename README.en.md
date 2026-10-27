@@ -1,423 +1,597 @@
-# Multi-Pane K-Line Component (Vue3 + TypeScript + lightweight-charts v5)
+# KLineChart (kline-chart-component)
 
-A multi-pane K-line chart component: multiple panes inside one `chart` (native multi-pane support of lightweight-charts v5), including a top info row (name [code] time + main indicator values), the K-line main chart, volume, and a sub-indicator pane (ten mutually exclusive indicators: RSI/KDJ/MACD/WR/DMI/BIAS/OBV/CCI/ROC/CR). The indicator pane is dynamically shown / hidden based on the selected indicator.
+> A multi-pane K-line + intraday (1d~5d) chart component in the style of East Money / TongDaXin desktop clients. Deeply customized on **Vue 3 + TypeScript + lightweight-charts v5.2.1**. Works out of the box, interface separated from implementation — plug in real market data with zero component changes.
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-blue)](https://www.typescriptlang.org/)
+[![Vue](https://img.shields.io/badge/Vue-3.5.44-42b883)](https://vuejs.org/)
+[![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.2.1-0593ff)](https://github.com/tradingview/lightweight-charts)
+[![pnpm](https://img.shields.io/badge/pnpm-12.15.0-orange)](https://pnpm.io/)
+[![Tests](https://img.shields.io/badge/tests-257%20passed-brightgreen)](tests/)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-success)](https://abulo.github.io/kline-chart-component/)
 
 ---
 
-## 1. Layout Structure
+## Table of Contents
 
-With indicators **enabled** (6 panes, `main : volume : indicator = 60 : 20 : 20`):
+- [1. Features](#1-features)
+- [2. Installation](#2-installation)
+- [3. Quick Start](#3-quick-start)
+- [4. Documentation](#4-documentation)
+- [5. API Reference](#5-api-reference)
+- [6. Options](#6-options)
+- [7. Types](#7-types)
+- [8. Examples](#8-examples)
+- [9. Development](#9-development)
+- [10. Contributing](#10-contributing)
+- [11. Changelog](#11-changelog)
+- [12. FAQ](#12-faq)
+- [13. Credits](#13-credits)
+- [14. License](#14-license)
 
+---
+
+## 1. Features
+
+- 💪 **100% TypeScript**: fully typed across the repo (`vue-tsc --noEmit` zero errors); every component prop, event and controller method ships with complete type signatures; one unified data-point type `ChartDataPoint` with a `pointType` type guard — K-line, intraday and call-auction data share a single array
+- 🧬 **Interface / implementation separation**: the data layer goes through the `ChartDataService` interface (paginated history + realtime subscription); a built-in Mock service works out of the box, and switching to real quotes only means swapping in `HttpChartDataService` — zero component changes
+- 📦 **Multi-pane layout**: pane0 info row → pane1 main chart → pane2 volume info row → pane3 volume chart → pane4 indicator info row → pane5 sub-indicator chart; `60 : 20 : 20` configurable, volume group and indicator group independently toggleable (four-state layout)
+- 🕯️ **K-line main chart**: Candlestick + main indicators (MA / EXPMA / BOLL / SAR / BBI, mutually exclusive) + high / low price markers + last-price line (priceLine, dashed, toggleable) + hollow red bars
+- ⏱️ **Intraday chart (1d~5d)**: LineSeries dual lines (price + average price, avg line toggleable), 1px histograms for volume / MACD, grid verticals divided 4/2/3/4/5 by period, left/right price scales symmetrically expanded around the first bar's `preClose` (right side in percentage), three-state up/down coloring
+- 📈 **Ten sub-indicators**: RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR, mutually exclusive single-select (no CR in intraday); every indicator is a pure function, independently unit-testable
+- 🎯 **Crosshair linkage**: vertical / horizontal dashed lines (6px on / 4px off) + left / right scale indicator values + draggable tooltip (with up/down coloring); speed-adaptive — pixel-level tracking on fast moves, magnetic snap on slow moves / dwell
+- ⌨️ **Keyboard navigation**: left / right arrow keys move one bar at a time, viewport auto-follows at the edges, auto-repeat after 40ms hold
+- 🎨 **Dark / light themes**: all colors centralized in `theme.ts` (no scattered hardcoded hex values on pages); red up / green down, flat = white (dark) / black (light)
+- 🧠 **Memory & performance**: crosshair rAF throttling, primitive view singleton reuse, viewport-only render culling (~120 visible bars per frame even with 10,000 bars), Mock pool LRU eviction (`touchCache`), Http history LRU cache + known-total cap, `destroy()` fully unsubscribes to prevent leaks
+- ✅ **Strict mode**: zero type errors under `strict: true`; vitest 27 files / 257 cases all green (incl. LRU cache, intraday, indicator and memory-specific tests)
+
+---
+
+## 2. Installation
+
+Currently distributed as a **source repository** (GitHub Pages demo live); npm package publishing is on the Roadmap.
+
+```bash
+git clone git@github.com:abulo/kline-chart-component.git
+cd kline-chart-component
+pnpm install
 ```
-┌──────────────────────────────────────┐
-│ pane0  Info row (name[code] time + indicator values [per-line colors], follows crosshair) │
-│ pane1  K-line main chart (Candlestick)   │  ← main group 60%
-│ pane2  Volume info row (volume + MA5/MA10)│
-│ pane3  Volume (self-drawn red/green bars) │  ← volume group 20%
-│ pane4  Indicator info row (line values, fixed 22px)│
-│ pane5  Sub indicator (ten mutually exclusive)     │  ← indicator group 20%
-└──────────────────────────────────────┘
-    Bottom: shared time scale (timeAxis, toggleable)
-```
 
-With indicators **disabled** (4 panes, `main : volume = 80 : 20`): pane4 / pane5 are removed, pane1 / pane3 ratios become 80 : 20.
+Environment requirements:
 
-Height allocation (same whether the time axis is on or off; only the usable height differs):
-- Empty panes are fixed at `topPaneHeight = 22px` (same stretchFactor, exactly equal);
-- Remaining height is split by group ratios (`calcPaneHeights` pure function, see `chart/core/layout.ts`);
-- Pixel-factor approach: `stretchFactor` is set directly to the target pixel height → no rounding error, panes fully fill the space;
-- Pane heights are not resizable (`layout.panes.enableResize: false`); separators between panes use the library default 1px (an earlier script patched `SeparatorHeight` to 0, but the crosshair "not reaching bottom" issue was fixed at the source layer via dash phase alignment, so the patch script was removed).
-
-## 2. Visuals & Interaction
-
-- **Theme switching**: dark / light palettes are fully centralized in `theme.ts` (`ChartThemeColors` + `chartThemes`, no scattered hard-coded colors on the page); on switch, App.vue also syncs the **html page background** (independent `pageBackground`: dark #0B0E13 / light #EDEFF3, contrasting with the chart background #131722 / #FFFFFF) plus the chart `applyTheme`;
-- **Red up / green down**: up `#FF0000`, down `#008000` (identical for both themes, centralized in `theme.ts`);
-- **Hollow up bars**: K-line / volume / MACD bars > 0 are "background-filled + red outline" hollow red bars; down bars are solid green;
-- **Consistent bar width**: pane1 / pane3 / pane5 bar width = `candlestickBarWidth(barSpacing, dpr)` (library's original `optimalCandlestickWidth` + odd/even fix, see `chart/core/candlestickWidth.ts`), width / spacing exactly identical;
-- **Self-drawn grid** (`GridPrimitive`, zOrder 'bottom', below the data):
-  - Vertical lines: 4 divisions (3 lines);
-  - Horizontal lines: pane1 8 divisions with indicator off / 6 with indicator on; pane3 / pane5 2 divisions (1 middle line);
-  - Grid is fixed in pane-local coordinates, does not move when panning / zooming the data;
-- **Self-drawn left axis labels** (`AxisLabelPrimitive` + `AxisLabelView` + `AxisLabelPaneView`):
-  - Label positions exactly align with grid horizontal lines (same division formula), value = real-time price at that y (coordinateToPrice back-calculation, changes with pan / zoom);
-  - Row count = divisions + 1 (first/last inset 8px to avoid clipping): pane1 = 9 / 7 labels, pane3 / pane5 = 3;
-  - pane5 middle label is fixed at 0 (MACD splits positive/negative at the 0 axis);
-  - **Text settings fully identical to the crosshair indicator value** (shared `drawAxisLabel`: right-aligned, 6px from right edge, 6px background padding left/right, 18px tall, 12px chartFontFamily, color follows theme);
-- **Crosshair left-axis indicator value** (`CrosshairAxisLabelPrimitive` + `CrosshairAxisLabelPaneView`):
-  - On crosshair move, draws the value label of the horizontal line in the left axis area (price / volume / MACD value, refreshed frame-by-frame with the mouse);
-  - **Background block & text colors follow the dark/light theme** (`crosshairLabelBackground` / `crosshairLabelText`, see theme.ts): dark background #2A2E39 / text #D1D4DC, light background #F0F2F5 / text #33373E;
-  - Implementation: `priceAxisPaneViews` + zOrder 'top' (price-axis top canvas, Cursor-level redraw, smooth without lag);
-  - Coordinates: library `point.y` is a pane-local coordinate, injected directly without previous-pane height conversion;
-  - Text drawn right-aligned (`textAlign = 'right'`) to avoid clipping beyond the price-axis canvas;
-- **Crosshair data tooltip** (`CrosshairTooltip`, v1.6.35): when the crosshair hits (pane1/3/5), follows the mouse and shows nine data items — time / open / close / high / low / change / change% / volume / amount;
-  - **Time format consistent with the pane0 info row** (`format` template or automatic per period, see §5.2 format);
-  - **Change / change% are red-up / green-down** (theme.upColor / downColor), other text uses the theme default color;
-  - Background / border / text colors follow the theme (`tooltipBackground` / `tooltipText` / `paneBorder`);
-  - **Entry-side positioning (v1.6.43 fix)**: mouse enters from the left half → tooltip anchors to the **top-right corner of pane1** (K-line main chart); enters from the right half → anchors to the **top-left corner of pane1** (no longer follows the mouse or the hit pane);
-  - **Movable / draggable area (v1.6.58)**: both the default corner position and the drag clamp bounds are limited to the **pane1~pane5 data area** (`TooltipBounds` injected on each hit): X excludes the left / right axis widths (tooltip never overflows into the axis areas when axis toggles are on), Y from pane1 top to pane5 bottom;
-  - **Drag & selection (v1.6.53 press-to-drag / v1.6.59 performance)**: **pressing anywhere on the tooltip starts a drag** (no ≡ handle icon, grab cursor) — moving ≥ 4px after press drags the tooltip (userSelect:none while dragging), position is fixed after release until the mouse leaves the chart, re-entering re-anchors to a corner; **no movement = click** (single-click focuses cursor / **double-click selects a word / triple-click selects a line** still work, no conflict with drag); the drag clamp is extracted as the pure function `clampTooltipPosition` (unit-testable); during drag the container coordinate origin is cached (no per-frame getBoundingClientRect forced reflow);
-  - **Text selectable (v1.6.48 root-cause fix)**: tooltip body is freely selectable / copyable; tooltip anchors to a corner;
-  - **Selectable root-cause fix (v1.6.48)**: the tooltip is mounted on body (outside the chart DOM); moving the mouse into the tooltip makes lightweight-charts dispatch mouseleave to the chart container → clears crosshair → crosshairMove(null) → the not-hit branch hides the tooltip (text cannot be selected). Fix: the tooltip records hover state (mouseenter / mouseleave → `isHovered`), and the `applyCrosshairMove` not-hit branch skips hide / time rollback / indicator clearing while the mouse still hovers the tooltip, so selection works normally (verified with CDP: stays visible on hover, press-drag selects text, selection persists after release);
-    No drag handle (drag handle removed in v1.6.42); leaving the chart and re-entering re-anchors per the new entry side;
-  - **Mounting & anti-flicker (v1.6.40)**: the tooltip is mounted on document.body (position: fixed), outside the chart DOM tree; after showing, only text is updated, no repositioning / no forced reflow (idempotent show, no high-frequency flashing);
-  - Performance: nine rows are pre-created as fixed nodes (only textContent updates, no innerHTML), crosshair events reuse the rAF throttle (at most one DOM update per frame), hit data lookup goes through the time→bar index O(1) (maintained incrementally in real time);
-  - Positioning algorithm extracted as the pure function `resolveTooltipPosition` (unit-covered: corner anchoring / drag fixation / out-of-bounds clamp);
-- **Crosshair does not pierce pane0**: crosshair is not triggered inside pane0 (cleared by controller); the pane0 top overlay (`TopPaneOverlayPrimitive`, zOrder 'top') covers the vertical line with the background color;
-- **Keyboard arrow-key crosshair navigation (v1.7.1)**: in K-line mode (also works for timeshare 1d~5d), **each Left/Right arrow press moves the crosshair exactly 1 bar** — the base index is the currently hit bar (`overlayTime` reverse lookup, so mouse and keyboard positions stay in sync); when inactive (`overlayTime` null) it starts from the last bar; the target index is delegated to the pure function `viewport.computeCrosshairTargetIndex` (clamped to `[0, lastIndex]`, unit-testable); positioning uses `chart.setCrosshairPosition(price, time, mainSeries)` — the library redraws the vertical/horizontal lines and axis labels and fires the crosshairMove event → `CrosshairManager` links the tooltip / pane0 info line / left-axis indicator values (the same pipeline as mouse hits); K-line price = `bar.close`, timeshare price = `bar.price`; the component keydown handler (KLineChart.vue) ignores the keys inside input controls and calls `preventDefault` to stop page scrolling; **"double vertical line" fix (v1.7.1)**: the crosshairMove event fired by `setCrosshairPosition` only updates `overlayTime` on the *next* frame (rAF-throttled) — on the same frame `CrosshairLineCapPrimitive` still draws its line at the old `overlayTime`, producing two offset vertical lines; the controller now calls `CrosshairManager.setOverlayTimeByKeyboard(time)` right after `setCrosshairPosition` so the cap line aligns with the library line on the same frame (the later rAF event writes the same value, no side effects); **cache memory management (v1.7.1)**: MockChartDataService caches now use LRU caps (`touchCache` pure function, module-level, unit-tested) — daily/timeshare pools keep max 4 symbols, derived period pools (week/month/minute K; 1-min K is ~14k bars per symbol) keep max 8 keys, realtime timers keep max 8 subscriptions; evicting the least-recently-used entry prevents unbounded growth on symbol switching; price-line label inverse text extracted to `priceLabelInverseText` (theme.ts), no hard-coded colors in components;
-**arrow-key hold auto-repeat (v1.7.1)**: native browser keydown repeat has a ~500ms initial delay and is capped by the OS repeat rate — replaced by a custom beat (`KEYBOARD_REPEAT_MS=40`, KLineChart.vue): the first press moves 1 bar immediately, then 1 bar every 40ms (~25 bars/s); `event.repeat` repeats are ignored to avoid double speed; stops on keyup / window blur / unmount (leak-safe); measured: holding Left for 500ms moves ~19 bars (daily candles include weekends);
-**keyboard crosshair viewport follow (v1.7.1)**: when arrow keys move the crosshair past the last visible bar (left/right edge), the target bar lies outside the viewport — `getCrosshairScrollOffset` (pure function) computes the scroll amount and the viewport pans so the target becomes visible (at the edge it pans exactly 1 bar; farther gaps scroll in one step, e.g. pressing an arrow while inactive makes the crosshair immediately visible); measured: viewport [280,399], hovering edge bar 280 → ArrowLeft → viewport [279,398], crosshair hits 279;
-**"tooltip update delay" fix (v1.7.1)**: the tooltip also updates through the rAF event pipeline (the new bar's `tooltip.show` only runs on the *next* frame), so it lags during rapid key presses — the controller now calls `CrosshairManager.syncKeyboardMove(bar, time, pane1LocalY)` right after `setCrosshairPosition` to align the full chain on the same frame (overlayTime + tooltip data + left-axis indicator values; the indicator value is injected only into pane1 since the keyboard line sits at the main series' close/price); **"double vertical line" final resolution — custom cap line removed (v1.7.1)**: after several alignment fixes (window mousemove mouse lookup / drag-state hover fallback bypass / precise data-area x) edge cases still misaligned (drag path crossing the tooltip overlay, bar-center snap vs exact library follow). The custom thin vertical line (`CrosshairLineCapPrimitive` / `CrosshairLineCapPaneView`, mounted on panes 1~5) is **deleted entirely** — only the library vertical line remains (`CrosshairMode.Normal`, exactly follows the mouse; keyboard moves are driven by `setCrosshairPosition`). Cleaned up together: `CrosshairManager`'s window mousemove/mousedown/mouseup tracking and keyboard-x injection, controller `getCrosshairX`, IndicatorManager/SubIndicatorPaneManager passthrough, and debug probes (capX/lastMouseX/keyboardX...). Keyboard crosshair navigation stays (`syncKeyboardMove` aligns overlayTime/tooltip/left-axis indicator values); measured hover / keyboard / drag all show a **single vertical line**;
-- **Crosshair thin dashed line** (`CrosshairLineCapPrimitive` + `CrosshairLineCapPaneView`, v1.4.101): the vertical line is redrawn on the top layer as a 0.75 CSS px subpixel thin dashed line (dash period [1,1] physical px (densest)), with a solid segment at the bottom to guarantee "reaching the bottom"; horizontal/vertical line color `crosshairLineColor` at 0.25 opacity (dark/light themed, theme.ts), visually thinner and fainter; the library's own crosshair lines are kept (the time-axis time label depends on library drawing);
-- **Indicator overlays drawn above the crosshair** (`IndicatorLinePrimitive`, zOrder 'top' self-drawn on the top canvas): main indicator lines (MA / EXPMA / BOLL / BBI) and volume average lines (VOL MA5 / MA10) are self-drawn polylines above the crosshair — when the crosshair horizontal line passes through, indicator lines remain fully visible (the library draws the crosshair above series on the top canvas, so LineSeries would always be covered by the horizontal line; hence self-drawing); coordinates = timeScale.timeToCoordinate × anchorSeries.priceToCoordinate, clipped by the visible time range, paths broken where coordinates are missing;
-- **Content pane borders** (`PaneBorderPrimitive`): pane1 / pane3 / pane5 self-drawn 1px rectangular borders, theme-colored; drawn in bitmap physical pixels (always flush with the rightmost canvas edge when zoomed, no subpixel gaps);
-- **High / low price markers** (`HighLowMarkerPrimitive` + `HighLowMarkerPaneView`): in the pane1 visible range, the bar with the max high / min low — highest price marked with 12px yellow text above the top of the body, lowest price with 12px blue text below the bottom, each with a same-color solid line from the text block to the middle of the body's top / bottom edge; recomputed in real time on pan / zoom, text never overflows horizontally; theme-colored (theme.highMarkerColor / lowMarkerColor);
-- **Last-price line** (`PriceLinePrimitive` + `PriceLinePaneView`, v1.7.1): the library's native priceLine only supports `LastBar` (real last bar — disappears when panning left as the last bar leaves the viewport) or `LastVisible` (rightmost visible bar — visible when panning, but shows a historical price, losing the "last price" semantics). This component draws it manually:
-  - **Price = the real last K-line bar's close** (`findLastKlineBar` scans backwards, skipping timeshare points; pure function with unit tests in `tests/priceLine.test.ts`);
-  - The dashed line spans the **full pane1 width** (1px, `setLineDash([6,4])`, mimicking the library's dashed style) with a price label inside the right edge (line-colored background + auto black/white text by luminance);
-  - **Clamping**: when the last price is outside the current viewport's price range (e.g. panning left through history), the line clamps to the top / bottom edge of the main chart while the label keeps showing the real last price — visible at any viewport position;
-  - **Up/down colors**: last bar `close vs preClose` → red (`upColor`) / green (`downColor`) / flat (`flatColor`, white on dark theme / black on light), same theme palette as the K-line bodies, auto-updating with realtime ticks;
-  - **Timeshare mode**: `klineSeries` is hidden and `getBars()` contains no kline points → not drawn automatically;
-  - **Visibility toggle**: `KLineChartOptions.priceLineVisible` (default `true`; component prop `priceLineVisible`; the App.vue "价格线" toolbar button toggles it at runtime) → `KLineChartController.setPriceLineVisible(visible)` (idempotent; on change it calls `applyOptions({ priceLineVisible: false })` on `klineSeries` to force an immediate invalidation — the library line stays off, the redraw comes from the primitive reading its own `visible`);
-  - **Realtime viewport follow** (`followLastBarIfTracking`): after a new K-line bar is appended, the viewport repositions to the last 120 bars **only when its right edge is within 1 bar of the last bar** (`|range.to - lastIndex| < 1`). lightweight-charts lets the logical range extend past the data's right edge (after a drag `to` can exceed `lastIndex`), so **an out-of-bounds drag or panning to older history (right edge far from the last bar) is treated as the user leaving tracking — realtime pushes never yank the viewport back** (fixes "view snaps back after moving ~10 bars to the right"); after panning to history the viewport stays completely still (verified: 20s / 2 appended bars without movement);
-  - Unit tests (8 cases: 4 data + 3 visibility + 1 construction) in `tests/priceLine.test.ts`;
-- **Empty-pane "test" label** (`TestLabelPrimitive`): vertically centered, 6px from the left, follows the theme text color.
-
-## 3. Global Controls (App.vue Toolbar)
-
-| Button | Function |
+| Item | Requirement |
 |---|---|
-| Sub indicators (mutually exclusive) | RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR: selected = indicator pane on (60:20:20), deselected = indicator pane off (80:20); pane4 shows per-line values |
-| Time axis on/off | Show / hide the bottom time axis (recomputes pane heights) |
-| Left scale on/off | Toggle the left axis area (all panes together, width 72px, fitContent after toggle) |
-| Right scale on/off | Toggle the right axis area (same as left) |
-| Zoom out / in | Global X-axis `barSpacing` zoom (clamped 2~80) |
-| Shift left / right | X-axis pan (`scrollToPosition` ±10 bars per click) |
-| Light / dark | Theme switch (all colors centralized in `chart/core/theme.ts`) |
+| Node.js | ≥ 24 (dev environment pinned to 24.16.0) |
+| pnpm | 12.15.0 (locked via `packageManager: pnpm@12.15.0`) |
+| TypeScript | 6.0.3 (devDependency pinned, `strict: true`) |
 
-Bottom "main indicators" container: MA / EXPMA / BOLL / SAR / BBI five buttons are **mutually exclusive** (clicking an active one = off), indicators are drawn on pane1 (overlaid on the same price scale as the K-line); SAR is a parabolic dot (dot marker).
+> Pinned dependencies: `lightweight-charts@5.2.1` (chart engine, pinned to prevent API drift), `vue@3.5.44`, `vite@8.3.5`, `vitest@5.0.5`, `vue-tsc@3.3.13`.
 
-Mouse wheel / two-finger / axis-drag zoom inside the chart is disabled (`handleScale` all off); zoom is controlled only by the buttons. Panning is kept.
+---
 
-## 4. Directory Structure
+## 3. Quick Start
 
-```
-src/
-├── App.vue                    # Toolbar + container (80% width/height, centered)
-├── main.ts                    # Entry
-├── components/
-│   └── KLineChart.vue         # Chart component (props: symbol / name / timeAxis / leftScale / rightScale / theme / mainIndicator / subIndicator / period / service; period fully controlled by parent and emits period-change, v1.5.7)
-├── chart/                     # Chart source, grouped by feature
-│   ├── periods.ts            # Period config (PERIODS 13 items: 1~5 day intraday + daily/weekly/monthly K + 60~1 min K; periodMap O(1) lookup + getPeriodLabel, v1.4.94)
-│   ├── core/                  # Core: controller / layout / theme / mock / candlestick width
-│   │   ├── KLineChartController.ts # Controller (v1.7.1 split version, <1000 lines): data / lifecycle / public API; pane building & intraday math delegated to the modules below
-│   │   ├── indicatorManager.ts # Indicator manager (five main indicators + volume average lines + pane0/pane2 info rows; setMainIndicator / setSubIndicator forwards to the sub-indicator pane)
-│   │   ├── subIndicatorPaneManager.ts # Sub-indicator pane manager (pane4 info row + pane5 indicator chart: create/destroy/data/info-row/theme; split out in v1.4.89)
-│   │   ├── crosshairManager.ts # Crosshair manager (crosshair move link + overlayTime + left-axis indicator registry)
-│   │   ├── timeshareManager.ts # Intraday (1d~5d) math manager (v1.7.1 split: isTimeshare / preClose / symmetric half-range / arithmetic scale values / three-state coloring / fixed price range)
-│   │   ├── paneFactory.ts      # Pane building factory (v1.7.1 split: creates & wires all pane0~pane3 series / primitives)
-│   │   ├── paneLayout.ts       # Pane height allocation utilities (v1.7.1 split: equal fixed panes + group ratios; paneTop accumulation)
-│   │   ├── viewport.ts         # Viewport / axis / palette utilities (v1.7.1 split: zoom-pan / axis visibility / K-line recolor / debug object)
-│   │   ├── constants.ts        # Shared constants (LIBRARY_TIME_AXIS_HEIGHT / PRICE_SCALE_MIN_WIDTH / VIEW_SHIFT_STEP)
-│   │   ├── types.ts            # Core shared types (KLineChartOptions / IndicatorLineSpec; main/sub indicator types live in indicator/types.ts)
-│   │   ├── indicatorMeta.ts    # Sub-indicator line-name metadata (subIndicatorLabels)
-│   │   ├── layout.ts          # Layout constants & height computation (60/20/20 ⇄ 80/20)
-│   │   ├── theme.ts           # Dark / light themes (all colors centralized) + main / sub indicator palettes
-│   │   ├── resolveBarColors.ts# Per-bar three-state colors (close vs preClose: up / down / flat)
-│   │   ├── mergeBars.ts        # New/old data merge (realtime push / pagination dedup)
-│   │   ├── mock.ts            # Mock data (daily K, pure functions, unit-testable)
-│   │   └── candlestickWidth.ts# Candlestick / bar width (library original optimalCandlestickWidth)
-│   ├── axis/                  # Left-axis labels (aligned with grid lines, text identical to indicator values)
-│   │   ├── axisLabelPrimitive.ts
-│   │   ├── axisLabelView.ts
-│   │   └── axisLabelPaneView.ts  # Self-drawn render + shared drawAxisLabel (shared by indicator values)
-│   ├── crosshair/             # Crosshair left-axis indicator + vertical-line bottom cap + data tooltip
-│   │   ├── crosshairAxisLabelPrimitive.ts
-│   │   ├── crosshairAxisLabelPaneView.ts
-│   │   ├── crosshairTooltip.ts   # Crosshair data tooltip (nine data items following the mouse, v1.6.35)
-│   │   ├── crosshairLineCapPrimitive.ts # Vertical-line bottom cap (fills the last gap of LargeDashed, v1.4.90)
-│   │   └── crosshairLineCapPaneView.ts
-│   ├── border/                # Content pane borders (self-drawn)
-│   │   ├── paneBorderPrimitive.ts
-│   │   └── paneBorderPaneView.ts
-│   ├── highLow/               # pane1 visible-range high / low price markers (solid line to the body)
-│   │   ├── highLowMarkerPrimitive.ts
-│   │   └── highLowMarkerPaneView.ts
-│   ├── grid/                  # Fixed-division grid (4 vertical / horizontal per pane config)
-│   │   ├── gridPrimitive.ts
-│   │   └── gridPaneView.ts
-│   ├── volume/                # Volume bars self-drawn (red hollow up / green solid down)
-│   │   ├── volumeBarPrimitive.ts
-│   │   └── volumeBarPaneView.ts
-│   ├── indicator/             # Eastmoney-style indicator library (unified export index.ts):
-│   │   │                       #   K-line main: MA/EXPMA/BOLL/SAR/BBI + 10 sub indicators + 9 intraday indicators
-│   │   ├── index.ts           # Unified export (main calcMA/EXPMA/BOLL/SAR/BBI + sub calcSubIndicator by name, v1.7.0)
-│   │   ├── types.ts           # Shared types (IndicatorLine / K / MainIndicators / SarPoint;
-│   │   │                       #   main MainIndicatorType + sub SubIndicatorType enums)
-│   │   ├── options.ts         # Main/sub indicator button options (MainIndicatorOptions / SubIndicatorOptions, moved from App.vue)
-│   │   ├── utils.ts           # Shared utils (tdxSMA / ema / runningMax / toLines)
-│   │   ├── macd.ts            # MACD (calcMACD, Eastmoney convention, pure function)
-│   │   ├── macdBarPrimitive.ts
-│   │   └── macdBarPaneView.ts
-│   │   ├── sarMarkerPrimitive.ts # SAR dot self-drawn plugin (attached to klineSeries, long red / short green)
-│   │   ├── ma.ts              # Simple moving average (MA5/10/20/30/60)
-│   │   ├── expma.ts           # Exponential smoothing (EXPMA12/50)
-│   │   ├── boll.ts            # Bollinger Bands (N=20, K=2)
-│   │   ├── sar.ts             # Parabolic SAR (Eastmoney SAR(4, 0.02, 0.2))
-│   │   ├── bbi.ts             # Bull & Bear Index ((MA3+MA6+MA12+MA24)/4)
-│   │   └── (rsi/kdj/wr/dmi/bias/obv/cci/roc/cr/volumeMa sub & intraday indicators)
-│   ├── overlay/               # pane0 top overlay (covers the crosshair vertical line)
-│   │   ├── topPaneOverlayPrimitive.ts
-│   │   └── topPaneOverlayPaneView.ts
-│   └── util/
-│       └── format.ts          # Number formatting (price / volume / indicator scale / date)
-└── types/
-    └── chart.ts               # Unified data point types (kept, for backend integration)
-tests/
-├── mock.test.ts               # Mock data tests
-├── theme.test.ts              # Theme / palette tests
-├── candlestickWidth.test.ts   # Candlestick width tests
-├── periods.test.ts            # Period config tests (13-item list / unique value / periodMap / getPeriodLabel, v1.4.94)
-├── macd.test.ts               # MACD calculation tests
-├── multipane.test.ts          # Layout constant / height algorithm tests
-├── stress.test.ts             # Data stress tests (10000 bars × all indicators: integrity / no NaN / O(n) cache semantics / time budget, v1.4.93)
-└── util.test.ts               # Formatting function tests
+### 3.1 Minimal usage (Vue component)
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue'
+import KLineChart from './components/KLineChart.vue'
+import type { PeriodValue } from './chart/periods'
+
+const period = ref<PeriodValue>('day')
+const onPeriodChange = (value: PeriodValue) => {
+  period.value = value
+}
+</script>
+
+<template>
+  <KLineChart
+    symbol="300750"
+    name="宁德时代"
+    :period="period"
+    theme="dark"
+    main-indicator="ma"
+    sub-indicator="macd"
+    @period-change="onPeriodChange"
+  />
+</template>
 ```
 
-## 5. Component Manual (KLineChart)
+> The parent component only keeps state and passes Props (one-way data flow); transient actions such as zoom in / out and shift left / right go straight to the controller via `ref` (see [Examples](#8-examples)).
 
-### 5.1 Quick Start
+### 3.2 Custom data without a backend
 
-```html
-<KLineChart
-  symbol="300750"
-  name="宁德时代"
-  :time-axis="true"
-  :left-scale="false"
-  :right-scale="false"
-  theme="dark"
-  main-indicator="ma"
-  sub-indicator="macd"
-  :period="'day'"
-  format="YYYY-MM-DD"
-  @period-change="onPeriodChange"
-/>
+```vue
+<script setup lang="ts">
+import KLineChart from './components/KLineChart.vue'
+import type { ChartDataPoint } from './types/chart'
+
+const myBars: ChartDataPoint[] = [
+  // { time: 1728000000, open: 10, high: 10.5, low: 9.8, close: 10.2, volume: 12345, amount: 126000000, ... }
+]
+</script>
+
+<template>
+  <KLineChart symbol="600519" name="贵州茅台" :period="'day'" :data="myBars" />
+</template>
 ```
 
-The parent only maintains state and passes Props (one-way data flow); transient actions such as zoom in / out, shift left / right are invoked on the controller via `ref`.
+> When `data` is provided the component **skips service fetching / pagination / realtime subscription** and renders the custom data directly.
 
-### 5.2 Props
+---
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `symbol` | `string` | `''` | Stock code (pane0 info row: name [code]) |
-| `name` | `string` | `''` | Stock name (pane0 info row: name [code]) |
-| `timeAxis` | `boolean` | `true` | Time axis visibility (recomputes pane heights) |
-| `leftScale` | `boolean` | `false` | Left axis area visibility (uniform width 72px, fitContent after toggle) |
-| `rightScale` | `boolean` | `false` | Right axis area visibility (same as left) |
-| `theme` | `string` | `'dark'` | Style: `'dark'` / `'light'` |
-| `mainIndicator` | `string` | `''` | Main indicator: `MA / EXPMA / BOLL / SAR / BBI` (`''` = off, mutually exclusive) |
-| `subIndicator` | `string` | `''` | Sub indicator: `RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR` (`''` = indicator pane off, mutually exclusive) |
-| `period` | `PeriodValue` | `'day'` | Current period (externally controlled; on change the service re-fetches data for that period) |
-| `service` | `ChartDataService` | `MockChartDataService` singleton | Data service implementation (pass an `HttpChartDataService` instance for real quotes, zero component changes) |
-| `data` | `ChartDataPoint[]` | `undefined` | External custom data (when provided, renders `data` first, skipping service fetch / pagination / realtime, v1.6.28) |
-| `format` | `string` | `''` | Time format template (e.g. `'YYYY-MM-DD'` / `'YYYY-MM-DD HH:mm'`); falls back to automatic per period (v1.6.9) |
+## 4. Documentation
 
-> Removed props: `dataCount / total / size / pageSize` (per-page count, injected via `new MockChartDataService({ fetchLimit })` since v1.6.27), `periodWhitelist` (period whitelist, removed in v1.6.34; the period bar is fully controlled by the parent).
+- **Live demo (GitHub Pages)**: https://abulo.github.io/kline-chart-component/
+- **中文版 README**: [README.md](README.md)
+- **Changelog**: [Version History](#version-history) at the bottom of this file
+- **Source tree index**: see the directory structure under [Development](#9-development)
 
-### 5.3 Events
+---
 
-| Event | Payload | Triggered when |
+## 5. API Reference
+
+### 5.1 Component Props (inputs)
+
+```ts
+interface KLineChartProps {
+  symbol?: string            // stock code
+  name?: string              // stock name
+  period?: PeriodValueOrEmpty // current period ('' = not set, no request issued)
+  theme?: string             // 'dark' | 'light'
+  timeAxis?: boolean         // bottom time axis
+  leftScale?: boolean        // left price scale
+  rightScale?: boolean       // right price scale
+  mainIndicator?: string     // main indicator ('' = off)
+  subIndicator?: string      // sub indicator ('' = off)
+  service?: ChartDataService // data service (default: Mock singleton)
+  data?: ChartDataPoint[]    // external custom data (rendered first)
+  format?: string            // time format template (auto by period when empty)
+  priceLineVisible?: boolean // last-price line
+  volumeVisible?: boolean    // volume group
+  avgLineVisible?: boolean   // intraday average-price line
+  fullscreen?: boolean       // fullscreen
+}
+```
+
+Full input table: see [Options](#6-options).
+
+### 5.2 Component events (outputs)
+
+| Event | Payload type | Fired when |
 |---|---|---|
-| `period-change` | `value: PeriodValue` | Period changes (App period bar click / internal switch) |
-| `status-change` | `status: ChartLoadStatus` | Load status changes: `'loading'` (initial) / `'loading-older'` (left-edge pagination) / `'ready'` / `'error'` (v1.6.18) |
+| `period-change` | `(value: PeriodValue) => void` | period changes |
+| `status-change` | `(status: ChartLoadStatus) => void` | load status changes: `'idle' \| 'loading' \| 'loading-older' \| 'ready' \| 'error'` |
+| `fullscreen-change` | `(fullscreen: boolean) => void` | "exit fullscreen" button inside the component is pressed |
 
-### 5.4 Controller Methods (via ref)
+### 5.3 Controller methods (via ref, inputs → outputs)
 
 ```ts
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 
-// Transient actions
-chartRef.value?.controller?.zoomIn()       // Zoom in (barSpacing clamped 2~80)
-chartRef.value?.controller?.zoomOut()      // Zoom out
-chartRef.value?.controller?.shiftLeft()    // Shift left (logical-range pan by one screen width, stops naturally at the far left)
-chartRef.value?.controller?.shiftRight()   // Shift right (logical-range pan by one screen width, stops naturally at the far right)
+// —— transient actions (no input) ——
+chartRef.value?.controller?.zoomIn()      // zoom in (barSpacing clamped 2~80)
+chartRef.value?.controller?.zoomOut()     // zoom out
+chartRef.value?.controller?.shiftLeft()   // shift left by one viewport (stops naturally at the oldest bar)
+chartRef.value?.controller?.shiftRight()  // shift right
 
-// Data & instrument (v1.6.17+: data flow moved into the controller)
-chartRef.value?.controller?.init()                    // Fetch history + redraw + subscribe realtime (called automatically by the component)
-chartRef.value?.controller?.setSymbol('600519')       // Update stock code (pane0 display + takes effect on the next init)
-chartRef.value?.controller?.setName('贵州茅台')        // Update stock name
-chartRef.value?.controller?.setService(mockService)   // Update the data service instance (takes effect on the next init)
-chartRef.value?.controller?.setPeriod('day')          // Update period (pane0 time format switches accordingly)
+// —— data & symbol (takes effect after input) ——
+chartRef.value?.controller?.init()                    // no input: fetch history + redraw + subscribe realtime (auto-called by the component)
+chartRef.value?.controller?.setSymbol('600519')       // (symbol: string) → update stock code
+chartRef.value?.controller?.setName('贵州茅台')        // (name: string) → update stock name
+chartRef.value?.controller?.setService(mockService)   // (service: ChartDataService) → swap data service
+chartRef.value?.controller?.setPeriod('day')          // (period: PeriodValue) → switch period (time format follows)
 
-// State setters (Props watchers call them automatically; manual calls are for programmatic control)
-chartRef.value?.controller?.applyTheme('light')
-chartRef.value?.controller?.toggleTimeAxis(false)
-chartRef.value?.controller?.setLeftScaleVisible(true)
+// —— state setters (already auto-called by Prop watchers; manual use is for programmatic control) ——
+chartRef.value?.controller?.applyTheme('light')       // (theme: ChartThemeName)
+chartRef.value?.controller?.toggleTimeAxis(false)     // (visible: boolean)
+chartRef.value?.controller?.setLeftScaleVisible(true) // (visible: boolean)
 chartRef.value?.controller?.setRightScaleVisible(true)
-chartRef.value?.controller?.setMainIndicator('boll')   // MA/EXPMA/BOLL/SAR/BBI / null
-chartRef.value?.controller?.setSubIndicator('kdj')     // Sub indicator name / null = indicator pane off
+chartRef.value?.controller?.setMainIndicator('boll')  // (name: MainIndicatorType | null)
+chartRef.value?.controller?.setSubIndicator('kdj')    // (name: SubIndicatorType | null, null = off)
 
-// Lifecycle (called automatically on unmount; manual calls prevent double mounting)
-chartRef.value?.controller?.destroy()
+// —— lifecycle (auto-called on component unmount) ——
+chartRef.value?.controller?.destroy()                 // no input: unsubscribe realtime / disconnect ResizeObserver / detach primitives / chart.remove()
 
-// Load status (component-internal ref; read the current value via ref)
-chartRef.value?.loadStatus  // 'idle' | 'loading' | 'loading-older' | 'ready' | 'error'
+// —— load status (read via ref) ——
+chartRef.value?.loadStatus                            // 'idle' | 'loading' | 'loading-older' | 'ready' | 'error'
 ```
 
-### 5.5 Data Integration (src/services)
+---
 
-The component data layer uniformly goes through the `ChartDataService` interface (`src/services/chartDataService.ts`): history pagination `fetchHistory` + realtime subscription `subscribeRealtime`; the component / controller have zero dependency on a concrete implementation. v1.7.1 split: the pure data-generation layer (daily-K pool / intraday patterns / minute aggregation / week-month aggregation) moved to `src/services/mockDataGenerator.ts` (35 top-level exports, unit-testable); the service layer keeps orchestration & caching only.
+## 6. Options
 
-- **Default**: `MockChartDataService` singleton (built-in ~3-year daily K pool + intraday / minute K / weekly / monthly aggregation + simulated realtime push; same symbol + period cache reused, memory-friendly).
-  Per-page fetch count (v1.6.27) is a **required per-instance config**:
-  `new MockChartDataService({ fetchLimit: 200 })` or
-  `new HttpChartDataService({ historyUrl: '/api/kline/history', fetchLimit: 200 })`
-  (no global constant);
-  the controller's init / left-edge pagination both use `service.fetchLimit`, and the `hasMoreHistory`
-  full-page check follows accordingly.
-  Minute K (60/30/15/5/1 min) uses **realistic simulation**: Brownian bridges anchored to daily K open/close (cross-period price consistency, no gaps), aggregated by real trading sessions (60m 4 segments / 30m 8 / 15m 16 / 5m 48 / 1m 241, segment starts 09:30/10:30/13:00…), U-shaped volume distribution (heavy at open/close);
-- **Custom data passthrough (v1.6.28)**: without mock / http environments, the parent passes `data` directly (`ChartDataPoint[]`, same K-line structure as fetchHistory returns): injected at construction via `initialBars`, **skipping service fetch / left-edge pagination / realtime subscription**; when `data` changes, a watcher automatically calls `setKlineData` to redraw. When both `data` and `service` exist, `data` wins.
-- **Real quotes**: the parent passes an `HttpChartDataService` instance (`src/services/httpChartDataService.ts`, HTTP history + WS / SSE / Poll three realtime modes + LRU history cache):
+### 6.1 Component Props table
 
-```html
-<KLineChart
-  symbol="300750"
-  name="宁德时代"
-  :period="activePeriod"
-  :service="new HttpChartDataService({
-    historyUrl: 'http://10.0.0.8:8080/api/v2/kline_list', // full URL required (v1.6.30)
-    wsUrl: 'wss://...',
-  })"
-  @period-change="onPeriodChange"
-/>
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `symbol` | `string` | `''` | stock code (pane0 info row: name [code]) |
+| `name` | `string` | `''` | stock name |
+| `period` | `PeriodValueOrEmpty` | `'day'` | current period; refetched via service on change; `''` = period not set, no request |
+| `theme` | `ChartThemeName` | `'dark'` | `'dark'` / `'light'` (colors centralized in `theme.ts`) |
+| `timeAxis` | `boolean` | `true` | bottom time axis visibility (pane heights recalculated on toggle) |
+| `leftScale` | `boolean` | `false` | left price scale (fixed 72px width, fitContent after toggle) |
+| `rightScale` | `boolean` | `false` | right price scale |
+| `mainIndicator` | `MainIndicatorType \| ''` | `''` | main indicator `'ma' / 'expma' / 'boll' / 'sar' / 'bbi'` (mutually exclusive; clicking the active one turns it off) |
+| `subIndicator` | `SubIndicatorType \| ''` | `''` | sub indicator `'rsi' / 'kdj' / 'macd' / 'wr' / 'dmi' / 'bias' / 'obv' / 'cci' / 'roc' / 'cr'` (mutually exclusive) |
+| `service` | `ChartDataService` | Mock singleton | data service implementation (pass `HttpChartDataService` for real quotes) |
+| `data` | `ChartDataPoint[]` | `undefined` | external custom data (rendered first, service skipped) |
+| `format` | `string` | `''` | time format template (e.g. `'YYYY-MM-DD'` / `'YYYY-MM-DD HH:mm'`); auto by period when empty |
+| `priceLineVisible` | `boolean` | `true` | last-price line on the K-line main chart |
+| `volumeVisible` | `boolean` | `true` | volume group (pane2 info row + pane3 chart; closing destroys the whole group + recomputes layout + hides volume/turnover in tooltip and info row) |
+| `avgLineVisible` | `boolean` | `true` | intraday average-price line (when off: line not rendered, avg price hidden in pane0 info row / tooltip; intraday periods only) |
+| `fullscreen` | `boolean` | `false` | fullscreen (true fills the browser viewport; Esc exits) |
+
+### 6.2 MockChartDataService constructor options
+
+```ts
+interface MockChartDataServiceOptions {
+  /** page size (shared by history & left-scroll pagination, required) */
+  fetchLimit: number
+}
 ```
-All history / realtime endpoint addresses are **explicitly configured** (v1.6.30, no base-URL derivation): `historyUrl` (history, **required** full URL), `wsUrl` / `sseUrl` / `pollUrl` (three realtime modes; full URL required when used; the corresponding mode is disabled with a warn when omitted); full URLs with their own query strings append params with `&`.
 
-SSE realtime (v1.6.31) is based on **`@microsoft/fetch-event-source`** (fetch streaming): supports custom `headers` / `cookies` (injected like HTTP requests), auto-reconnects every 3s on disconnect; HTTP 401/403 auth failures abort the subscription to avoid infinite loops. WebSocket is still limited by browsers and cannot inject custom headers — when auth depends on custom headers, use `'sse'` or `'poll'` instead.
+### 6.3 HttpChartDataService constructor options
 
-Backend contract: `GET {historyUrl}?symbol=&period=&before=&limit=` returns (historyUrl required) `{ code: 200, data: ChartDataPoint[] }` (time ascending; returned count < limit means no older data); realtime pushes share the same structure as history, `time` equal to the last bar = refresh that bar, larger = append a new K-line.
+```ts
+interface HttpChartDataServiceOptions {
+  fetchLimit: number                  // required: page size
+  historyUrl: string                  // required: full history URL (GET?symbol=&period=&before=&limit=&total=)
+  realtimeTransport?: 'ws' | 'sse' | 'poll' // realtime mode, default 'ws'
+  wsUrl?: string                      // 'ws' mode: full URL required
+  sseUrl?: string                     // 'sse' mode: full URL required
+  sseEventName?: string               // SSE event name, default 'message'
+  pollUrl?: string                    // 'poll' mode: full URL required
+  pollIntervalMs?: number             // polling interval ms, default 3000
+  timeoutMs?: number                  // fetch timeout ms, default 8000
+  headers?: Record<string, string>    // injected into all HTTP request headers
+  cookies?: Record<string, string>    // object form, serialized into the Cookie header
+  params?: Record<string, string>     // extra URL query on all requests
+  cache?: boolean                     // history cache toggle, default true
+  maxCacheEntries?: number            // LRU cache entry cap (symbol|period combinations)
+  maxKnownTotals?: number             // "known total" records cap (prevents unbounded memory growth)
+  cacheTtlMs?: number                 // newest-page cache TTL ms (older pages unaffected)
+}
+```
 
-**Data flow (v1.6.17)**: `controller.init()` manages everything — fetch the latest page → `setKlineData` redraw + fitContent → subscribe realtime; when `symbol` / `period` / `service` change, the component updates the controller then re-runs `init()` (loadSeq discards stale responses as races).
+---
 
-**Pan-left auto-load of older history (v1.6.17, moved into the controller `loadEarlier`)**: when the visible range reaches the far-left edge, the controller uses the current earliest bar's `time` as the `before` anchor to fetch one more page, prepending via `prependHistory` (dedupe / ascending + viewport keeps the original data position); stops when the return is below limit or the merged increment is 0.
+## 7. Types
 
-### HttpChartDataService constructor options (v1.7.1)
+All public types carry `export` declarations and can be imported straight from source (`.d.ts` will be shipped alongside once published to npm):
+
+| Type | Defined in | Description |
+|---|---|---|
+| `ChartDataPoint` | `src/types/chart.ts` | unified data point (K-line / intraday / call auction), `pointType` type guard |
+| `HistoryQuery` | `src/services/chartDataService.ts` | history query input (symbol / period / before / limit / total) |
+| `RealtimeHandler` | `src/services/chartDataService.ts` | realtime callback output: `(point: ChartDataPoint) => void` |
+| `ChartDataService` | `src/services/chartDataService.ts` | data service interface (the component depends only on it) |
+| `MainIndicatorType` | `src/chart/indicator/` | main indicator name union: `'ma' \| 'expma' \| 'boll' \| 'sar' \| 'bbi'` |
+| `SubIndicatorType` | `src/chart/indicator/` | sub indicator name union (10 entries) |
+| `PeriodValue / PeriodValueOrEmpty` | `src/chart/periods.ts` | period value / period value or empty |
+| `ChartThemeName` | `src/chart/core/theme.ts` | theme name: `'dark' \| 'light'` |
+| `ChartLoadStatus` | `src/chart/core/types.ts` | load status union |
+
+Core fields of `ChartDataPoint` (full field table: [8.3 Data point format](#83-data-point-formatchartdatapoint)):
+
+```ts
+export interface ChartDataPoint {
+  /** second-level timestamp (lightweight-charts standard time format) */
+  time: number
+  /** trading date 'YYYY-MM-DD' */
+  tradeDate: string
+  /** previous close (basis for change & up/down coloring) */
+  preClose: number
+  /** type guard: 'kline' | 'timeshare' | 'auction' */
+  pointType: 'kline' | 'timeshare' | 'auction'
+  // K-line: open / high / low / close / volume / amount / risePrice / riseRate
+  // Intraday: price / avgPrice / volume / amount
+  // Call auction: matched / unMatched / matchType / isAuction
+  [key: string]: any
+}
+```
+
+---
+
+## 8. Examples
+
+### 8.1 Basic K-line (default Mock data)
+
+```vue
+<KLineChart symbol="600000" name="浦发银行" :period="'day'" theme="dark" />
+```
+
+### 8.2 Intraday chart (1d~5d)
+
+```vue
+<KLineChart symbol="300750" name="宁德时代" :period="'1d'" theme="dark" />
+```
+
+> In intraday mode: pan / zoom buttons hidden, no main indicator, no CR sub-indicator, time format `YYYY-MM-DD HH:mm`, average line toggleable.
+
+### 8.3 Data point format (ChartDataPoint)
+
+| Field | Type | pointType | Description |
+|---|---|---|---|
+| `time` | `number` | all | second-level timestamp (strictly increasing, library assertion) |
+| `tradeDate` | `string` | all | trading date `YYYY-MM-DD` |
+| `preClose` | `number` | all | previous close (coloring basis / intraday scale midpoint / change basis) |
+| `pointType` | `'kline' \| 'timeshare' \| 'auction'` | all | data point type marker |
+| `open / high / low / close` | `number` | kline | open / high / low / close |
+| `volume` | `number` | kline | volume (lots / shares) |
+| `amount` | `number` | kline | turnover |
+| `risePrice / riseRate` | `number` | kline | change amount / change % (vs previous close) |
+| `price` | `number` | timeshare | intraday current traded price |
+| `avgPrice` | `number` | timeshare | intraday average traded price |
+| `matched / unMatched` | `number` | auction | matched / unmatched volume |
+| `matchType` | `-1 \| 1` | auction | trade direction: -1 sell-heavy (green) / 1 buy-heavy (red) |
+| `isAuction` | `boolean` | auction | whether in the call-auction session |
+
+### 8.4 Connecting real quotes (HttpChartDataService)
+
+```ts
+import { HttpChartDataService } from './services/httpChartDataService'
+
+const service = new HttpChartDataService({
+  fetchLimit: 200,
+  historyUrl: 'http://<host>/api/kline/history',
+  realtimeTransport: 'ws',
+  wsUrl: 'wss://<host>/ws',
+})
+
+// pass the service into the component; the controller paginates + subscribes realtime on init
+<KLineChart :service="service" symbol="600000" name="浦发银行" :period="'day'" />
+```
+
+### 8.5 Realtime transport modes in detail (ws / sse / poll)
+
+`realtimeTransport` is the single switch (default `'ws'`); the remaining options are filled per the chosen mode. The realtime data format is identical across all three modes (normalized by `normalizePoint` in the service layer, `o/h/l/c/v` abbreviations accepted), so the backend only needs to follow the contract — switching modes changes constructor options only.
+
+**Overview**
+
+| Option | Type | Default | Mode | Description |
+|---|---|---|---|---|
+| `realtimeTransport` | `'ws' \| 'sse' \| 'poll'` | `'ws'` | all | realtime transport switch |
+| `wsUrl` | `string` | — | **ws** | full WebSocket URL; no subscription when omitted |
+| `sseUrl` | `string` | — | **sse** | full SSE URL; no subscription when omitted (warn) |
+| `sseEventName` | `string` | `'message'` | **sse** | backend custom event name (e.g. `'quote'`) |
+| `pollUrl` | `string` | — | **poll** | dedicated polling endpoint (**not** the history URL) |
+| `pollIntervalMs` | `number` | `3000` | **poll** | polling interval |
+
+**① `'ws'` WebSocket push (default, lowest latency)**
 
 ```ts
 new HttpChartDataService({
-  fetchLimit: 200,                    // required: bars per page (history / pan-left paging)
-  historyUrl: 'http://<host>/api/kline/history', // required: full history URL (own route / query)
-  realtimeTransport: 'ws',            // optional: 'ws' (default) | 'sse' | 'poll'
-  wsUrl: 'wss://<host>/ws',           // required for 'ws'
-  sseUrl: 'https://<host>/sse',       // required for 'sse'
-  sseEventName: 'message',            // optional: SSE event name, default 'message'
-  pollUrl: 'https://<host>/api/kline/latest', // required for 'poll'
-  pollIntervalMs: 3000,               // optional: poll interval ms, default 3000
-  timeoutMs: 8000,                    // optional: fetch timeout ms, default 8000
-  headers: { Authorization: 'Bearer <token>' },  // optional: injected into all HTTP requests
-  cookies: { session: 'abc123' },     // optional: object form, serialized into the Cookie header
-  params: { market: 'SH' },           // optional: extra URL query on every request
-  cache: true,                        // optional: history cache on/off, default true
-  maxCacheEntries: 12,                // optional: LRU cache entry cap (symbol|period combos)
-  maxKnownTotals: 64,                 // optional: "known total count" record cap (memory guard)
-  cacheTtlMs: 30000,                  // optional: latest-page cache TTL ms (older paging unaffected)
+  fetchLimit: 200,
+  historyUrl: 'http://host/api/kline/history',
+  realtimeTransport: 'ws',
+  wsUrl: 'wss://host/ws',
 })
 ```
 
-**Realtime transport comparison**:
+Backend contract: `{wsUrl}?symbol=<code>&period=<period>`, pushing any of four shapes:
 
-| Mode | Options used | Custom headers / cookies | Notes |
-|---|---|---|---|
-| `'ws'` (default) | `wsUrl` | ✗ browser forbids injection | Full-duplex WebSocket push; cross-origin needs server support |
-| `'sse'` | `sseUrl` + `sseEventName` | ✓ via `@microsoft/fetch-event-source` | One-way server push; 3s auto-reconnect; aborts on 401/403 |
-| `'poll'` | `pollUrl` + `pollIntervalMs` | ✓ plain fetch | HTTP polling (default 3000ms); no persistent connection |
+```json
+{"time":1728000000,"open":10,"close":10.2,"volume":1234}   // single point
+{"data":{"time":...}}                                       // { data: single point }
+{"data":[{...},{...}]}                                      // { data: array }
+[{...},{...}]                                               // bare array
+```
 
-When auth depends on custom request headers, prefer `'sse'` or `'poll'` (WebSocket cannot inject headers).
+Behavior: `handler` is called on every message; returns `() => ws.close()` as the cleanup function. `time` equal to the last bar = refresh that bar; larger = append a new bar.
+Limitation: browsers cannot inject custom headers / cookies into WebSocket (auth only via URL query or same-origin cookies) — **use sse / poll when auth depends on custom headers**.
 
-**Full-URL semantics (v1.6.30)**: `historyUrl` / `wsUrl` / `sseUrl` / `pollUrl` always take a **full URL** (may include own route / query); the library appends core params (`symbol` / `period` / `before` / `limit`) with `&` (core params win over `params` on name conflict). A missing URL for a mode disables that mode with a console.warn.
-
-**Request protocol**: history `GET {historyUrl}?symbol=&period=&before=&limit=` returns `{ code: 200, data: ChartDataPoint[] }` (time ascending; count < limit means no older data) or a bare array; realtime pushes share the same structure, `time` equal to the last bar = refresh that bar, larger = append a new bar.
-
-**Memory management**: history cache LRU-evicts per `symbol|period` combo (`maxCacheEntries`, default 12); `knownTotals` independently tracks each key's known total count (survives cache eviction) and is only LRU-pruned above `maxKnownTotals` (default 64), preventing unlimited metadata growth across paging round-trips; data handed to callers is always an independent copy, realtime updates never pollute the cache.
-
-Data point type `ChartDataPoint` (`src/types/chart.ts`, K-line):
+**② `'sse'` Server-Sent Events (custom auth headers supported)**
 
 ```ts
-{
-  time: number          // second-level timestamp, strictly increasing (library assertion)
-  tradeDate: string     // 'YYYY-MM-DD' (pane0 info row time display)
-  preClose: number      // previous close
-  pointType: 'kline'    // K-line type guard (intraday point 'timeshare' is not rendered for now)
-  open: number
-  high: number
-  low: number
-  close: number
-  volume: number        // volume (volume-pane anchor / average line)
-}[]
+new HttpChartDataService({
+  fetchLimit: 200,
+  historyUrl: 'http://host/api/kline/history',
+  realtimeTransport: 'sse',
+  sseUrl: 'http://host/api/kline/sse',
+  sseEventName: 'quote',                        // backend custom event name (default 'message')
+  headers: { Authorization: 'Bearer <token>' },  // SSE accepts auth headers
+})
 ```
 
-### 5.6 Theme & Colors
+Backend contract: `{sseUrl}?symbol=&period=`, the server streams SSE (`event: <sseEventName>` / `data: <JSON>`); payload shape identical to WS.
+Behavior: built on `@microsoft/fetch-event-source` (fetch streaming) so **`headers` / `cookies` auth is injectable** (impossible with native EventSource); auto-reconnect after **3s** on drop; HTTP **401/403 aborts immediately** (no infinite reconnect loop on auth failure); returns `() => ctrl.abort()` as cleanup. Best for: one-way server push with auth headers.
 
-- Dark / light colors are fully centralized in `src/chart/core/theme.ts` (`chartThemes.dark` / `.light`);
-- Main indicator colors `mainIndicatorColors`, sub indicator colors `subIndicatorColors`: shared by both themes, de-whitened since v1.4.92 (gray line `#666666` / BOLL middle band `#33373E` / BBI `#607D8B`) so they stay clearly visible on the light theme;
-- The page html background is synced by App.vue with the theme (`pageBackground`); all in-chart colors go through the theme object.
+**③ `'poll'` HTTP polling (simplest, most robust)**
 
-### 5.7 Intraday Chart (1d~5d, v1.7.0)
-
-Intraday periods (`1d` ~ `5d`) share the same component and layout as K-line periods. Rendering / interaction differences:
-
-- **Data format**: `pointType='timeshare'` points — `time` (second-level timestamp, strictly increasing) / `tradeDate` ('YYYY-MM-DD') / `preClose` (previous close) / `price` (current price) / `avgPrice` (average price) / `volume`;
-- **Mock counts (sentiment patterns, v1.7.0)**: each day is assigned an intraday pattern by "pattern sequence × symbol offset" (deterministically covering 8 types): half-day (09:31~11:30, **120 points**) / 厂字板 (limit-up open → broken pullback → re-sealed at close) / one-line limit up / one-line limit down / 天地天 (limit up → limit down → limit up) / 地天地 (limit down → limit up → limit down) / consecutive-up (high open → sealed limit up at close) / consecutive-down (high open → sealed limit down at close); the latest day is a full 241 points / older days 240 (missing the first minute); `fetchHistory` groups by trading day and takes the most recent N days (`timesharePatternPath` pure function, unit-testable);
-- **pane1 intraday twin lines**: `LineSeries` price line + average line (dark #FFFFFF / #F4AA0A, light #33373E / #B8860B, `theme.timesharePriceColor` / `timeshareAvgColor`); cleared and invisible on K-line periods;
-- **No main indicators**: the main-indicator bar is hidden on intraday (MA/EXPMA/BOLL/SAR/BBI are OHLC-based; intraday points have no OHLC);
-- **Volume pane3**: K-line periods use self-drawn red/green bars + VOL MA5/MA10 average lines; intraday periods use self-drawn **1px thin bars** with **average lines removed** (`rebuildVolumeData` intraday guard, pane2 info row shows volume only, v1.7.0); **intraday volume bar color rules**: the first bar of a trading day compares with previous close preClose, the rest compare with the previous minute price (> red / < green / = flat color, `resolveTimeshareVolumeColor` pure function);
-- **MACD pane5**: K-line periods use `MacdBarPrimitive` self-drawn red/green bars (bar width identical to K-lines, positive values hollow red); intraday periods also self-drawn but with a **fixed 1px solid thin line** (`getIsTimeshare` injection: positive solid red / negative solid green, no hollow);
-- **Sub indicators**: no CR on intraday (`TIMESHARE_DISABLED_SUB_INDICATORS`, filtered in the App buttons); other indicators are computed on the price series (K-convention data conversion `close = price`);
-- **Grid vertical divisions**: `timeshareGridVerticalCount` — 1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5 (`getVerticalCount` dynamic, K-line constant 4);
-- **Interaction**: on intraday the pan / zoom buttons are hidden and **chart panning interaction is fully disabled** (wheel / press-drag / touch, `setPeriod` dynamically toggles `handleScroll`; zoom remains controlled by toolbar buttons); `hasMoreHistory=false` (intraday data is complete, no left-edge pagination); pane0 / tooltip / time-axis indicator time format **YYYY-MM-DD HH:mm** (`formatAxisTime` intraday branch, adjusted from HH:mm in v1.7.0 to distinguish dates across multi-day intraday); **time-axis tick labels** (`tickMarkFormatter`): K-line state **YYYY-MM-DD** / intraday state **HH:mm** (not affected by the format param);
-- **pane0 info row (intraday)**: appends price / **average price** / change / change% / volume / amount (price / change / change% **numbers** colored red-up / green-down / flat vs previous close, labels use the text color; **average price number = average-line color** (timeshareAvgColor); volume/amount uncolored, `buildInfoSegments` intraday branch + `barTimeMap` O(1) lookup);
-- **tooltip**: intraday points show time / price (colored) / **average price (average-line color)** / change / change% / volume / amount (seven rows, change baseline = previous close);
-- **Files**: `src/chart/periods.ts` (`isTimesharePeriod` / `timeshareGridVerticalCount` / `timeshareVerticalCount`), `src/chart/core/kLineChartController.ts` (intraday twin-line branch), `src/chart/core/subIndicatorPaneManager.ts` (intraday indicator adaptation), `src/services/chartDataService.ts` (intraday mock: `timesharePatternPath` 8 patterns + `buildTsPool` per-day allocation), `src/services/mockDataGenerator.ts` (pure data-generation layer, v1.7.1), `src/chart/core/timeshareManager.ts` / `paneFactory.ts` / `paneLayout.ts` / `viewport.ts` (v1.7.1 split modules).
-
-#### 5.7.1 Intraday pane1 Left/Right Axis (v1.7.1)
-
-- **Value range**: interval-symmetric expansion (user-specified `symmetricExpandRange`) — half-span `expandDistance = max(upper deviation, lower deviation)`, range `[preClose−half, preClose+half]`, **middle value always the first bar's preClose** (uniform for 1d~5d, `getTimesharePreClose`); tick values generated by `buildTimeshareScaleValues` as a strictly arithmetic sequence (first/last = newMax / newMin, middle = preClose, 6 divisions with indicator on / 8 with off);
-- **0 margins**: on intraday pane1 left / right scales use `scaleMargins = { top: 0, bottom: 0 }` (symmetric) → the middle horizontal line sits exactly at the pixel center; a one-line limit-up price line **hugs the pane1 top border**, limit-down hugs the bottom border; K-line periods restore the library default margins;
-- **Crosshair indicator = tick value**: symmetric 0 margins guarantee the coordinate center ↔ pixel center exactly aligns, so the crosshair on the middle line reads preClose (the middle tick), with per-row one-to-one correspondence up and down (fixes: under the library's asymmetric default margins the same y read 9.43 instead of 10);
-- **Right axis**: percentage = `(left-axis displayed value − preClose) / preClose × 100%` (series values first rounded to the left axis's 2 decimals, left 12.67 → right +26.70%, `formatPercent` carries +/-); the **right-axis crosshair indicator** is a separate primitive (the library filters by priceScaleId; a left-axis indicator is not drawn in the right axis area), back-calculated on the fixed left range, background / text color / font copied from the left-axis indicator, left-aligned to the area's left edge, rendered on intraday only;
-- **Coloring**: left-axis price / right-axis percentage vs preClose in three states (> red / < green / = flat dark white / light black, `getScaleValueColor` + `resolveVsBaseColor`);
-- **Debugging**: `window.__klineChart` (dev only) live-reads `bars` / `preClose` / `timeshareHalf` / `scaleValues` / `horizontalCount` / `getMaxMin()`.
-
-## 6. Running
-
-```bash
-pnpm install       # pinned versions: lightweight-charts 5.2.1 / vue 3.5.43
-pnpm dev           # development (http://127.0.0.1:5210)
-pnpm test          # vitest unit tests (incl. split-module tests splitModules.test.ts)
-pnpm build         # vue-tsc type check + build
+```ts
+new HttpChartDataService({
+  fetchLimit: 200,
+  historyUrl: 'http://host/api/kline/history',
+  realtimeTransport: 'poll',
+  pollUrl: 'http://host/api/kline/latest',
+  pollIntervalMs: 3000,
+})
 ```
 
-## 7. Memory & Performance
+Backend contract: `GET {pollUrl}?symbol=&period=[&total=N]` returns the **latest snapshot array** directly (no `limit` attached — the backend returns whatever it has and everything is delivered).
+Behavior: fetches **once immediately** on subscribe, then every `pollIntervalMs`; uses the dedicated `fetchLatest` (bypasses the history cache so every call is fresh); **reentrancy guard** (skips a tick while a previous request is in flight — slow endpoints never pile up requests); **incremental filter** (only points with `time >= max delivered time` are delivered; same-bar intraday refresh also delivered — the library treats same-`time` as overwrite); every successful fetch is **merged into the history cache** (later `fetchHistory` hits the fresh snapshot); returns `() => { stopped = true; clearInterval(timer) }` as cleanup. Best for: no WS/SSE infrastructure, simplest integration, latency-insensitive.
 
-- **Crosshair rAF throttling (v1.5.9)**: during drag-pan / fast mousemove the library's crosshairMove can fire at high frequency; the controller merges same-frame events into one processing pass (at most one redraw per frame); `setCrosshairY` skips equal values, so unchanged movement no longer triggers fullUpdate.
+**Shared options (auth / context, common to all three modes)**
 
-- **Function-style convention (v1.6.24)**: arrow functions across the codebase — top-level / object methods are all arrows; class methods uniformly use arrow-function fields (`method = (): T => {}`, `this` bound to the instance, so library callbacks never lose `this`); `constructor` / `get` / `set` accessors keep the method form per syntax. Class methods are never called inside the constructor; field references all live inside lazy arrow bodies, no initialization-order risk.
-- **primitive view singleton reuse**: every primitive's `paneViews()` / `priceAxisPaneViews()` returns a singleton view created at construction, avoiding per-frame `new` objects that create GC pressure;
-- **Render clipping**: volume / MACD bars and SAR dots are clipped by the visible logical range (`getVisibleLogicalRange`); indicator polylines (`IndicatorLinePrimitive`) are clipped by the visible point range (`getVisibleRange()`) — all only iterate visible elements, never the full dataset (long data of 10000 bars draws only the ~120 visible bars per frame; pan / zoom do not slow down linearly with total data);
-- **Indicator values O(1) lookup**: pane0 / pane2 info rows look up `Map<time, value>` on demand (`mainIndicatorValueMaps` / `volumeInfoMap` / `sarValueMap`), rebuilt when switching indicators / data, emptied when cleared, no accumulation;
-- **Label caching**: axis labels are rebuilt in `updateAllViews` (chart update), the render draw only reads the cached collection without recomputing;
-- **Lifecycle**: controller `destroy()` removes the crosshair listener, disconnects the ResizeObserver, `detachPrimitive` (SAR dots / main indicator lines / volume average lines), `chart.remove()`, clears the container marker; when an indicator is off the series calls `removePane` before nulling; primitive `detached()` clears references;
-- **Instance protection**: the container `dataset.lwcMounted` marker prevents duplicate chart instances.
+| Option | Injected into | Example |
+|---|---|---|
+| `headers` | all HTTP requests (history / latest / **SSE yes**; WS no) | `{ Authorization: 'Bearer <token>' }` |
+| `cookies` | object form serialized into the `Cookie` header of all HTTP requests | `{ session: 'abc123' }` |
+| `params` | URL query appended to all requests (history / latest / SSE / WS); **core params win, never overridden** | `{ market: 'SH' }` |
 
-## GitHub Pages live preview
+**Cheat sheet**
 
-Auto-deployment via GitHub Actions is built in (`.github/workflows/pages.yml`, v1.7.1):
+| Dimension | ws | sse | poll |
+|---|---|---|---|
+| Latency | lowest (push) | low (push) | high (≥3000ms interval) |
+| Custom auth headers | ❌ no | ✅ yes | ✅ yes |
+| Backend complexity | needs WS service | needs SSE stream | one GET endpoint |
+| Disconnect handling | self-managed reconnect | auto 3s reconnect | auto retry next tick |
+| Typical use | high-frequency quotes | push with auth | simple / low-frequency |
 
-- **URL**: `https://abulo.github.io/kline-chart-component/` (Pages project path = repository name)
-- **Trigger**: push to `main` (or run the workflow manually from the Actions tab)
-- **Pipeline**: `pnpm install --frozen-lockfile` → `pnpm run build` → `actions/upload-pages-artifact` → `actions/deploy-pages`
-- **One-time setup**: repo `Settings → Pages → Build and deployment → Source` = `GitHub Actions`
-- **Environment**: node 24.16.0 + pnpm 12.15.0 (`packageManager` in `package.json` pins `pnpm@12.15.0`; the Actions workflow uses `pnpm/action-setup@v4` 12.15.0 + `actions/setup-node@v4` with node 24.16.0)
-- **Local check**: `pnpm run build` then `npx vite preview`, open `http://127.0.0.1:4173/kline-chart-component/`
+### 8.6 Programmatic control (controller via ref)
 
-> Package manager (v1.7.1): the project uses **pnpm** (`package-lock.json` removed, `pnpm-lock.yaml` committed). To migrate back to npm, delete `pnpm-lock.yaml` and run `npm install`.
+```ts
+const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
+
+const onZoomIn = () => chartRef.value?.controller?.zoomIn()
+const onShiftLeft = () => chartRef.value?.controller?.shiftLeft()
+const switchToTimeshare = () => chartRef.value?.controller?.setPeriod('1d')
+const toggleRightScale = () => chartRef.value?.controller?.setRightScaleVisible(true)
+```
+
+---
+
+## 9. Development
+
+### 9.1 Environment & commands
+
+| Command | Description |
+|---|---|
+| `pnpm install` | install dependencies (locked via `pnpm-lock.yaml`, lightweight-charts 5.2.1) |
+| `pnpm dev` | dev preview http://127.0.0.1:5199 (`/api` proxied to backend, `ws: true` proxies WebSocket) |
+| `pnpm type-check` | type check (`vue-tsc --noEmit`, strict zero errors) |
+| `pnpm test` | unit tests (vitest, 27 files / 257 cases) |
+| `pnpm build` | type check + build (`vite build`, output `dist/`, base `/kline-chart-component/`) |
+| `pnpm preview` | preview the build http://127.0.0.1:4173/kline-chart-component/ |
+
+### 9.2 Directory structure
+
+```
+src/
+├── App.vue                    # toolbar + container (period bar / theme / toggles / fullscreen)
+├── main.ts                    # entry
+├── components/
+│   └── KLineChart.vue         # chart component (Props / events / controller ref)
+├── chart/                     # chart source grouped by feature
+│   ├── periods.ts             # period config (13 entries + periodMap O(1) lookup + intraday grid divisions)
+│   ├── core/                  # core: controller / layout / theme / data bridge
+│   │   ├── kLineChartController.ts   # controller: data / lifecycle / public API
+│   │   ├── chartDataBridge.ts        # data IO bridge (history / pagination / realtime orchestration + race guard)
+│   │   ├── realtimePipeline.ts       # realtime incremental pipeline (throttle → batch consume → incremental update)
+│   │   ├── indicatorManager.ts       # main indicators + volume MA lines + info row
+│   │   ├── subIndicatorPaneManager.ts # sub-indicator pane management (pane4/5 create/destroy)
+│   │   ├── crosshairManager.ts       # crosshair linkage + overlayTime + indicator-value registry
+│   │   ├── timeshareManager.ts       # intraday computation (preClose symmetric half-range / arithmetic scale / three-state coloring)
+│   │   ├── paneFactory.ts / paneLayout.ts / viewport.ts
+│   │   ├── theme.ts / resolveBarColors.ts / mergeBars.ts
+│   │   └── candlestickWidth.ts / constants.ts / types.ts / indicatorMeta.ts / mock.ts
+│   ├── axis/                  # left scale labels (grid-aligned, shares drawAxisLabel with indicator values)
+│   ├── crosshair/             # crosshair indicator values + data tooltip
+│   ├── border/ / highLow/ / grid/ / volume/ / overlay/
+│   ├── indicator/             # East Money indicator library (index.ts single export + pure indicator functions)
+│   └── util/format.ts         # value formatting (price / volume / indicator scale / date)
+├── services/
+│   ├── chartDataService.ts    # interface definitions (HistoryQuery / RealtimeHandler / ChartDataService)
+│   ├── mockChartDataService.ts # Mock service implementation (lazy pools + pagination / realtime orchestration + LRU)
+│   ├── mockDataGenerator.ts   # pure data generation (daily K / intraday / minute aggregation / weekly-monthly aggregation)
+│   └── httpChartDataService.ts # HTTP history + WS/SSE/Poll realtime + LRU cache
+└── types/chart.ts             # unified data point type (ChartDataPoint)
+```
+
+### 9.3 Engineering constraints (read before contributing)
+
+- **Build**: Vite 8 + `@vitejs/plugin-vue`; `vue-tsc` type check runs before build
+- **Tests**: Vitest 5 + jsdom (chart-engine tests do not depend on browser rendering)
+- **Code style**: camelCase, semantic function names; class methods use arrow fields (this bound to the instance, safe when called back by the library)
+- **Colors**: centralized in `src/chart/core/theme.ts`, no scattered hardcoded hex values on pages
+- **Files**: split TS files over 1000 lines; filenames must not contain digits; case-sensitive filesystem (imports must match exactly)
+- **Versioning**: changes must stay in sync between `package.json` and the README version history
+
+---
+
+## 10. Contributing
+
+PRs and issues are welcome. Before submitting:
+
+1. Run `pnpm type-check` (zero type errors) and `pnpm test` (all green)
+2. New features **must** ship type definitions and test cases (incl. edge / memory scenarios)
+3. Follow the §9.3 engineering constraints (camelCase / centralized theme colors / comments with inputs & outputs)
+4. Suggested commit format: `v<version> <change summary>（\n- details）`
+
+> Full PR / issue process conventions will be consolidated into a separate `CONTRIBUTING.md`.
+
+---
+
+## 11. Changelog
+
+The version history is **embedded at the bottom of this file** (no separate CHANGELOG file), see [Version History](#version-history).
+
+- Full history: v1.7.3 ~ v1.7.18 (intraday chart / scale algorithm / crosshair / volume toggle / layout refactor / data-service split / README iterations, etc.)
+- Release flow: commit → push `main` → GitHub Pages Actions auto-deploys https://abulo.github.io/kline-chart-component/
+
+---
+
+## 12. FAQ
+
+**Q1: What happens when `period` is an empty string?**
+The component treats it as "period not set": no data request is issued, `tickMarkFormatter` falls back to the K-line format; passing a valid period afterwards refetches. An empty `symbol` / `total` on the very first request is normal (no data held yet in HistoryQuery); later requests carry them automatically.
+
+**Q2: Data does not fill the viewport after switching periods (especially intraday)?**
+The controller calls `fitContent` after period switches / volume-group toggles; if it still looks unfilled, it is usually the combined path "close volume group then switch to intraday" — see the fixes in version history v1.7.14 / v1.7.15 (clear series before `removePane` to prevent timeScale residue).
+
+**Q3: Where does the `total` parameter of `HttpChartDataService` come from?**
+Auto-computed: the larger of "deduplicated cumulative count for this symbol|period" and "the backend's last-returned `total` field", appended as `total=<n>` to the request URL for backend incremental / resume decisions; callers may also pass it explicitly to override.
+
+**Q4: Why does the crosshair vertical sometimes deviate from the bar center during fast moves?**
+Speed-adaptive behavior: fast moves use pixel-level tracking (zero deviation), slow moves / dwell use magnetic snap (stays on bar centers). This is the hybrid behavior iterated from v1.7.9 to v1.7.11 per requirements.
+
+**Q5: Why are there no pan / zoom buttons in intraday mode?**
+Intraday periods (1d~5d) are fixed full-width by product semantics and cannot be panned / zoomed; the corresponding App toolbar buttons are hidden.
+
+**Q6: Why do imports fail on the filesystem?**
+The repo is maintained on a case-sensitive filesystem; import paths must match filenames exactly (e.g. the casing of `kLineChartController.ts`).
+
+---
+
+## 13. Credits
+
+- Chart engine: [lightweight-charts](https://github.com/tradingview/lightweight-charts) (v5.2.1)
+- UI / interaction reference: East Money and TongDaXin desktop clients
+- Realtime deps: [@microsoft/fetch-event-source](https://www.npmjs.com/package/@microsoft/fetch-event-source) (SSE), fancy-canvas
+
+---
+
+## 14. License
+
+Licensed under the **MIT License**, see [LICENSE](LICENSE) (Copyright (c) 2026 abulo). Free to use, modify and redistribute with attribution.
+
+---
+
+## Version History
+
+- **v1.7.18 (current)**: README rewritten to the "TypeScript OSS standard template" — value first, then quick start, then details: hero banner + badges → features (TS selling points: type guard / interface separation / strict zero errors) → installation (source-repo form + Node/pnpm/TS requirements) → quick start (minimal usage + custom-data passthrough) → documentation (Pages / EN README) → API reference (Props / events / controller methods with type signatures) → options (Props table + Mock/Http constructor tables) → exported types (9 public types) → examples (6 scenarios) → development (commands + directory tree + engineering constraints) → contributing → changelog (built-in version history) → FAQ (6 real high-frequency questions) → credits → license. Full version history preserved. Verified: tsc 0 errors, vitest 27 files / 257 tests green.
+  Additions: section "8.5 Realtime transport modes in detail (ws / sse / poll)" — parameter overview, backend contracts, behavior semantics (reconnect / reentrancy guard / incremental filter / cache merge), shared auth-option table, cheat sheet; MIT LICENSE file added, License section points to it.
+
+- **v1.7.17**: README fully rewritten + core code comments upgraded. README restructured as standard OSS docs: project intro (positioning / tech stack / capabilities / architecture layers), quick start (install / minimal usage / custom-data passthrough), component API (Props input table / events output table / controller methods inputs→outputs), data access (ChartDataService interface docs: HistoryQuery inputs, fetchHistory outputs, subscribeRealtime outputs, Mock/Http constructor tables), data-point format (all ChartDataPoint fields), periods & indicators, theme colors, layout structure, directory tree, build/test/package, memory & performance, Pages deployment; full version history preserved. Code comments upgraded to an input/output standard: `types/chart.ts` (field purposes), `services/chartDataService.ts` (interface methods @param/@returns), `services/mockChartDataService.ts` (fetchHistory / subscribeRealtime / ensurePool / ensureTsPool / ensurePeriodPool / lowerBound / touchCache), `services/mockDataGenerator.ts` (core generator functions @param/@returns), `chart/periods.ts`, `chart/util/format.ts`. Verified: tsc 0 errors, vitest 27 files / 257 tests green.
+
+- **v1.7.16**: services layer refactor — `chartDataService.ts` keeps only the interface definitions (`HistoryQuery` / `RealtimeHandler` / `ChartDataService`); the Mock implementation moved out: `MockChartDataService` class + `touchCache` (LRU cache management) + `MockChartDataServiceOptions` relocated from `chartDataService.ts` into `mockDataGenerator.ts` (data generation + Mock service in one file, interfaces imported from `chartDataService.ts`, no circular dependency); then, per the **>1000-lines split discipline**, the Mock service implementation was separated into `mockChartDataService.ts` (lazy pools + pagination / realtime orchestration, ~640 lines) and `mockDataGenerator.ts` returned to pure data generation (~490 lines). Import sites updated: `App.vue` / `KLineChart.vue` / `tests/timeshare.test.ts` / `tests/cacheLru.test.ts` / `tests/mockRealistic.test.ts` / `tests/chartDataService.test.ts`. Verified: tsc 0 errors, vitest 27 files / 257 tests green.
+
+- **v1.7.15**: fixed "daily → volume off → volume on → 1d intraday bottom time axis wrong, main & indicator charts compressed" — the **indicator-group variant** of the same root cause as v1.7.14: when `vol` is re-enabled, `setVolumeVisible(true)` runs the coordination flow "temporarily remove indicator group (`setSubIndicator(null)`) → rebuild indicator group (`setSubIndicator(active)`)"; `SubIndicatorPaneManager.removePanes` directly `removePane`s the indicator group, and the removed MACD series (~400 K-line points) likewise **remains attached to the timeScale** (library `_private__points` length 641 = 400 residual + 241 intraday). Fix: clear all series data of the indicator-group panes (startIndex / startIndex+1) **before** `removePane` — same paradigm as `removeVolumePanes`; a repo-wide grep confirmed only these two `removePane` call sites, both covered. Verified: browser — path B logical 0-240, time axis 09:30~15:00 normal; same-page round-trips / vol-off path / daily viewport (280-399) all clean. tsc 0 errors, vitest 28 files / 258 tests green.
+
+- **v1.7.14**: fixed "daily → volume off → 1d intraday bottom time axis wrong, main & indicator charts compressed" — `removeVolumePanes` directly `removePane(2)`s the volume group, and the removed series' K-line data (~400 points) **remains attached to the timeScale**: after switching to intraday, `fitContent` stretches the viewport to 1.5 years (logical 0-640), the time axis mixes K-line dates / 08:00 labels, and the 1-day intraday data is squashed. Fix: clear all series data on pane2/3 (`setData([])`) **before** `removePane` — no timeScale residue (logical restored to 0-240). Clearing while the indicator group is still on pane4/5 (not shifted) has no side effects; K-line volume bars are self-drawn by `VolumeBarPrimitive`, so clearing the series does not affect display. Verified: browser — volume off → 1d intraday logical 0-240, time axis 09:30~15:00 restored; re-enable volume / daily→intraday round-trips all normal. tsc 0 errors, vitest 28 files / 258 tests green.
+
+- **v1.7.13**: fixed "daily K zoomed x5, image reverts after 10s" — realtime viewport follow (`followLastBarIfTracking`) previously used `setVisibleLogicalRange` to **force the last 120 bars back** (added so priceLine stays in view); after zooming, a ~38-bar viewport was also forcibly reset to 120 bars. Switched to `scrollToPosition(0, false)` (right offset 0) — **barSpacing / viewport width completely unchanged**, only the right edge hugs the data tail; also eliminated the per-frame -1px width drift from `setVisibleLogicalRange` recomputing barSpacing. Verified: browser — zoom x5 width 38.32 → after 10s width 38.32 zero drift with the right edge following new bars; zoom out x5 width 365.2 holds; shifting left to view history no longer steals the viewport (v1.7.1 semantics preserved); right-shift past the edge is library rightOffset linkage (content unchanged, not a revert). tsc 0 errors, vitest 28 files / 258 tests green.
+
+- **v1.7.12**: crosshair vertical **center-aligned to bar center** — user example: "bar width 11, line width 3, snapping should make the line cover the bar-center columns (5,6,7), that's the true bar middle". Root cause: drawing with `Math.round(x)+0.5` shifted bar center 291.57 to 292.5 (right-biased; the wider the line, the larger the offset — 1.5px right at 3px width). Fix: draw the vertical line with the bar center's **float x as the geometric center** (no rounding offset), so the line center aligns exactly with the bar center; the horizontal line (mouse-following, no center semantics) keeps sub-pixel alignment. Verified: tsc 0 errors, vitest 28 files / 258 tests green, browser pixel scan — daily snap bar center 291.57 → line pixel columns [291,292] center 291.5 (0.07px sub-pixel) / intraday bar center 292.61 → line columns [292,293] center 292.5.
+
+- **v1.7.11**: crosshair **dwell snap** fix — user reported "vertical line not snapped to the middle on volume / K-line bars". Root cause: after a fast move stops abruptly, the mouse stops producing events (last event speed still above threshold → pixel mode), the line rests at a pixel position (possibly ≤4px off bar center), and no further event triggers snapping. Fix: a **dwell timer** in the hit branch — after the mouse is still for 120ms (`STOP_SNAP_DELAY_MS`), re-snap to the nearest hit param's integer logical (line returns exactly to the bar / volume-bar center, same `logicalToCoordinate` grid as `volumeBarPaneView`); any new event resets the timer; cancelled on miss / pane0 / destroy. Verified: tsc 0 errors, vitest 28 files / 258 tests green, browser — fast sweep pixel (mouse-following) → 50ms stop still pixel → 450ms dwell snap (daily back-jumps 3px to grid 474.97 / intraday 0.9px to grid) → fast again returns to pixel. Added `window.__klineChart.syncMode` probe (pixel / snap / none).
+
+- **v1.7.10**: crosshair **speed-adaptive hybrid** — both "full hand-tracking" and "magnetic snap" at once. Background: after v1.7.9 pixel-level tracking was confirmed "good enough", the user noted it **lost the snap feel** (line no longer rests on bar centers). Fix: `syncLineX` gains a **40ms sliding-window average speed** decision — fast movement (window avg ≥ 0.5px/ms) uses pixel mode (smooth tracking, zero deviation, no jumps); slow / dwell uses snap (line stable on bar center, magnetic feel preserved). The speed state machine only updates in the `handleCrosshairMove` sync section (the single vertical-line set point); `applyCrosshairMove` (rAF) no longer re-sets the line (avoids overwriting with the wrong mode); keyboard moves remain always-snap (per-bar semantics). Verified: tsc 0 errors, vitest 28 files / 258 tests green, browser frame sampling — fast (3.75px/ms) daily 31 frames / intraday 28 frames **all pixel-level zero deviation**; slow (0.09px/ms) 72 frames all snapped to bar centers (deviation ≤ bar half-width, magnetism normal).
+
+- **v1.7.9**: crosshair vertical **pixel-level mouse tracking** (user reported "fast-move lag" three times; frame sampling located the jump-grid deviation of snap-to-bar-center: with 120 bars, bar spacing ~8.6px, the line jumped ±4.3px between bar centers each frame during fast moves). Fix: in the hit branch the vertical line x takes `param.point.x` (mouse coordinate relative to the data area, pixel-level) — exactly like the horizontal line (also mouse-following), **zero deviation** at any speed; keyboard moves (per-bar semantics) keep `logicalToCoordinate` snapping to bar centers. Added `window.__klineChart.lineX` debug probe (current main-chart line x, for frame sampling). Verified: tsc 0 errors, vitest 28 files / 258 tests green, browser CDP high-frequency moves + page rAF frame sampling (2ms/step sweep 300→1250, incl. tooltip-covered area) — all frames vertical-line deviation **0.00px**, 0 frozen frames, stable 16.6ms frame interval.
+
+- **v1.7.8**: crosshair **unified dashed horizontal + vertical lines** (same as last-price line, 6px on / 4px off). Background: the library's crosshair horizontal (horzLine) defaults to solid, its dash derived from line width (`Dashed=[2w,2w]`), unable to express the price line's [6,4] style. Approach: the horizontal line also becomes self-drawn (same `CrosshairLinePrimitive` as the v1.7.6 vertical, paneIndex injected at construction, one instance per pane) — both lines unify `setLineDash([6,4])`; the horizontal renders only on the **pane the crosshair hit** (same semantics as library horzLine, y is the hit pane's local coordinate), while the vertical still spans all panes; the library horizontal is disabled too (`visible:false` to avoid solid + dashed overlap rendering solid). The y dispatch shares the vertical's chain, **moved to same-frame sync before rAF** (horizontal follows hand in the same frame on fast moves); keyboard-move horizontal injects into pane1 (same basis as the left-scale indicator value). Verified: tsc 0 errors, vitest 28 files / 258 tests green, browser pixel diff — daily / intraday bright segments all 6px (6 on / 4 off), horizontal only on the hit pane (pane3 has none), fast sweep across the tooltip tracks throughout, keyboard lines normal, dark/light screenshots normal.
+
+- **v1.7.7**: crosshair **fast-move lag fully fixed** (finishing after the v1.7.6 self-drawn line regression). Two-stage root cause & fix:
+  ① **Vertical-line update chain lag** (initial): line sync went through rAF throttle (+1 frame) + forced invalidate (+1 frame), accumulating ~2 frames (~33ms) of trail on fast moves. Fix: the vertical x computation and `setX` (cheap) **execute same-frame synchronously before rAF**; heavy work (tooltip / indicator values) still merges into rAF to avoid drag jank; redraw no longer depends on `requestUpdate` (the library ChartApi has no such method — a no-op in the v1.7.7 first version) — the library already redraws the horizontal with the new position before dispatching crosshairMove, so the series-level vertical setX that same frame tracks the hand.
+  ② **Tooltip fixed-area occlusion** (the real sticking point the user re-tested as "lag still exists"): the tooltip overlay (zIndex 9999, fixed at a pane1 corner) covers the library's mousemove targets (each pane's top canvas, style.zIndex='2'); sweeping fast over the overlay means events never enter the canvas event stream, and entering the overlay triggers canvas mouseleave → the library clears the crosshair (line disappears) → perceived as "lag / break". Fix (**event forwarding**): on `mousemove` inside the overlay, **forward** the event to the top canvas of the pane under the mouse — synthesize `mouseenter` first (library mouseEnterHandler re-attaches the mousemove listener) then synthesize `mousemove` (drives the crosshair by coordinates); all existing overlay features (corner positioning / text selection / press-to-drag) are preserved and the crosshair tracks throughout; no forwarding during drag / selection freeze; after pane rebuild (volume / indicator toggles) invalidated canvases are lazily refreshed by `ensureTopCanvases`, no residue, no leaks. Verified: tsc 0 errors, vitest 28 files / 258 tests green, browser frame-by-frame (16ms/step) sweep over the fixed tooltip area (x≈1139~1258) — daily / intraday vertical single-column tracking (deviation ≤4px), tooltip stays visible, MACD / volume toggle combinations all normal throughout.
+
+- **v1.7.6**: crosshair vertical **self-drawn primitive** (the v1.7.5 solid-line approach was rejected in acceptance; root cause confirmed as "the line was covered by bars"). Approach: new `CrosshairLinePrimitive` (zOrder 'top', mounted last on each pane's representative series) self-draws the vertical, spanning the full pane height, drawn above K-line / volume / MACD / indicator lines — fully visible at every tick position, no gaps, no coverage; the library vertical is disabled (`vertLine.visible = false`) to avoid double lines; color follows theme `crosshairLineColor` (opaque, alpha 1.0, dark/light distinguished), horizontal still drawn by the library (Solid). Supporting fixes: vertical x dispatch consolidated in `CrosshairManager` (mouse logical → coordinate, keyboard timeToIndex → coordinate); **intraday has no realtime frame loop and the library does not auto-redraw after crosshairMove** → `syncLineX` / `syncKeyboardMove` trigger the redraw so the line renders instantly; the vertical primitive is unregistered when panes are removed by indicator / volume toggles (leak prevention). Verified: tsc 0 errors, vitest 28 files / 257 tests green, canvas pixel verification — dark daily multiple bar positions pane1/3/5 lines 100% spanning (285/95/95px), intraday pane1/3/5 100% (327/109/109px), no residual double line (library vertical off), lines still normal after volume / indicator toggles.
+
+- **v1.7.5**: crosshair vertical fix — horizontal / vertical lines switched from the library default dash (6px bright / 6px dim) to **solid (LineStyle.Solid)**, fixing the missing bottom of the vertical in sub-panes pane3/pane5 (95px high; a 12px dash cycle does not divide 95px, leaving the bottom 5px in the dim segment); `crosshairLineColor` alpha raised from 0.25 to **0.6** (dark/light consistent) so the line is clearer in the gaps between K-line / volume / MACD bars. (This release failed acceptance and was replaced by the self-drawn approach in v1.7.6.)
+
+- **v1.7.4**: intraday average-price line toggle `avgLineVisible` (rendered by default; when off the line is not rendered and pane0 info row / tooltip hide the average price).
+
+- **v1.7.3**: when the volume group (pane2 info row / pane3) is closed, volume / turnover are hidden in both the tooltip and the main info row.
