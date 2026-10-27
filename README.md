@@ -343,7 +343,94 @@ const service = new HttpChartDataService({
 <KLineChart :service="service" symbol="600000" name="浦发银行" :period="'day'" />
 ```
 
-### 8.5 编程式控制（ref 调用控制器）
+### 8.5 实时传输模式详解（ws / sse / poll）
+
+`realtimeTransport` 是唯一开关（默认 `'ws'`），其余参数按所选模式填写；三种模式的实时数据格式完全一致（服务层 `normalizePoint` 统一规范化，兼容 `o/h/l/c/v` 缩写），后端只需按约定返回，切换模式只改构造参数。
+
+**总览**
+
+| 参数 | 类型 | 默认 | 适用模式 | 说明 |
+|---|---|---|---|---|
+| `realtimeTransport` | `'ws' \| 'sse' \| 'poll'` | `'ws'` | 全部 | 实时传输方式开关 |
+| `wsUrl` | `string` | — | **ws** | WebSocket 完整地址；不传则不做实时订阅 |
+| `sseUrl` | `string` | — | **sse** | SSE 完整地址；缺省不订阅（warn） |
+| `sseEventName` | `string` | `'message'` | **sse** | 后端自定义事件名（如 `'quote'`） |
+| `pollUrl` | `string` | — | **poll** | 轮询专用实时接口（**不复用 historyUrl**） |
+| `pollIntervalMs` | `number` | `3000` | **poll** | 轮询频率 |
+
+**① `'ws'` WebSocket 推送（默认，低延迟首选）**
+
+```ts
+new HttpChartDataService({
+  fetchLimit: 200,
+  historyUrl: 'http://host/api/kline/history',
+  realtimeTransport: 'ws',
+  wsUrl: 'wss://host/ws',
+})
+```
+
+后端约定：`{wsUrl}?symbol=<代码>&period=<周期>`，推送四种形态任选：
+
+```json
+{"time":1728000000,"open":10,"close":10.2,"volume":1234}   // 单点对象
+{"data":{"time":...}}                                       // { data: 单点 }
+{"data":[{...},{...}]}                                      // { data: 数组 }
+[{...},{...}]                                               // 裸数组
+```
+
+行为：收到消息即回调 `handler`；返回 `() => ws.close()` 清理函数。`time` 与最后一根相同 = 刷新该根，更大 = 追加新 K 线。
+局限：浏览器 WebSocket 无法注入自定义请求头 / Cookie（鉴权只能靠 URL query 或同源 Cookie），**鉴权依赖自定义头时改用 sse / poll**。
+
+**② `'sse'` Server-Sent Events（可带鉴权头）**
+
+```ts
+new HttpChartDataService({
+  fetchLimit: 200,
+  historyUrl: 'http://host/api/kline/history',
+  realtimeTransport: 'sse',
+  sseUrl: 'http://host/api/kline/sse',
+  sseEventName: 'quote',                       // 后端自定义事件名（默认 'message'）
+  headers: { Authorization: 'Bearer <token>' }, // SSE 可带鉴权头
+})
+```
+
+后端约定：`{sseUrl}?symbol=&period=`，服务端按 SSE 协议流式输出（`event: <sseEventName>` / `data: <JSON>`），数据体与 WS 同构。
+行为：基于 `@microsoft/fetch-event-source`（fetch 流式读取），**可注入 `headers` / `cookies` 鉴权**（原生 EventSource 做不到）；断线自动 **3s 重连**，HTTP **401/403 立即中止**（防鉴权失败死循环重连）；返回 `() => ctrl.abort()` 清理。适用：单向服务端推送 + 需要鉴权头。
+
+**③ `'poll'` HTTP 轮询（最简单、最稳）**
+
+```ts
+new HttpChartDataService({
+  fetchLimit: 200,
+  historyUrl: 'http://host/api/kline/history',
+  realtimeTransport: 'poll',
+  pollUrl: 'http://host/api/kline/latest',
+  pollIntervalMs: 3000,
+})
+```
+
+后端约定：`GET {pollUrl}?symbol=&period=[&total=N]` 直接返回**最新快照数组**（不附加 limit——后端返回多少就回调多少）。
+行为：注册后**立即拉取一次**，之后每 `pollIntervalMs` 一次；走独立 `fetchLatest`（不复用历史缓存，每次都是最新快照）；**防重入**（上一次请求未返回时跳过本轮，慢接口不叠加并发）；**增量过滤**（只回调 `time >= 已回调最大 time` 的点，同根盘中刷新也回调，库对同 time 是覆盖语义）；每次拉取后 **merge 进历史缓存**（后续 `fetchHistory` 命中最新快照）；返回 `() => { stopped = true; clearInterval(timer) }`。适用：后端无 WS/SSE 基建、需最简单接入、对延迟不敏感。
+
+**共享参数（鉴权 / 附加上下文，三模式通用）**
+
+| 参数 | 注入范围 | 示例 |
+|---|---|---|
+| `headers` | 所有 HTTP 请求（history / latest / **SSE 可注入**；WS 不行） | `{ Authorization: 'Bearer <token>' }` |
+| `cookies` | 对象形式序列化为 `Cookie` 头，注入所有 HTTP 请求 | `{ session: 'abc123' }` |
+| `params` | 追加所有请求（history / latest / SSE / WS）的 URL query；**核心参数优先，不会被覆盖** | `{ market: 'SH' }` |
+
+**选型速查**
+
+| 维度 | ws | sse | poll |
+|---|---|---|---|
+| 延迟 | 最低（推送） | 低（推送） | 高（≥3000ms 间隔） |
+| 自定义鉴权头 | ❌ 不行 | ✅ 可以 | ✅ 可以 |
+| 后端复杂度 | 需 WS 服务 | 需 SSE 流 | 一个 GET 接口即可 |
+| 断线处理 | 需自建重连 | 自动 3s 重连 | 自动下轮重试 |
+| 典型场景 | 高频行情 | 需鉴权的推送 | 简易接入 / 低频行情 |
+
+### 8.6 编程式控制（ref 调用控制器）
 
 ```ts
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
@@ -481,6 +568,9 @@ src/
   构造参数表）→ 类型导出（9 项公共类型清单）→ 示例（6 场景）→ 本地开发（命令表 + 目录结构 +
   工程约束）→ 贡献指南 → 变更日志（内置版本记录）→ FAQ（6 条真实高频问题）→ 致谢 → 许可证。
   完整版本记录保留。验证：tsc 0 错误、vitest 27 文件 257 tests 全绿。
+  补充：示例章节新增「8.5 实时传输模式详解（ws / sse / poll）」——三模式参数总览、
+  后端接口约定、行为语义（重连 / 防重入 / 增量过滤 / 缓存同步）、鉴权共享参数表、
+  选型速查表。
 
 - **v1.7.17**：README 全面重写 + 核心代码注释升级。README 重构为标准开源
   文档：项目介绍（定位 / 技术栈 / 核心能力 / 架构分层）、快速开始（安装 / 最小用法 /
