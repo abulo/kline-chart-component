@@ -153,9 +153,12 @@ export class KLineChartController {
   // → 指标缓存统一重建 + priceLine 视口跟随；chart 经 getter 惰性取
   //（构造时序：pipeline 先于 chart 创建）。
   private readonly realtimePipeline: RealtimePipeline
-  // 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载（内部 loadEarlier）。
+  // 可视逻辑范围变化处理：到达最左边缘（from ≤ 0）→ 触发更早历史加载（内部 loadEarlier）；
+  // 任意平移 / 缩放 → 刷新附图指标 pane5 值域（按新可见窗口重算极值，
+  // 使指标层左刻度随可见数据变化，修复"先缩小再放大刻度不变"）。
   private readonly handleVisibleLogicalRangeChange = (range: LogicalRange | null): void => {
     if (range && range.from <= 0) void this.dataBridge.loadEarlier()
+    this.indicatorManager.refreshSubIndicatorScale()
   }
 
   /** K 线 series（pane1；红涨绿跌，上涨柱体空心）。 */

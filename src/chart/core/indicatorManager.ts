@@ -341,6 +341,17 @@ export class IndicatorManager {
     this.subIndicatorPane.rebuildDataIfOpen()
   }
 
+  /**
+   * 可见逻辑范围变化后刷新 pane5 值域（controller 缩放 / 平移时调用）。
+   *
+   * @remarks
+   * 转发 SubIndicatorPaneManager：按新的可见窗口重算指标极值 → 价格轴值域与
+   * 左刻度同步更新（修复指标层左刻度不随缩放变化的 bug）。
+   */
+  refreshSubIndicatorScale = (): void => {
+    this.subIndicatorPane.refreshVisibleScale()
+  }
+
   /* ===================== 主题同步（applyTheme 调用） ===================== */
 
   /**

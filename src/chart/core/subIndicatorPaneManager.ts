@@ -26,7 +26,7 @@ import { GridPrimitive } from '../grid/gridPrimitive'
 import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive'
-import { calcSubIndicator, type SubIndicatorType } from '../indicator'
+import { calcSubIndicator, type SubIndicatorType, computeIndicatorScaleRange, type IndicatorScaleRange, type IndicatorLine } from '../indicator'
 import { formatAxisSmart } from '../util/format'
 import { subIndicatorLabels } from './indicatorMeta'
 import type { CrosshairPrimitiveRegistry, IndicatorLineSpec, IndicatorValueMap } from './types'
@@ -125,18 +125,10 @@ export class SubIndicatorPaneManager {
   private showIndicator = false
   // pane5 指标柱（Histogram，指标通用；开启时创建，关闭时销毁置 null）。
   private indicatorsBarSeries: ISeriesApi<'Histogram'> | null = null
-  // pane5 刻度对称锚点 series（Line，不可见）：
-  // 数据 = 全部时间点交替 ±absMax（i 偶 = +maxValue、i 奇 = -minValue），
-  // 使可视区内任意窗口都同时含正 / 负锚点 → priceScale autoScale 并集恒为
-  // [-absMax, +absMax]：平移 / 缩放 / 切换指标时 0 值线（中间刻度）固定不漂移，
-  // 首尾刻度对称（|max| = |min|）。若只用首尾两根锚点，平移后可视区不含锚点，
-  // 库按可视区数据重算值域，DIF/DEA/MACD 线条会整体上下漂移。
-  private indicatorScaleAnchorSeries: ISeriesApi<'Line'> | null = null
-  // 当前附图指标 scale 值域边界（rebuildData 每次重建时缓存）：
-  // 供 pane5 左刻度首尾固定值显示（getEdgeFixedValues → ±absMax），
-  // 保证刻度 |max| = |min| 严格成立、与平移 / 内嵌偏移无关。
-  private subScaleMax = 0
-  private subScaleMin = 0
+  // 当前附图指标全部线的原始数据缓存（含 MACD 柱第三条，仅用于值域扫描）：
+  // 值域改按"可见逻辑范围"动态计算（computeIndicatorScaleRange），
+  // 缩放 / 平移时由 autoscaleInfoProvider 重新读取（修复左刻度不随缩放更新的 bug）。
+  private scaleSourceLines: readonly (readonly IndicatorLine[])[] = []
   // pane5 附图指标各线数据缓存（{ 线色, 数据点 }[]；top 层自绘现取）。
   private subIndicatorLines: IndicatorLineSpec[] = []
   // pane5 附图指标线自绘 primitive（挂 indicatorsBarSeries，zOrder 'top'）。
@@ -254,6 +246,10 @@ export class SubIndicatorPaneManager {
           type: 'custom',
           formatter: () => '',
         },
+        // 值域（修复 bug）：按**可见逻辑范围**内指标极值动态计算 —— 缩小 / 放大
+        // （可见窗口变化）时 lightweight-charts 重新 autoscale → provider 重读窗口
+        // → 值域与左刻度同步更新（此前用全量 ±absMax 锚点，缩放时刻度恒定不变）。
+        autoscaleInfoProvider: this.createAutoscaleProvider(),
       },
       startIndex + 1,
     )
@@ -266,26 +262,6 @@ export class SubIndicatorPaneManager {
     this.chart.priceScale('left', startIndex + 1).applyOptions({
       scaleMargins: { top: 0.1, bottom: 0.1 },
     })
-    // pane5 刻度对称锚点 series（不可见）：全部时间点交替 ±absMax，
-    // 使任意可视窗口都含正 / 负锚点 → autoScale 并集恒为对称 [-absMax, +absMax]，
-    // 0 值线固定不漂移（数据由 rebuildData 同步更新）。
-    this.indicatorScaleAnchorSeries = this.chart.addSeries(
-      LineSeries,
-      {
-        priceScaleId: 'left',
-        // 全透明不可见（仅撑 scale 值域）：1px 背景色线在 normal 层也会与自绘内容
-        // 叠加产生遮挡，统一用透明色（见 transparentColor 说明）。
-        color: transparentColor,
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        priceFormat: {
-          type: 'custom',
-          formatter: () => '',
-        },
-      },
-      startIndex + 1,
-    )
     // MACD 红绿柱自绘（仅激活 MACD 时有数据；柱体 > 0 空心红 / < 0 绿实心）。
     // 分时抽取：分时周期柱宽自适应（getIsTimeshare 注入 MacdBarPrimitive，加宽），
     // 与 K 线周期共用自绘 primitive（库直方图仅作透明锚点）。
@@ -320,13 +296,13 @@ export class SubIndicatorPaneManager {
         getFont: () => chartFont,
         format: (value) => formatAxisSmart(value),
         getFixedMiddleValue: () => (isZeroCenteredSubIndicator(this.activeSubIndicator ?? '') ? 0 : undefined),
-        // 首尾刻度固定显示 scale 边界值（±absMax）：避免内嵌 8px 位置经
+        // 首尾刻度固定显示**当前可见窗口**的值域边界：避免内嵌 8px 位置经
         // coordinateToPrice 反推产生顶/底不同溢出率导致 |max| ≠ |min|（0.27/-0.28）；
-        // MACD 与全部附图指标通用（RSI 等首尾显示其值域边界，更直观）。
-        getEdgeFixedValues: () => ({
-          topValue: this.subScaleMax,
-          bottomValue: this.subScaleMin,
-        }),
+        // 每次重绘现算（缩放 / 平移后窗口极值变化同步更新，与 provider 值域一致）。
+        getEdgeFixedValues: () => {
+          const range = this.getVisibleScaleRange()
+          return { topValue: range.maxValue, bottomValue: range.minValue }
+        },
       }),
     )
     // pane5 十字星左刻度指示值：十字星横线所在指标值（大数缩写 / 自适应小数）。
@@ -408,9 +384,10 @@ export class SubIndicatorPaneManager {
     this.chart.removePane(startIndex)
     this.chart.removePane(startIndex)
     this.indicatorsBarSeries = null
-    this.indicatorScaleAnchorSeries = null
     this.macdBarPrimitive = null
     this.subIndicatorLinePrimitive = null
+    // 清空值域扫描数据源（防残留数据被重建前的 provider 读取）。
+    this.scaleSourceLines = []
   }
 
   // 重建当前附图指标数据缓存（pane5 线 / 柱 / Y 轴锚点 + pane4 信息行值）。
@@ -442,57 +419,16 @@ export class SubIndicatorPaneManager {
       color: colors[index] ?? colors[0],
       points,
     }))
-    // Y 轴锚点：不可见 Histogram setData 以第 0 条线为骨架，
-    // 首 / 尾两点替换为全部线的最大 / 最小值 → scale 值域覆盖全部线（正负双方向），
-    // 避免中间极值线超出 Y 轴被裁剪。
-    const allValues = lines.flat().map((point) => point.value)
-    // 0 对称指标（MACD / CCI）特殊：MACD 首根 DIF/DEA/柱 = 0（EMA 首日以收盘起步）
-    // 且柱以 0 轴为正负分界，若全正 / 全负值域不含 0 → 首根（0 值）线起点与柱被
-    // priceToCoordinate 判 null 裁剪（"第一个数据不渲染"）；CCI 以 0 为自然中心。
-    // 统一处理：强制 scale 覆盖 0 且对称（见下方）。
-    // 其他指标（OBV 等累计值）按实际值域，避免 0 拉宽 scale 压缩图形。
-    const forceZero = isZeroCenteredSubIndicator(name)
-    // 单趟扫描极值（数据量小；用循环避免 spread 大数组栈风险）。
-    let maxValue = -Infinity
-    let minValue = Infinity
-    for (const value of allValues) {
-      if (value > maxValue) maxValue = value
-      if (value < minValue) minValue = value
-    }
-    if (forceZero) {
-      // 0 对称指标刻度对称：Y 轴以 0 为对称中心，左刻度最大值与最小值绝对值相等
-      // （|max| = |min| = 全量极值绝对值的最大值；如 MACD DIF 最大 2.1 / 柱最小 -1.3
-      //  → 刻度范围 [-2.1, +2.1]；CCI 同理，±值镜像对齐）。
-      const absMax = Math.max(Math.abs(maxValue), Math.abs(minValue), 0)
-      maxValue = absMax
-      minValue = -absMax
-    }
-    // 缓存 scale 值域边界（pane5 首尾刻度固定显示用；首尾标签不再反推，
-    // 避免内嵌偏移顶/底溢出率不同导致 |max| ≠ |min|）。
-    this.subScaleMax = maxValue
-    this.subScaleMin = minValue
+    // 值域扫描数据源缓存（全部线，含 MACD 柱第三条）：provider / 首尾刻度
+    // 按可见逻辑范围现算极值（不在此处一次性定值，见 getVisibleScaleRange）。
+    this.scaleSourceLines = lines
+    // pane5 柱锚点数据：以第 0 条线为骨架写入（时间轴对齐 + 柱体锚点）；
+    // scale 值域由 autoscaleInfoProvider 覆盖，数据值本身不再决定值域。
     const anchorPoints = lines[0].map((point) => ({
       time: point.time as UTCTimestamp,
       value: point.value,
     }))
-    anchorPoints[0] = { time: lines[0][0].time as UTCTimestamp, value: maxValue }
-    anchorPoints[anchorPoints.length - 1] = {
-      time: lines[0][lines[0].length - 1].time as UTCTimestamp,
-      value: minValue,
-    }
-    // pane5 柱数据写入：统一透明锚点（可见柱由 MacdBarPrimitive 自绘红绿柱；
-    // 分时周期柱宽由 getIsTimeshare 注入（timeshareBarWidth 自适应））。
     this.indicatorsBarSeries.setData(anchorPoints)
-    // 刻度对称锚点 series：全部时间点交替 ±absMax（可视区任意窗口恒含正 / 负锚点，
-    // scale 值域恒为 [-absMax, +absMax] → 0 值线固定；平移 / 切换指标均不漂移）。
-    if (this.indicatorScaleAnchorSeries !== null) {
-      this.indicatorScaleAnchorSeries.setData(
-        lines[0].map((point, index) => ({
-          time: point.time as UTCTimestamp,
-          value: index % 2 === 0 ? maxValue : minValue,
-        })),
-      )
-    }
     // MACD 柱点缓存（MacdBarPrimitive 自绘现取；仅 MACD 有值，其他指标为空不画柱）。
     if (name === 'macd') {
       const [difLine, deaLine, histLine] = lines
@@ -522,6 +458,72 @@ export class SubIndicatorPaneManager {
     }
   }
 
+  /**
+   * 计算当前可见逻辑范围内的指标值域（缩放 / 平移后即重算）。
+   *
+   * @remarks
+   * 可见范围取 timeScale().getVisibleLogicalRange()（逻辑索引 = 指标点索引），
+   * 左右各留 1 点覆盖半可见柱；未初始化（null）按全量计算；
+   * 0 对称指标（MACD / CCI）返回 [-absMax, +absMax]。
+   * autoscaleInfoProvider 与首尾刻度共用本方法，保证刻度与值域严格一致。
+   *
+   * @returns 当前窗口值域（minValue / maxValue）。
+   */
+  private getVisibleScaleRange = (): IndicatorScaleRange => {
+    const lines = this.scaleSourceLines
+    if (lines.length === 0 || lines[0].length === 0) {
+      return { minValue: 0, maxValue: 0 }
+    }
+    const baseLength = lines[0].length
+    const visible = this.chart.timeScale().getVisibleLogicalRange()
+    const fromIndex = visible === null ? 0 : Math.max(0, Math.floor(visible.from) - 1)
+    const toIndex =
+      visible === null ? baseLength - 1 : Math.min(baseLength - 1, Math.ceil(visible.to) + 1)
+    return computeIndicatorScaleRange(
+      lines,
+      fromIndex,
+      toIndex,
+      isZeroCenteredSubIndicator(this.activeSubIndicator ?? ''),
+    )
+  }
+
+  /**
+   * 创建 pane5 的 autoScale 值域提供器（每次刷新重建闭包以强制库重算）。
+   *
+   * @remarks
+   * 返回 null 表示不覆盖库默认 autoscale（数据未就绪）；
+   * 返回对称 / 实际窗口值域 → 缩放、平移、数据更新后左刻度与图形同步。
+   *
+   * @returns autoscaleInfoProvider 回调。
+   */
+  private createAutoscaleProvider = (): (() => {
+    priceRange: { minValue: number; maxValue: number }
+  } | null) => {
+    return () => {
+      if (this.scaleSourceLines.length === 0) return null
+      const range = this.getVisibleScaleRange()
+      return {
+        priceRange: { minValue: range.minValue, maxValue: range.maxValue },
+      }
+    }
+  }
+
+  /**
+   * 可见范围变化后刷新 pane5 值域（controller 缩放 / 平移时调用）。
+   *
+   * @remarks
+   * 用新闭包重设 autoscaleInfoProvider → 库 invalidate 并重算 autoScale →
+   * provider 重读当前窗口极值 → 价格轴值域、左刻度首尾值同步更新
+   * （修复"先缩小再放大，指标层左刻度不随可见数据变化"）。
+   * 指标层关闭 / 数据未就绪时为空操作。
+   */
+  refreshVisibleScale = (): void => {
+    if (this.indicatorsBarSeries === null || this.scaleSourceLines.length === 0) return
+    this.indicatorsBarSeries.applyOptions({
+      autoscaleInfoProvider: this.createAutoscaleProvider(),
+    })
+  }
+
   /* ===================== 主题同步（applyTheme 调用） ===================== */
 
   /**
@@ -533,7 +535,6 @@ export class SubIndicatorPaneManager {
    */
   updateThemeColors = (): void => {
     this.indicatorsBarSeries?.applyOptions({ color: transparentColor })
-    this.indicatorScaleAnchorSeries?.applyOptions({ color: transparentColor })
   }
 
   /* ===================== 信息行分段文字 ===================== */
@@ -578,6 +579,7 @@ export class SubIndicatorPaneManager {
     this.showIndicator = false
     this.indicatorsBarSeries = null
     this.subIndicatorLines = []
+    this.scaleSourceLines = []
     this.subIndicatorLinePrimitive = null
     this.macdBarPrimitive = null
     this.subIndicatorValueMaps = []

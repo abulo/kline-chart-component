@@ -21,6 +21,8 @@ export type { IndicatorOption } from './options'
 
 // ---- 工具 ----
 export { tdxSMA, ema, runningMax, runningMin, tdxSum, avedev, toLines } from './utils'
+export { computeIndicatorScaleRange } from './scaleRange'
+export type { IndicatorScaleRange } from './scaleRange'
 
 // ---- K 线主图五指标 ----
 export { calcMA } from './ma'
