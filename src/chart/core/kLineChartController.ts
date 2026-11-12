@@ -698,7 +698,6 @@ export class KLineChartController {
     // 历史日用 dayPoints 补齐、最后一日不补 → rows 通常 < slots；
     // 数据本身超过槽位（dayPoints 配小于实际点数）时按数据量铺满，避免裁切。
     const rows = this.timeshareManager.renderRows.length
-    // FIX-TEMP
     const from = -0.5
     const to = Math.max(slots, rows) - 0.5
     this.chart.timeScale().setVisibleLogicalRange({ from, to })
