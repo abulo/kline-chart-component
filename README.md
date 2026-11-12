@@ -590,7 +590,15 @@ src/
 
 ## 版本记录
 
-- **v1.7.23（当前）**：周期 / 标的切换改为「先清空、再全量 history、最后才 latest」。
+- **v1.7.24（当前）**：移除 demo 的「分时测试」入口（v1.7.20 引入的验证开关）。
+  `App.vue` 删掉 `timeshareTestMode`、`TEST_TIMESHARE_DAY_POINTS`(240)、`TEST_TIMESHARE_TODAY_POINTS`(120)、
+  `timeshareDayPoints` computed、`toggleTimeshareTestMode`、工具栏按钮与模板上的 `:day-points` 绑定
+  （组件不传时走默认 `DEFAULT_TIMESHARE_DAY_POINTS = 241`），同时清掉 `MockChartDataService` /
+  `DEFAULT_TIMESHARE_DAY_POINTS` / `shallowRef` 等无用量导入与过期的数据源注释。
+  组件对外 `dayPoints` prop 保留（仍直接传数字）；`MockChartDataService.todayPoints` 作为 mock 服务
+  能力保留——`tests/timeshareTodayPoints.test.ts` 直接构造服务覆盖「当日 120 条 / 每交易日 240 点」
+  场景，不再依赖 demo 开关。验证：tsc 0 错误、vitest 32 文件 / 296 tests 全绿。
+- **v1.7.23**：周期 / 标的切换改为「先清空、再全量 history、最后才 latest」。
   切换入口（`setPeriod` / `setSymbol`）按序三件事：① 退订旧实时订阅（`dataBridge.unsubscribe()`）——
   旧周期 poll 不再打 `/latest`；② `controller.clearChartData()` 清空图上旧数据（bars / barIndex 置空后
   `applyData` 把 K 线与分时两套 series 各自写空、指标缓存按空数据重建、自绘柱体 / 最后价线 / 十字星
