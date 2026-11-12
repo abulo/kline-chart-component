@@ -590,7 +590,18 @@ src/
 
 ## 版本记录
 
-- **v1.7.25（当前）**：demo 开发环境接真实行情，用 vite proxy 绕开浏览器 CORS。
+- **v1.7.26（当前）**：修复「5 日分时 → 1 日分时」切换后 1 日分时被压到右侧约 1/5 的问题。
+  根因是跨周期切换时 `series.setData` 刚写入新数据，lightweight-charts 内部按逻辑索引换算
+  仍沿用上一周期的结果：同帧 `setVisibleLogicalRange(-0.5, slots-0.5)` 被算成「宽度 = 上一周期
+  视口宽」的超宽范围。修复：`applyTimeshareViewport` 同帧设置 + 次帧（`requestAnimationFrame`）
+  用同一逻辑范围复核一次（幂等，无视觉跳动）。
+  另两处同源问题一并修：① `ChartDataBridge` 新增 `getHistoryLimit`，分时按「交易日 × 每交易日点数」
+  整窗取数（1d = 241），此前固定用 `fetchLimit`(200) 会被 service 层按 limit 截尾、丢掉当日早盘段
+  （真实后端返回 09:31~15:00 共 240 点，只取到最后 200 点 → 分时左侧缺一截）；②
+  `handleVisibleLogicalRangeChange` 增加分时判断，分时视口左边界恒为 -0.5（天然满足「到达最左边缘」），
+  会误触 `loadEarlier` 多发一次 history 请求。验证：真实后端 1d/2d/3d/4d/5d 竖线等分与铺满均正常、
+  5d ⇄ 1d 反复切换稳定；32 文件 / 297 tests 全绿。
+- **v1.7.25**：demo 开发环境接真实行情，用 vite proxy 绕开浏览器 CORS。
   `vite.config.ts` 的 `server.proxy` 改为 `/api → http://127.0.0.1:11000`（`changeOrigin` + `ws`，
   `rewrite` 剥掉 `/api` 前缀，因为后端真实路径是 `/v1/quant/...`）；`App.vue` 的 `historyUrl` / `pollUrl`
   改成同源相对路径 `/api/v1/quant/kline/history`、`/api/v1/quant/kline/latest`，`x-access-token`

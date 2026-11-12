@@ -32,6 +32,14 @@ export interface ChartDataBridgeDeps {
   onEarliest: () => number | undefined
   /** 实时单点入队（controller.enqueueRealtimePoint：REALTIME_FLUSH_MS 窗口批量消费）。 */
   onRealtimePoint: (point: ChartDataPoint) => void
+  /**
+   * 历史请求条数（按当前周期取：分时 = 交易日 × 每交易日点数整窗；K 线 = service.fetchLimit）。
+   *
+   * @remarks
+   * 不直接用 service.fetchLimit：分时一天的点数可能大于页大小（A 股 241 > 200），
+   * 服务层按 limit 截尾会把当日早盘段切掉。
+   */
+  getHistoryLimit: () => number
 }
 
 /**
@@ -84,7 +92,7 @@ export class ChartDataBridge {
       const points = await this.fetchHistoryWithRetry(seq)
       if (seq !== this.loadSeq) return // 期间又切换了周期 / 标的 → 丢弃过期响应
       // 返回满页说明还有更早数据，允许后续左滑边缘自动加载。
-      this.hasMoreHistory = points.length >= service.fetchLimit
+      this.hasMoreHistory = points.length >= this.deps.getHistoryLimit()
       this.deps.onHistory(points)
       this.deps.onStatus('ready')
       this.startRealtime()
@@ -107,7 +115,7 @@ export class ChartDataBridge {
     if (!service) return []
     const { symbol, period } = this.currentParams()
     const doFetch = () =>
-      service.fetchHistory({ symbol, period, limit: service.fetchLimit })
+      service.fetchHistory({ symbol, period, limit: this.deps.getHistoryLimit() })
     try {
       return await doFetch()
     } catch (error) {
@@ -156,11 +164,11 @@ export class ChartDataBridge {
         symbol,
         period,
         before: earliest,
-        limit: service.fetchLimit,
+        limit: this.deps.getHistoryLimit(),
       })
       if (seq !== this.loadSeq) return // 期间重新 init（周期 / 标的切换）→ 丢弃，状态由新 init 自己发
       const added = this.deps.onPrepend(points)
-      if (added === 0 || points.length < service.fetchLimit) this.hasMoreHistory = false
+      if (added === 0 || points.length < this.deps.getHistoryLimit()) this.hasMoreHistory = false
       this.deps.onStatus('ready')
     } catch (error) {
       if (seq !== this.loadSeq) return

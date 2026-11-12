@@ -49,7 +49,11 @@ const makeService = (params: {
   }
 }
 
-const createBridge = (service: ChartDataService, periodRef: { value: string }) => {
+const createBridge = (
+  service: ChartDataService,
+  periodRef: { value: string },
+  limitRef?: { value: number },
+) => {
   const statuses: string[] = []
   const bridge = new ChartDataBridge({
     getSymbol: () => '300750',
@@ -60,6 +64,8 @@ const createBridge = (service: ChartDataService, periodRef: { value: string }) =
     onPrepend: () => 0,
     onEarliest: () => undefined,
     onRealtimePoint: () => undefined,
+    // 历史条数口径：默认页大小，用例可按周期口径覆盖（如分时整窗 241）。
+    getHistoryLimit: () => limitRef?.value ?? service.fetchLimit,
   })
   return { bridge, statuses }
 }
@@ -96,6 +102,28 @@ describe('ChartDataBridge · 周期切换调用顺序', () => {
     release()
     await pending
     expect(calls).toEqual(['history', 'realtime:day'])
+  })
+
+  it('history 请求条数按当前周期口径（分时整窗 / K 线页大小）', async () => {
+    const calls: string[] = []
+    const { service } = makeService({ calls })
+    const periodRef = { value: '1d' }
+    // 分时：交易日 × 每交易日点数整窗（A 股 1d = 241），不能退化成页大小 10。
+    const limitRef = { value: 241 }
+    const { bridge } = createBridge(service, periodRef, limitRef)
+
+    await bridge.init()
+    expect(service.fetchHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ period: '1d', limit: 241 }),
+    )
+
+    // 切到 K 线周期：回到 service.fetchLimit（左滑分页语义）。
+    periodRef.value = 'day'
+    limitRef.value = 10
+    await bridge.init()
+    expect(service.fetchHistory).toHaveBeenLastCalledWith(
+      expect.objectContaining({ period: 'day', limit: 10 }),
+    )
   })
 
   it('init 失败不建立实时订阅（状态 error）', async () => {

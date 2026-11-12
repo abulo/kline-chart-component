@@ -170,7 +170,12 @@ export class KLineChartController {
   // 任意平移 / 缩放 → 刷新附图指标 pane5 值域（按新可见窗口重算极值，
   // 使指标层左刻度随可见数据变化，修复"先缩小再放大刻度不变"）。
   private readonly handleVisibleLogicalRangeChange = (range: LogicalRange | null): void => {
-    if (range && range.from <= 0) void this.dataBridge.loadEarlier()
+    // 分时（1d~5d）按「交易日 × 每交易日点数」整窗展示、无更早分页语义，
+    // 且视口左边界固定为 -0.5（天然满足 <= 0）→ 不判周期会每次设视口都误触翻页
+    // （现象：1d 切换后多打一次 history 请求）。
+    if (range && range.from <= 0 && !this.timeshareManager.isTimeshare) {
+      void this.dataBridge.loadEarlier()
+    }
     this.indicatorManager.refreshSubIndicatorScale()
   }
 
@@ -234,6 +239,7 @@ export class KLineChartController {
       onHistory: points => this.setKlineData(points),
       onPrepend: points => this.prependHistory(points),
       onEarliest: () => this.getEarliestTime(),
+      getHistoryLimit: () => this.historyLimit(),
       onRealtimePoint: point => this.realtimePipeline.enqueueRealtimePoint(point),
     })
     // 实时增量管线：订阅回调 → 节流批量 → series/bars/barIndex 增量更新 →
@@ -692,10 +698,26 @@ export class KLineChartController {
     // 历史日用 dayPoints 补齐、最后一日不补 → rows 通常 < slots；
     // 数据本身超过槽位（dayPoints 配小于实际点数）时按数据量铺满，避免裁切。
     const rows = this.timeshareManager.renderRows.length
-    this.chart.timeScale().setVisibleLogicalRange({
-      from: -0.5,
-      to: Math.max(slots, rows) - 0.5,
+    // FIX-TEMP
+    const from = -0.5
+    const to = Math.max(slots, rows) - 0.5
+    this.chart.timeScale().setVisibleLogicalRange({ from, to })
+    // 同帧设置 + 次帧复核：跨周期切换时（如 5d → 1d）setData 刚写入新数据，
+    // 库内部按逻辑索引换算仍沿用上一周期的换算结果，同帧设置会被算成
+    // 「宽度 = 上一周期视口宽」的超宽范围（现象：1 天数据被压在右侧 1/5）。
+    // 次帧时内部索引已刷新，同一逻辑范围重设即铺满；两次设置幂等，无视觉跳动。
+    requestAnimationFrame(() => {
+      this.chart.timeScale().setVisibleLogicalRange({ from, to })
     })
+  }
+
+  // 历史请求条数：分时按「交易日 × 每交易日点数」整窗取（service 层会按 limit
+  // 截尾，若传页大小 200 会把当日早盘段切掉 —— A 股一天 241 点只剩最后 200 点，
+  // 表现为分时左侧空白）；K 线沿用 service.fetchLimit（左滑分页语义）。
+  private historyLimit = (): number => {
+    const slots = this.timeshareManager.slotCount
+    if (this.timeshareManager.isTimeshare && slots > 0) return slots
+    return this.service?.fetchLimit ?? 0
   }
 
   /* ===================== 数据（service 集成） ===================== */
