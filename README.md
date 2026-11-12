@@ -36,13 +36,13 @@
 - 🧬 **接口与实现分离**：数据层统一走 `ChartDataService` 接口（历史分页 + 实时订阅），内置 Mock 服务开箱即用，接入真实行情只需替换 `HttpChartDataService`，组件零改动
 - 📦 **多 Pane 布局**：pane0 信息行 → pane1 主图 → pane2 量信息行 → pane3 成交量图 → pane4 指标信息行 → pane5 附图指标图；`60 : 20 : 20` 可配，成交量组 / 指标组独立开关（四态布局）
 - 🕯️ **K 线主图**：Candlestick + 主图指标（MA / EXPMA / BOLL / SAR / BBI 互斥）+ 最高 / 最低价标注 + 最后价线（priceLine，虚线可开关）+ 空心红柱
-- ⏱️ **分时图（1d~5d）**：LineSeries 双线（价格 + 均价，均价可开关）、成交量 / MACD 1px 直方图、栅格竖线 4/2/3/4/5 等分、左右刻度以首根 preClose 为中值对称等差扩展（右侧同步百分比）、涨跌三态着色
+- ⏱️ **分时图（1d~5d）**：LineSeries 双线（价格 + 均价，均价可开关）、成交量 / MACD 1px 直方图、栅格竖线按交易日分界定位（1d 固定 4 等分）、多市场每天分时点数口径（A 股 241 / 港股 331 / 美股 391 / 日股 331 / 韩股 391，`market` 参数）、左右刻度以首根 preClose 为中值对称等差扩展（右侧同步百分比）、涨跌三态着色
 - 📈 **十种附图指标**：RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR 互斥单选（分时无 CR），各指标纯函数独立可单测
 - 🎯 **十字星联动**：竖 / 横虚线（6px 线 / 4px 空）+ 左 / 右刻度指示值 + 可拖拽 tooltip（含涨跌着色）；速度自适应——快速移动像素级跟手、慢速停驻磁吸吸附
 - ⌨️ **键盘导航**：左右方向键逐 bar 移动，到可视区边缘自动平移跟随，按住 40ms 自动连发
 - 🎨 **深 / 浅双主题**：全部颜色集中在 `theme.ts` 公共文件（页面零散落硬编码色值），红涨绿跌、平盘深系白 / 浅系黑
 - 🧠 **内存与性能**：十字星 rAF 节流、primitive 视图单例复用、可视区渲染裁剪（10000 条数据下每帧仅绘制可视 ~120 根）、Mock 池 LRU 淘汰（`touchCache`）、Http 历史缓存 LRU + 已知 total 上限，`destroy()` 完整退订防泄漏
-- ✅ **严格模式**：`strict: true` 下类型检查零错误；vitest 27 文件 / 257 用例全绿（含 LRU 缓存、分时、指标、内存相关专测）
+- ✅ **严格模式**：`strict: true` 下类型检查零错误；vitest 30 文件 / 287 用例全绿（含 LRU 缓存、分时市场口径、指标、内存相关专测）
 
 ---
 
@@ -150,6 +150,7 @@ interface KLineChartProps {
   priceLineVisible?: boolean // 最后价线
   volumeVisible?: boolean    // 成交量组
   avgLineVisible?: boolean   // 分时均价线
+  market?: MarketProfile     // 分时市场口径（cn/hk/us/jp/kr → 每天 241/331/391/331/391 点）
   fullscreen?: boolean       // 全屏
 }
 ```
@@ -181,6 +182,7 @@ chartRef.value?.controller?.setSymbol('600519')       // (symbol: string) → �
 chartRef.value?.controller?.setName('贵州茅台')        // (name: string) → 更新股票名称
 chartRef.value?.controller?.setService(mockService)   // (service: ChartDataService) → 换数据服务
 chartRef.value?.controller?.setPeriod('day')          // (period: PeriodValue) → 切换周期（时间格式联动）
+chartRef.value?.controller?.setMarket('hk')           // (market: MarketProfile) → 分时市场口径（每天分时点数 331）
 
 // —— 状态设置（Props watch 已自动调用；手动仅用于编程式控制） ——
 chartRef.value?.controller?.applyTheme('light')       // (theme: ChartThemeName)
@@ -220,6 +222,7 @@ chartRef.value?.loadStatus                            // 'idle' | 'loading' | 'l
 | `priceLineVisible` | `boolean` | `true` | 最后价线显隐（K 线主图） |
 | `volumeVisible` | `boolean` | `true` | 成交量组（pane2 信息行 + pane3 图；关闭销毁整组 + 布局重算 + tooltip / 信息行隐藏量额） |
 | `avgLineVisible` | `boolean` | `true` | 分时均价线（关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价；仅分时生效） |
+| `market` | `MarketProfile` | `'cn'` | 分时市场口径：`'cn'` 241 / `'hk'` 331 / `'us'` 391 / `'jp'` 331 / `'kr'` 391（每个交易日分时点数，多日分时按此等宽对齐；未知值回退 A 股 241） |
 | `fullscreen` | `boolean` | `false` | 全屏（true 铺满浏览器视口；Esc 退出） |
 
 ### 6.2 MockChartDataService 构造参数
@@ -280,6 +283,7 @@ interface HttpChartDataServiceOptions {
 | `MainIndicatorType` | `src/chart/indicator/` | 主图指标名联合类型：`'ma' \| 'expma' \| 'boll' \| 'sar' \| 'bbi'` |
 | `SubIndicatorType` | `src/chart/indicator/` | 附图指标名联合类型：10 项 |
 | `PeriodValue / PeriodValueOrEmpty` | `src/chart/periods.ts` | 周期值 / 周期值或空 |
+| `MarketProfile` | `src/chart/market.ts` | 分时市场口径：`'cn' \| 'hk' \| 'us' \| 'jp' \| 'kr'`（每天 241/331/391/331/391 点） |
 | `ChartThemeName` | `src/chart/core/theme.ts` | 主题名：`'dark' \| 'light'` |
 | `ChartLoadStatus` | `src/chart/core/types.ts` | 加载状态联合类型 |
 
@@ -319,6 +323,14 @@ export interface ChartDataPoint {
 ```
 
 > 分时状态下：平移 / 放大缩小按钮隐藏、无主图指标、附图无 CR、时间格式 `YYYY-MM-DD HH:mm`、均价线可关。
+>
+> 市场口径：`market` 按市场自动取每个交易日分时点数（A 股 241 / 港股 331 / 美股 391 / 日股 331 / 韩股 391）。
+> 分时渲染按该值给每天补齐固定槽位（占位只占横轴、不画价格），多日分时每天等宽、竖线落在交易日分界；
+> 多日分时时间轴每个交易日首根显示 `MM-DD`，其余 `HH:mm`。
+
+```vue
+<KLineChart symbol="00700" name="腾讯控股" :period="'5d'" market="hk" theme="dark" />
+```
 
 ### 8.3 数据点格式（ChartDataPoint）
 
@@ -476,7 +488,7 @@ src/
 ├── components/
 │   └── KLineChart.vue         # 图表组件（Props / 事件 / 控制器 ref）
 ├── chart/                     # 按功能分组的图表源码
-│   ├── periods.ts             # 周期配置（13 项 + periodMap O(1) 查询 + 分时栅格等分数）
+│   ├── periods.ts             # 周期配置（13 项 + periodMap O(1) 查询 + 分时判定）
 │   ├── core/                  # 核心：控制器 / 布局 / 主题 / 数据桥
 │   │   ├── kLineChartController.ts   # 控制器：数据 / 生命周期 / 对外 API
 │   │   ├── chartDataBridge.ts        # 数据 IO 桥（历史 / 翻页 / 实时订阅编排 + 竞态守卫）
@@ -484,7 +496,7 @@ src/
 │   │   ├── indicatorManager.ts       # 主图指标 + 成交量均量线 + 信息行
 │   │   ├── subIndicatorPaneManager.ts # 附图指标 Pane 管理（pane4/5 创建销毁）
 │   │   ├── crosshairManager.ts       # 十字星联动 + overlayTime + 指示值注册表
-│   │   ├── timeshareManager.ts       # 分时计算（preClose 对称半幅 / 等差刻度 / 三态着色）
+│   │   ├── timeshareManager.ts       # 分时计算（preClose 对称半幅 / 等差刻度 / 三态着色 / 每交易日槽位对齐）
 │   │   ├── paneFactory.ts / paneLayout.ts / viewport.ts
 │   │   ├── theme.ts / resolveBarColors.ts / mergeBars.ts
 │   │   └── candlestickWidth.ts / constants.ts / types.ts / indicatorMeta.ts / mock.ts
@@ -572,7 +584,18 @@ src/
 
 ## 版本记录
 
-- **v1.7.19（当前）**：`HistoryQuery` 新增 `latest`（已持有数据的最后一根时间，秒级时间戳）。
+- **v1.7.20（当前）**：分时渲染新增 `market` 市场口径参数，修复不同市场每天分时点数不同导致的渲染错位。
+  市场 → 每天分时点数：`cn` A 股 241 / `hk` 港股 331 / `us` 美股 391 / `jp` 日股 331 / `kr` 韩股 391
+  （默认 `cn`，未知值回退 241）。分时渲染按该值为每个交易日补齐固定槽位（whitespace 占位：只占横轴宽度、
+  不画价格 / 成交），多日分时每天严格等宽，一天的数据宽度不再被压缩或拉伸；竖向栅格改为按交易日分界定位
+  （`GridPrimitive` 新增 `getVerticalRatios`，按渲染行中天界索引占比画线），盘中最后一天未满时竖线也不会偏离分界；
+  1d 仍固定 4 等分。多日分时时间轴每个交易日首根显示 `MM-DD`，其余 `HH:mm`。
+  最后一个交易日（盘中最新日）不补齐，避免占用实时 `update` 的时间槽位。
+  新增 `src/chart/market.ts`（`MarketProfile` / `MARKET_PROFILES` / `getMarketDayPoints`）、
+  控制器 `setMarket`、`TimeshareManager.dayPoints / dayCount / verticalCount / buildRenderRows / verticalRatios`。
+  验证：tsc 0 错误、vitest 30 文件 287 tests 全绿。
+
+- **v1.7.19**：`HistoryQuery` 新增 `latest`（已持有数据的最后一根时间，秒级时间戳）。
   HttpChartDataService 按 symbol|period 自动维护该值——历史拉取与实时推送（ws / sse / poll 收到点
   即更新）共用；历史请求以 `latest=<n>` 附加，poll 轮询请求同样携带 latest（供后端只返回增量）；
   显式传入 `latest` 可覆盖自动值，首次请求（尚无数据）不附加。Mock 本地生成数据，忽略该字段。

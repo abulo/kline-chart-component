@@ -75,6 +75,8 @@ export interface SubIndicatorPaneManagerDeps {
   getIsTimeshare: () => boolean
   /** 竖向栅格等分数：K 线 4 / 分时按周期份数，draw 时现取。 */
   getVerticalCount: () => number
+  /** 竖向自定义位置（多日分时交易日分界 0~1 比例；null = 等分）。 */
+  getVerticalRatios: () => number[] | null
 }
 
 // 分时点 → K 线口径：附图指标库基于 OHLC（b.close!），分时点无 OHLC；
@@ -117,6 +119,8 @@ export class SubIndicatorPaneManager {
   private readonly getIsTimeshare: SubIndicatorPaneManagerDeps['getIsTimeshare']
   /** 竖向栅格等分数（deps 注入）。 */
   private readonly getVerticalCount: SubIndicatorPaneManagerDeps['getVerticalCount']
+  /** 竖向自定义位置（deps 注入）。 */
+  private readonly getVerticalRatios: SubIndicatorPaneManagerDeps['getVerticalRatios']
 
   /* ===== 附图指标状态 ===== */
   // 当前激活的附图指标（null = 关闭指标层；互斥）。
@@ -152,6 +156,7 @@ export class SubIndicatorPaneManager {
     this.crosshairRegistry = deps.crosshairRegistry
     this.getIsTimeshare = deps.getIsTimeshare
     this.getVerticalCount = deps.getVerticalCount
+    this.getVerticalRatios = deps.getVerticalRatios
   }
 
   /* ===================== 对外数据源（controller / primitive 注入） ===================== */
@@ -275,12 +280,13 @@ export class SubIndicatorPaneManager {
     this.indicatorsBarSeries.attachPrimitive(
       new PaneBorderPrimitive(() => themeColors(this.getTheme()).paneBorder),
     )
-    // pane5 栅格：竖 4 等分（分时按周期份数，getVerticalCount 动态）；横向 2 等分（中间 1 条）。
+    // pane5 栅格：竖 4 等分（分时按实际交易日数 / 交易日分界）；横向 2 等分（中间 1 条）。
     this.indicatorsBarSeries.attachPrimitive(
       new GridPrimitive({
         getColor: () => themeColors(this.getTheme()).grid,
         getHorizontalCount: () => 2,
         getVerticalCount: this.getVerticalCount,
+        getVerticalRatios: this.getVerticalRatios,
       }),
     )
     // pane5 左刻度标签：与栅格横线对齐（值 = 横线处指标值，大数缩写 / 自适应小数）。

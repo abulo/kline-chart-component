@@ -27,10 +27,18 @@ export interface GridConfig {
   /** 当前 Pane 的横向等分数（如 8 / 6 / 2），随指标开关动态变化。 */
   getHorizontalCount: () => number
   /**
-   * 竖向等分数获取器（默认 4；分时周期按 timeshareGridVerticalCount 动态变化，
+   * 竖向等分数获取器（默认 4；分时周期按实际交易日数动态变化（TimeshareManager.verticalCount），
    * K 线恒为 4。改为函数以便 setPeriod 切换后 draw 时现取，无需重建 primitive）。
    */
   getVerticalCount?: () => number
+  /**
+   * 竖向自定义位置（0~1 比例，相对 Pane 宽度；如多日分时的交易日分界）。
+   *
+   * @remarks
+   * 返回非空数组时优先按比例绘制竖线（不再等分）；返回 null / undefined 回退
+   * getVerticalCount 等分。draw 时现取，供分时天界动态定位。
+   */
+  getVerticalRatios?: () => number[] | null
 }
 
 /**

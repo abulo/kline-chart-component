@@ -30,7 +30,7 @@ import {
 } from '../indicator'
 import { formatVolume, formatPrice, formatTimeByFmt, formatAxisTime } from '../util/format'
 import type { ChartThemeColors } from './theme'
-import { isTimesharePeriod, timeshareVerticalCount, type PeriodValueOrEmpty } from '../periods'
+import { isTimesharePeriod, type PeriodValueOrEmpty } from '../periods'
 import { type IndicatorLineSpec, type CrosshairPrimitiveRegistry, type IndicatorValueMap } from './types'
 import { type MainIndicatorType } from '../indicator'
 import { SubIndicatorPaneManager } from './subIndicatorPaneManager'
@@ -62,6 +62,10 @@ export interface IndicatorManagerDeps {
   getShowVolume: () => boolean
   /** 均价线是否可见（关闭时 pane0 信息行隐藏 均价 段，分时专用）。 */
   getShowAvg: () => boolean
+  /** 分时竖向栅格等分数（按实际交易日数，与 pane1 / pane3 同口径；K 线恒 4）。 */
+  getTimeshareVerticalCount: () => number
+  /** 分时交易日分界（0~1 比例；多日分时竖线位置，与 pane1 / pane3 同口径）。 */
+  getTimeshareVerticalRatios: () => number[] | null
 }
 
 /**
@@ -140,7 +144,10 @@ export class IndicatorManager {
       crosshairRegistry: deps.crosshairRegistry,
       // 分时模式判定 + 竖向栅格份数（分时按周期 / K 线恒 4）。
       getIsTimeshare: () => isTimesharePeriod(deps.getPeriod()),
-      getVerticalCount: () => timeshareVerticalCount(deps.getPeriod()),
+      getVerticalCount: () =>
+        isTimesharePeriod(deps.getPeriod()) ? deps.getTimeshareVerticalCount() : 4,
+      getVerticalRatios: () =>
+        isTimesharePeriod(deps.getPeriod()) ? deps.getTimeshareVerticalRatios() : null,
     })
   }
 

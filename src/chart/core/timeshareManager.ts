@@ -12,9 +12,21 @@
 import type { ISeriesApi } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
 import { isTimesharePeriod, type PeriodValueOrEmpty } from '../periods'
+import { getMarketDayPoints, type MarketProfile } from '../market'
 import { symmetricExpandRange, buildTimeshareScaleValues } from '../util/timeshareScale'
+import { normalizeChartTime } from '../util/format'
 import { themeColors, type ChartThemeName } from './theme'
 import { resolveVsBaseColor } from './resolveBarColors'
+
+/** 分时渲染行：bar 为 null 表示补齐占位（只占横轴槽位，不画价格 / 成交量）。 */
+export interface TimeshareRenderRow {
+  /** 秒级时间戳（占位行为该交易日内推算的时刻）。 */
+  time: number
+  /** 所属交易日（占位行沿用当前交易日，用于天界判定）。 */
+  tradeDate: string
+  /** 所属数据点；null = 占位行。 */
+  bar: ChartDataPoint | null
+}
 
 /** 构造依赖（controller 注入，全部为惰性读取闭包 → 数据 / 周期实时变化生效）。 */
 export interface TimeshareManagerDeps {
@@ -30,6 +42,8 @@ export interface TimeshareManagerDeps {
   getTheme: () => ChartThemeName
   /** 分时价格线 series（autoscaleInfoProvider 固定对称范围）。 */
   getPriceSeries: () => ISeriesApi<'Line'> | null
+  /** 当前市场（决定每个交易日分时点数：A 股 241 / 港股 331 / 美股 391 …）。 */
+  getMarket: () => MarketProfile
 }
 
 /**
@@ -56,6 +70,10 @@ export class TimeshareManager {
    */
   half = 0
 
+  // 渲染行缓存（键：bar 数 + 首末时间 + 每天点数 + 周期；见 renderRows getter）。
+  private renderRowsCache: TimeshareRenderRow[] = []
+  private renderRowsCacheKey = ''
+
   constructor(deps: TimeshareManagerDeps) {
     this.deps = deps
   }
@@ -70,6 +88,145 @@ export class TimeshareManager {
   get isTimeshare(): boolean {
     return isTimesharePeriod(this.deps.getPeriod())
   }
+
+  /** 当前市场每个交易日分时点数（A 股 241 / 港股 331 / 美股 391 / 日股 331 / 韩股 391）。 */
+  get dayPoints(): number {
+    return getMarketDayPoints(this.deps.getMarket())
+  }
+
+  /**
+   * 当前数据实际包含的交易日数（按 tradeDate 分组计数）。
+   *
+   * @remarks
+   * 多日分时竖线栅格按实际天数等分（不再是"周期名义天数"）：
+   * 周期 5d 但数据只有 3 天时，按 3 天等分，竖线仍落在真实交易日分界。
+   */
+  get dayCount(): number {
+    let count = 0
+    let lastDate = ''
+    for (const { bar } of this.normalizedBars()) {
+      if (bar.tradeDate !== lastDate) {
+        lastDate = bar.tradeDate
+        count++
+      }
+    }
+    return count
+  }
+
+  /**
+   * 分时竖向栅格等分数（多日分时的回退口径）。
+   *
+   * @remarks
+   * 1d → 4 等分（延续 K 线竖等分风格）；多日分时 → 实际交易日数
+   * （每个交易日交界一条竖线）。多日分时正常由 verticalRatios 按天界索引精确定位，
+   * 本值在渲染行不足 2 行时作为回退；数据为空时至少按 1（不画竖线）。
+   */
+  get verticalCount(): number {
+    const period = this.deps.getPeriod()
+    if (period === '1d') return 4
+    return Math.max(this.dayCount, 1)
+  }
+
+  /**
+   * 分时渲染行：按"每交易日固定槽位（dayPoints）"对齐。
+   *
+   * @remarks
+   * 不同市场每天分时点数不同（A 股 241 / 港股 331 / 美股 391 …）。原始数据
+   * 若某交易日点数不足 dayPoints（半日市 / 缺失点），该日尾部补占位行
+   * （时间按 1 分钟递增推算，不与次日首点冲突），使：
+   *  - 多日分时每天占宽严格相等（不再出现某天被压缩 / 拉伸）；
+   *  - 竖线栅格按天数等分即落在真实交易日分界。
+   * 占位行只参与横轴槽位，价格线 / 均价线 / 成交量以 whitespace 形式跳过。
+   * 注意：最后一个交易日（盘中最新日）不补齐——其数据仍在实时增长，
+   * 补位会占用实时 update 的时间槽位（series.update 要求时间递增）。
+   *
+   * @returns 渲染行数组；非分时周期返回空数组。
+   */
+  buildRenderRows = (): TimeshareRenderRow[] => {
+    if (!this.isTimeshare) return []
+    const bars = this.normalizedBars()
+    if (bars.length === 0) return []
+    const dayPoints = this.dayPoints
+    const rows: TimeshareRenderRow[] = []
+    let i = 0
+    while (i < bars.length) {
+      const tradeDate = bars[i].bar.tradeDate
+      let j = i
+      while (j < bars.length && bars[j].bar.tradeDate === tradeDate) j++
+      const nextTime = j < bars.length ? bars[j].time : Number.POSITIVE_INFINITY
+      for (let k = i; k < j; k++) {
+        rows.push({ time: bars[k].time, tradeDate, bar: bars[k].bar })
+      }
+      // 补齐：该日不足 dayPoints 时尾部补占位（时间 = 末点 + 1 分钟递增），
+      // 与次日首个数据点时间冲突时停止（保持严格递增，不覆盖真实数据）。
+      // 最后一个交易日（盘中最新日）不补：实时推送还在增长，补位会占住 update 槽位。
+      if (j < bars.length) {
+        const lastTime = bars[j - 1].time
+        for (let k = j - i; k < dayPoints; k++) {
+          const time = lastTime + (k - (j - i) + 1) * 60
+          if (time >= nextTime) break
+          rows.push({ time, tradeDate, bar: null })
+        }
+      }
+      i = j
+    }
+    return rows
+  }
+
+  /**
+   * 分时渲染行（带缓存）。
+   *
+   * @remarks
+   * 栅格每帧读取竖线位置、数据写入读渲染行，逐帧重建 ~2000 行对象会造成 GC 抖动，
+   * 故按「bar 数 + 首末时间 + 市场点数 + 周期」缓存；实时追加 / 周期切换 / 市场切换
+   * 任一变化即失效重算。
+   */
+  get renderRows(): TimeshareRenderRow[] {
+    if (!this.isTimeshare) return []
+    const bars = this.deps.getBars()
+    const key = [
+      bars.length,
+      bars[0]?.time ?? '',
+      bars[bars.length - 1]?.time ?? '',
+      this.dayPoints,
+      this.deps.getPeriod(),
+    ].join('|')
+    if (this.renderRowsCacheKey !== key) {
+      this.renderRowsCache = this.buildRenderRows()
+      this.renderRowsCacheKey = key
+    }
+    return this.renderRowsCache
+  }
+
+  /**
+   * 多日分时交易日分界的竖向栅格位置（0~1 比例，相对 Pane 宽度）。
+   *
+   * @remarks
+   * 竖线不再按"天数等分"画（最后交易日盘中未满时等分位置会偏离真实天界），
+   * 而是按渲染行中交易日首行的索引占比定位：全量 fitContent 时索引与像素线性，
+   * 竖线落在真实交易日分界。1d 单日返回 null（回退 4 等分，见 verticalCount）。
+   *
+   * @returns 天界比例数组（排除首行 0）；单日 / 非分时返回 null。
+   */
+  get verticalRatios(): number[] | null {
+    if (!this.isTimeshare || this.deps.getPeriod() === '1d') return null
+    const rows = this.renderRows
+    if (rows.length < 2) return []
+    const ratios: number[] = []
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].tradeDate !== rows[i - 1].tradeDate) {
+        ratios.push(i / (rows.length - 1))
+      }
+    }
+    return ratios
+  }
+
+  // 归一化 bars（time 为秒级数字，过滤非法条）——与 controller 同一口径。
+  private normalizedBars = (): { bar: ChartDataPoint; time: number }[] =>
+    this.deps.getBars().flatMap(bar => {
+      const time = normalizeChartTime(bar.time)
+      return time === null ? [] : [{ bar, time }]
+    })
 
   /**
    * 分时昨收基准：永远取第一根 bar 的 preClose（1d~5d 统一）。

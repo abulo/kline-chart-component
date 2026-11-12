@@ -80,8 +80,16 @@ import {
   computeCrosshairTargetIndex,
   getCrosshairScrollOffset,
 } from './viewport'
-import { normalizeChartTime, formatTimeByFmt, formatAxisTime, formatDate, formatClock } from '../util/format'
+import {
+  normalizeChartTime,
+  formatTimeByFmt,
+  formatAxisTime,
+  formatDate,
+  formatClock,
+  formatShortDate,
+} from '../util/format'
 import { type PeriodValueOrEmpty } from '../periods'
+import { DEFAULT_MARKET, type MarketProfile } from '../market'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive'
 import { CrosshairTooltip, type TooltipBounds } from '../crosshair/crosshairTooltip'
@@ -141,6 +149,12 @@ export class KLineChartController {
   // 当前周期（setPeriod 更新；pane0 信息行时间格式按周期切换；
   // 允许 '' 空值 = 周期未设置，init 不发起请求）。
   private period: PeriodValueOrEmpty
+  // 当前市场（决定每个交易日分时点数：A 股 241 / 港股 331 / 美股 391 …；
+  // props.market 构造透传，setMarket 运行时切换）。
+  private market: MarketProfile
+  // 多日分时每个交易日首根 time 集合：时间轴刻度在天界显示 MM-DD，
+  // 其余显示 HH:mm（rebuildBarIndex 重建）。
+  private dayStartTimes: ReadonlySet<number> = new Set()
   /** 数据服务（init / loadEarlier 经其拉取历史与订阅实时；组件构造时注入）。 */
   private service: ChartDataService | undefined
   /** 加载状态回调（可选；init 全流程状态通知）。 */
@@ -324,7 +338,12 @@ export class KLineChartController {
         //（不随 format 参数变化；十字光标时间格式仍走下方 localization.timeFormatter）。
         tickMarkFormatter: (t: Time) => {
           const ts = t as number
-          return this.timeshareManager.isTimeshare ? formatClock(ts) : formatDate(ts)
+          if (!this.timeshareManager.isTimeshare) return formatDate(ts)
+          // 多日分时：交易日首根显示 MM-DD（刻度与交易日分界对齐），其余 HH:mm。
+          if (this.timeshareManager.dayCount > 1 && this.dayStartTimes.has(ts)) {
+            return formatShortDate(ts)
+          }
+          return formatClock(ts)
         },
       },
       localization: {
@@ -356,6 +375,9 @@ export class KLineChartController {
       getShowVolume: () => this.volumeVisible,
       // 均价线显隐（pane0 分时信息行隐藏 均价 段）。
       getShowAvg: () => this.avgLineVisible,
+      // 附图 pane5 竖线份数：与 pane1 / pane3 同口径（分时按实际交易日数）。
+      getTimeshareVerticalCount: () => this.timeshareManager.verticalCount,
+      getTimeshareVerticalRatios: () => this.timeshareManager.verticalRatios,
     })
     // 分时（1d~5d）计算管理器：刻度 / 值域 / 等分计算全部收敛于此，
     // controller 只负责调用与数据写入；依赖 chart / bars / indicatorManager（惰性读取）。
@@ -366,6 +388,7 @@ export class KLineChartController {
       getShowIndicator: () => this.indicatorManager.getShowIndicator(),
       getTheme: () => this.theme,
       getPriceSeries: () => this.timesharePriceSeries,
+      getMarket: () => this.market,
     })
     // 十字星管理器：构造即订阅十字星移动（pane0 不触发 / 内容 Pane 注入左刻度指示值 /
     // 命中更新数据浮层）。
@@ -427,6 +450,8 @@ export class KLineChartController {
     // 默认值语义：options.period 为 undefined（父组件未传）→ ''（不设置，
     // init 守卫跳过，与 symbol 空值守卫一致）；显式传具体周期 → 按该周期加载。
     this.period = options.period ?? ''
+    // 市场口径（每天分时点数按市场预设：A 股 241 / 港股 331 / 美股 391 …）。
+    this.market = options.market ?? DEFAULT_MARKET
     // 最后价线显隐（默认 true；组件 props.priceLineVisible 透传，
     // setPriceLineVisible 可运行时切换）。
     this.setPriceLineVisible(options.priceLineVisible ?? true)
@@ -572,16 +597,23 @@ export class KLineChartController {
     if (this.timeshareManager.isTimeshare) {
       // K 线 series 清空（分时无 OHLC 蜡烛），避免残留旧周期图形。
       this.klineSeries.setData([])
+      // 分时渲染行：按当前市场 dayPoints 给每个交易日补齐槽位（占位行不带 value，
+      // lightweight-charts 按 whitespace 处理：只占横轴宽度、不画线/柱）。
+      // 修复：不同市场每天分时点数不同 → 原按周期名义天数等分竖线时天界错位、
+      // 某天点数不足时被压缩/拉伸。
+      const renderRows = this.timeshareManager.renderRows
       this.timesharePriceSeries?.setData(
-        normalized.map(({ bar, time }) => ({
-          time: time as UTCTimestamp,
-          value: bar.price ?? 0, // pointType='timeshare' 必含 price
+        renderRows.map(row => ({
+          time: row.time as UTCTimestamp,
+          // pointType='timeshare' 必含 price；占位行省略 value（whitespace）。
+          ...(row.bar ? { value: row.bar.price ?? 0 } : {}),
         }))
       )
       this.timeshareAvgSeries?.setData(
-        normalized.map(({ bar, time }) => ({
-          time: time as UTCTimestamp,
-          value: bar.avgPrice ?? 0, // pointType='timeshare' 必含 avgPrice
+        renderRows.map(row => ({
+          time: row.time as UTCTimestamp,
+          // pointType='timeshare' 必含 avgPrice；占位行省略 value（whitespace）。
+          ...(row.bar ? { value: row.bar.avgPrice ?? 0 } : {}),
         }))
       )
       // 右刻度承载 series 同步价格数据（修复）：right scale 必须有
@@ -589,9 +621,9 @@ export class KLineChartController {
       // 回退到 right（空 scale）→ 十字星横线 price/y = NaN 消失；同步 price 后
       // right 范围与 left 同源一致，横线与指示值均正常。
       this.timeshareRightAxisSeries?.setData(
-        normalized.map(({ bar, time }) => ({
-          time: time as UTCTimestamp,
-          value: bar.price ?? 0,
+        renderRows.map(row => ({
+          time: row.time as UTCTimestamp,
+          ...(row.bar ? { value: row.bar.price ?? 0 } : {}),
         }))
       )
       // 成交量锚点数据回放（成交量组开启时回放 + 均量 / 信息行缓存重建，
@@ -769,6 +801,16 @@ export class KLineChartController {
   /** 重建 time → bar 索引（批量数据变更后调用：setKlineData / prependHistory）。 */
   private rebuildBarIndex = (): void => {
     this.barIndex = new Map(this.bars.map(bar => [bar.time, bar]))
+    // 多日分时：记录每个交易日首根 time（时间轴天界刻度显示日期，见 tickMarkFormatter）。
+    const dayStartTimes = new Set<number>()
+    let lastTradeDate = ''
+    for (const bar of this.bars) {
+      if (bar.tradeDate !== lastTradeDate) {
+        lastTradeDate = bar.tradeDate
+        dayStartTimes.add(bar.time)
+      }
+    }
+    this.dayStartTimes = dayStartTimes
   }
 
   /** 按 time 取整根 K 线（十字星 tooltip 命中数据源，O(1) 索引）。 */
@@ -831,6 +873,23 @@ export class KLineChartController {
     if (this.period === period) return
     this.period = period
     this.applyTimeshareInteractions()
+  }
+
+  /**
+   * 市场切换：按新市场的每天分时点数重排分时渲染（每天槽位 / 竖线天界）。
+   *
+   * @remarks
+   * 仅影响分时周期的渲染宽度（每交易日补齐到该市场 dayPoints）；
+   * 非分时周期只存值，不触发重绘。切换后重新 fitContent（分时整日数据全量可见）。
+   *
+   * @param market 目标市场（'cn' | 'hk' | 'us' | 'jp' | 'kr'）。
+   */
+  setMarket = (market: MarketProfile): void => {
+    if (this.market === market) return
+    this.market = market
+    if (!this.timeshareManager.isTimeshare) return
+    this.applyData()
+    this.chart.timeScale().fitContent()
   }
 
   // 平移交互按周期应用（抽取）：分时（1d~5d）禁用滚轮 / 拖拽平移，

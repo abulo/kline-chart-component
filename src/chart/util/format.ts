@@ -83,6 +83,24 @@ export const formatDate = (seconds?: number | null): string => {
 }
 
 /**
+ * 秒级时间戳 → 本地 "MM-DD"（多日分时时间轴交易日分界标签）。
+ *
+ * @remarks
+ * 多日分时（2d~5d）每个交易日首根刻度显示 MM-DD，其余刻度显示 HH:mm，
+ * 使刻度与交易日分界对齐（全年重复的完整日期过长，省略年份）。
+ *
+ * @param seconds 秒级时间戳。
+ * @returns 'MM-DD' 字符串；非法输入返回 '--'。
+ */
+export const formatShortDate = (seconds?: number | null): string => {
+  if (seconds === undefined || seconds === null || Number.isNaN(seconds)) return '--'
+  const date = new Date(seconds * 1000)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${month}-${day}`
+}
+
+/**
  * 秒级时间戳 → 本地 "HH:mm"（分时周期专用，与交易时段一致）。
  *
  * @param seconds 秒级时间戳。

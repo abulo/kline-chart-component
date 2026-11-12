@@ -11,7 +11,7 @@ import {
   type ISeriesApi,
 } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
-import { timeshareVerticalCount, type PeriodValueOrEmpty } from '../periods'
+import type { PeriodValueOrEmpty } from '../periods'
 import { chartFont, themeColors, transparentColor, type ChartThemeName } from './theme'
 import { formatPrice, formatVolume, formatPercent } from '../util/format'
 import { TopPaneOverlayPrimitive } from '../overlay/topPaneOverlayPrimitive'
@@ -86,7 +86,7 @@ export interface PaneBundle {
  * @returns 构建结果（见 {@link PaneBundle}）。
  */
 export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
-  const { chart, getTheme, getBars, getPeriod, indicatorManager, timeshareManager, crosshairManager } = deps
+  const { chart, getTheme, getBars, indicatorManager, timeshareManager, crosshairManager } = deps
   const initialThemeColors = themeColors(getTheme())
 
   /* ---------- 3. pane0：顶部空 Pane（无数据，自绘"名称 [代码] 时间 + 指标值"） ---------- */
@@ -193,14 +193,16 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
   klineSeries.attachPrimitive(
     new PaneBorderPrimitive(() => themeColors(getTheme()).paneBorder),
   )
-  // pane1 栅格：竖 4 等分（分时按周期份数：1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5）；
+  // pane1 栅格：竖 4 等分（分时：1d=4 等分；多日按实际交易日数等分）；
   // 横向等分数随指标开关变化（关 8 / 开 6）。
   klineSeries.attachPrimitive(
     new GridPrimitive({
       getColor: () => themeColors(getTheme()).grid,
       getHorizontalCount: () => (indicatorManager.getShowIndicator() ? 6 : 8),
       getVerticalCount: () =>
-        timeshareManager.isTimeshare ? timeshareVerticalCount(getPeriod()) : 4,
+        timeshareManager.isTimeshare ? timeshareManager.verticalCount : 4,
+      // 多日分时：竖线按真实交易日分界（0~1 比例；1d 返回 null → 回退 4 等分）。
+      getVerticalRatios: () => timeshareManager.verticalRatios,
     }),
   )
   // pane1 左刻度标签：与栅格横线对齐（值 = 横线处价格，K 线价格 2 位小数）。
@@ -396,7 +398,7 @@ export interface VolumePaneBundle {
  * @returns 构建结果（见 {@link VolumePaneBundle}）。
  */
 export const createVolumePanes = (deps: VolumePaneDeps): VolumePaneBundle => {
-  const { chart, getTheme, getBars, getPeriod, indicatorManager, timeshareManager, crosshairManager } = deps
+  const { chart, getTheme, getBars, indicatorManager, timeshareManager, crosshairManager } = deps
   const initialThemeColors = themeColors(getTheme())
   /* ---------- 5. pane2：成交量信息行（自绘分段文字，设置与 pane0 一致） ----------
    * 显示 "成交量: x  MA5: x  MA10: x"（数值随十字星命中 bar / 最新 bar）；
@@ -449,13 +451,14 @@ export const createVolumePanes = (deps: VolumePaneDeps): VolumePaneBundle => {
   volumeSeries.attachPrimitive(
     new PaneBorderPrimitive(() => themeColors(getTheme()).paneBorder),
   )
-  // pane3 栅格：竖 4 等分（分时按周期份数）；横向 2 等分（中间 1 条）。
+  // pane3 栅格：竖 4 等分（分时：1d=4 等分；多日按实际交易日数等分）；横向 2 等分。
   volumeSeries.attachPrimitive(
     new GridPrimitive({
       getColor: () => themeColors(getTheme()).grid,
       getHorizontalCount: () => 2,
       getVerticalCount: () =>
-        timeshareManager.isTimeshare ? timeshareVerticalCount(getPeriod()) : 4,
+        timeshareManager.isTimeshare ? timeshareManager.verticalCount : 4,
+      getVerticalRatios: () => timeshareManager.verticalRatios,
     }),
   )
   // pane3 左刻度标签：与栅格横线对齐（值 = 横线处成交量，万 / 亿格式化）。

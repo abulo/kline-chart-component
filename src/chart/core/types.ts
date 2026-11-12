@@ -12,6 +12,7 @@ import type { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive
 import type { ChartDataPoint } from '../../types/chart'
 import type { ChartDataService } from '../../services/chartDataService'
 import type { PeriodValueOrEmpty } from '../periods'
+import type { MarketProfile } from '../market'
 
 /** 控制器构造选项。 */
 export interface KLineChartOptions {
@@ -55,6 +56,15 @@ export interface KLineChartOptions {
    * K 线处理（此前构造硬编码 'day'）。
    */
   period?: PeriodValueOrEmpty
+  /**
+   * 分时市场口径（决定每个交易日分时点数）：'cn' 241 / 'hk' 331 / 'us' 391 /
+   * 'jp' 331 / 'kr' 391，默认 'cn'。
+   *
+   * @remarks
+   * 分时渲染按该值给每个交易日补齐固定槽位（每天等宽、竖线落在交易日分界）；
+   * 组件 props.market 透传，运行时可通过 controller.setMarket 切换。
+   */
+  market?: MarketProfile
   /**
    * 最后价线显隐：默认 true 显示（K 线主图自绘 priceLine）；传 false 隐藏。
    *

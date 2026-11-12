@@ -59,12 +59,13 @@ export const getPeriodLabel = (value: string): string =>
 // ============ 分时栅格化（v1.7.0） ============
 
 /**
- * 分时周期 → 栅格化竖线等分数。
+ * 分时周期 → 栅格化竖线等分数（静态名义表，兼容保留）。
  *
  * @remarks
- * 用户指定口径：1d → 4 等分（延续 K 线竖等分 4 份风格）；2d / 3d / 4d / 5d 多日分时
- * 分别 → 2 / 3 / 4 / 5 等分。供分时渲染 GridPrimitive.verticalCount 注入
- * （K 线默认 4，见 grid/gridPrimitive.ts）。
+ * 名义口径：1d → 4 等分（延续 K 线竖等分 4 份风格）；2d~5d → 2 / 3 / 4 / 5 等分。
+ * v1.7.20 起实际渲染竖线份数改由 `TimeshareManager.verticalCount` 按**实际交易日数**
+ * 动态计算（周期 5d 但数据仅 3 天 → 3 等分，保证竖线落在真实交易日分界）；
+ * 本表保留供外部引用 / 周期名义天数查询，不再参与渲染。
  */
 export const timeshareGridVerticalCount: Readonly<
   Partial<Record<'1d' | '2d' | '3d' | '4d' | '5d', number>>
@@ -85,7 +86,7 @@ export const TIMESHARE_PERIODS: ReadonlySet<string> = new Set(['1d', '2d', '3d',
  * @remarks
  * 分时与 K 线在渲染 / 交互上的差异（v1.7.0）：pane1 用 LineSeries 双线（价格 / 均价），
  * 无 K 线主图指标；pane3 成交量用直方图（Histogram）；附图指标无 CR；竖线栅格份数按
- * timeshareGridVerticalCount；App 平移 / 缩放按钮隐藏。
+ * 实际交易日数（TimeshareManager.verticalCount）；App 平移 / 缩放按钮隐藏。
  *
  * @param period 周期标识。
  * @returns true = 分时周期（'1d' ~ '5d'）。
@@ -94,14 +95,15 @@ export const isTimesharePeriod = (period: string): boolean =>
   TIMESHARE_PERIODS.has(period)
 
 /**
- * 取分时周期竖向栅格等分数。
+ * 取分时周期竖向栅格等分数（静态名义表，兼容保留）。
  *
  * @remarks
  * 统一收口 timeshareGridVerticalCount 的索引：period 为 PeriodValue 全联合时，
  * 直接索引 Partial<Record<timeshare>> 会触发 TS7053，故先断言为表键类型再索引。
+ * 渲染层已改用 `TimeshareManager.verticalCount`（按实际交易日数，v1.7.20）。
  *
  * @param period 周期标识。
- * @returns 栅格竖线等分数：分时按表（1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5），非分时回退 4。
+ * @returns 名义等分数：分时按表（1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5），非分时回退 4。
  */
 export const timeshareVerticalCount = (period: string): number =>
   timeshareGridVerticalCount[period as keyof typeof timeshareGridVerticalCount] ?? 4
