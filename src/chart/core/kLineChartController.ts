@@ -847,6 +847,7 @@ export class KLineChartController {
    * @param symbol 新股票代码。
    */
   setSymbol = (symbol: string): void => {
+    if (this.symbol !== symbol) this.dataBridge.unsubscribe()
     this.symbol = symbol
     this.chart.applyOptions({})
   }
@@ -886,6 +887,9 @@ export class KLineChartController {
     if (this.period === period) return
     this.period = period
     this.applyTimeshareInteractions()
+    // 立即退订旧周期实时订阅：init 有防抖 + 历史请求耗时，期间旧周期 poll 仍在
+    // 轮询 /latest，会出现"先 latest 后 history"的错序；退订后等新 init 建新订阅。
+    this.dataBridge.unsubscribe()
   }
 
   /**

@@ -590,7 +590,15 @@ src/
 
 ## 版本记录
 
-- **v1.7.21（当前）**：修复分时最后一个交易日的数据占满整个窗口宽度、且未按「左起、右侧留白」呈现的问题
+- **v1.7.22（当前）**：修复周期 / 标的切换时请求错序——网络面板里先出现旧周期的 `/kline/latest`（poll 轮询）、
+  后出现新周期 `/kline/history`。根因是旧实时订阅只在 `init` **成功后**（`startRealtime` 内部退旧订新）才解除，
+  而 `init` 有 `SWITCH_DEBOUNCE_MS` 防抖 + history 在途耗时，这段时间旧周期 poll 仍在每 3s 轮询一次。
+  现在 `ChartDataBridge.init` 在拉历史**之前**先 `unsubscribe()`，控制器 `setPeriod` / `setSymbol` 值变化时也立即退订，
+  顺序固定为 `history`（新周期）→ 订阅 → 首轮 `latest`。说明：`latest` 在 history 请求上是**参数**（
+  `?latest=<已持有最后一根时间>`，按 `symbol|period` 隔离），只有 poll 模式才有独立的 `/kline/latest` 接口。
+  新增 `tests/chartDataBridge.test.ts`（3 例：切换先退订再 history、history 在途不订阅、失败不订阅）。
+  验证：tsc 0 错误、vitest 32 文件 / 294 tests 全绿。
+- **v1.7.21**：修复分时最后一个交易日的数据占满整个窗口宽度、且未按「左起、右侧留白」呈现的问题
   （1d / `dayPoints=240` / 当日已有 120 条时只剩 120 个渲染行，`fitContent` 把这 120 行拉伸满窗，
   看起来数据铺满全宽）。改为**按槽位铺满视口**：`TimeshareManager` 新增 `slotCount`（交易日数 × dayPoints），
   控制器新增 `applyTimeshareViewport`（`setVisibleLogicalRange({ from: -0.5, to: slotCount - 0.5 })`）——

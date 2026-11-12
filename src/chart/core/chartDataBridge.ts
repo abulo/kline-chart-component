@@ -68,6 +68,11 @@ export class ChartDataBridge {
     const { symbol, period } = this.currentParams()
     if (!symbol || !period) return
     this.deps.onStatus('loading')
+    // 先停掉旧实时订阅再拉历史：周期 / 标的 / 服务切换时，旧周期的 poll 仍在轮询
+    // （每 3s 一次 /latest），会抢在本次 history 之前发出请求——现象就是"切换周期
+    // 先看到 latest、后看到 history"。退订后保证顺序为 history（新周期）→ 订阅 →
+    // 首轮 latest；新订阅由下方 startRealtime 在历史回填成功后建立。
+    this.unsubscribe()
     const seq = ++this.loadSeq
     const service = this.deps.getService()
     if (!service) {
