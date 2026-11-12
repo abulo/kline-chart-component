@@ -589,15 +589,16 @@ src/
 
 ## 版本记录
 
-- **v1.7.21（当前）**：修复分时最后一个交易日的数据占满整个窗口宽度的问题（1d / `dayPoints=240` / 当日已有 120 条时
-  渲染行只有 120 条，`fitContent` 后被拉伸满窗）。最后一个交易日改为与历史交易日一致补齐到 `dayPoints` 槽位（whitespace 占位），
-  盘中未满时右侧留白，数据严格按「已有点数 / dayPoints」占宽（120/240 = 半窗）。
-  为此 `TimeshareManager` 新增 `hasTrailingPlaceholder`（末尾是否为占位行）；实时管线检测到末尾占位时不再走 `series.update`
-  （占位已占住未来时间槽位，库会报 Cannot update oldest data），改为「先维护 bars → 整段重排」（`RealtimePipelineDeps`
-  新增 `getTimeshareTrailingPlaceholder / onRebuildTimeshareSeries`，bars 维护抽为私有 `upsertBar`）；控制器抽出
-  `applyTimeshareSeries`（`applyData` 分时分支与实时重排共用）。占位随真实点数增加自动缩短，占满当天槽位后恢复增量更新。
-  取代 v1.7.20 中「最后一个交易日不补齐」的口径；新增 `tests/realtimeTimesharePlaceholder.test.ts`（2 例），
-  分时相关用例按「所有交易日都补齐」重算。验证：tsc 0 错误、vitest 32 文件 294 tests 全绿。
+- **v1.7.21（当前）**：修复分时最后一个交易日的数据占满整个窗口宽度、且未按「左起、右侧留白」呈现的问题
+  （1d / `dayPoints=240` / 当日已有 120 条时只剩 120 个渲染行，`fitContent` 把这 120 行拉伸满窗，
+  看起来数据铺满全宽）。改为**按槽位铺满视口**：`TimeshareManager` 新增 `slotCount`（交易日数 × dayPoints），
+  控制器新增 `applyTimeshareViewport`（`setVisibleLogicalRange({ from: -0.5, to: slotCount - 0.5 })`）——
+  数据从左边第一根开始画，最后一个交易日尚未交易的分钟在右侧留白（120/240 正好占半窗），
+  数据量超过槽位时按实际行数铺满、不裁切。渲染行仍保持「历史日补齐、最后一日不补齐」，
+  因此不改动实时 `update` 的时间槽位语义；`fitContent` 在分时的三处调用（初始加载 / 容器 resize / `setDayPoints`）
+  统一换成视口重设。新增 `slotCount` 用例（1d 241 / 2d 482 / 美股口径 782 / 非分时 0），
+  `todayPoints` 场景补 1d=240、2d=480 的槽位断言。
+  验证：tsc 0 错误、vitest 31 文件 293 tests 全绿。
 
 - **v1.7.20**：分时渲染新增 `dayPoints` 每交易日点数参数，修复不同市场每天分时点数不同导致的渲染错位。
   参数直接传数字（A 股 241 / 港股 331 / 美股 391 / 日股 331 / 韩股 391，默认 241，非法值回退 241），

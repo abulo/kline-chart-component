@@ -252,9 +252,6 @@ export class KLineChartController {
       getTimeshareAvgSeries: () => this.timeshareAvgSeries ?? undefined,
       getTimeshareRightAxisSeries: () => this.timeshareRightAxisSeries ?? undefined,
       onRebuildIndicators: () => this.rebuildRealtimeIndicators(),
-      // 分时末尾占位（盘中未满）→ 实时点改为整段重排（update 会与占位时间冲突）。
-      getTimeshareTrailingPlaceholder: () => this.timeshareManager.hasTrailingPlaceholder,
-      onRebuildTimeshareSeries: () => this.applyTimeshareSeries(),
     })
     // 十字星数据浮层：挂 document.body（position: fixed，脱离图表 DOM 树，
     // 杜绝层级 / 事件拦截不确定性；传入 chart 容器作为定位基准 rect）。
@@ -470,18 +467,16 @@ export class KLineChartController {
     // 数据 + 首绘：数据由组件经 ChartDataService 拉取后 setKlineData 注入
     //（控制器不再内置 Mock 生成，统一走 service 层，便于接入真实行情）。
     this.applyData()
-    this.chart.timeScale().fitContent()
+    this.applyTimeshareViewport()
 
     // 容器尺寸监听：重算固定 Pane 高度（topPaneHeight）。
     this.resizeObserver = new ResizeObserver(() => {
       // 容器尺寸变化 → 重算 pane 高度（pane1..5 高度按比例分配）。
       this.applyStretchFactors()
-      // 分时：fitContent 只在数据加载时按当时宽度 fit，
-      // 全屏 / 窗口缩放后容器变宽，X 轴数据带不会自动重新铺满 → 左侧留白。
-      // 这里在容器 resize 时重新 fit（分时整日数据全量可见、平移禁用，无副作用）；
+      // 分时：容器尺寸变化后按全部槽位重设视口（数据左对齐 + 右侧留白宽度同步缩放）；
       // K 线为固定 120 根可视（setVisibleLogicalRange），库自动调整 barSpacing 撑满，无需处理。
       if (this.timeshareManager.isTimeshare) {
-        this.chart.timeScale().fitContent()
+        this.applyTimeshareViewport()
       }
     })
     this.resizeObserver.observe(this.container)
@@ -589,22 +584,56 @@ export class KLineChartController {
     this.indicatorManager.rebuildVolumeData()
   }
 
-  /**
-   * 数据写入（K 线 / 分时 / 成交量 / 指标）：series 锚点 + 各 primitive 数据缓存重建。
-   *
-   * @remarks
-   * 分时周期走 {@link applyTimeshareSeries}（渲染行补齐槽位 / 占位 whitespace）；
-   * K 线周期写蜡烛 + 成交量柱体 + 指标。实时末尾占位重建也复用分时分支。
-   */
+  /** K 线 / 成交量 / 指标数据写入（series 锚点 + 各 primitive 数据缓存重建）。 */
   private applyData = (): void => {
-    // 分时周期：pane1 双线 + pane3 直方图。
-    if (this.timeshareManager.isTimeshare) {
-      this.applyTimeshareSeries()
-      return
-    }
     // setData 前统一归一化 time（非法条过滤），series 同步；
     // 抽取为 getNormalizedBars（applyData / applyVolumeData 共用）。
     const normalized = this.getNormalizedBars()
+
+    // 分时周期：pane1 双线 + pane3 直方图。
+    if (this.timeshareManager.isTimeshare) {
+      // K 线 series 清空（分时无 OHLC 蜡烛），避免残留旧周期图形。
+      this.klineSeries.setData([])
+      // 分时渲染行：按当前市场 dayPoints 给每个交易日补齐槽位（占位行不带 value，
+      // lightweight-charts 按 whitespace 处理：只占横轴宽度、不画线/柱）。
+      // 修复：不同市场每天分时点数不同 → 原按周期名义天数等分竖线时天界错位、
+      // 某天点数不足时被压缩/拉伸。
+      const renderRows = this.timeshareManager.renderRows
+      this.timesharePriceSeries?.setData(
+        renderRows.map(row => ({
+          time: row.time as UTCTimestamp,
+          // pointType='timeshare' 必含 price；占位行省略 value（whitespace）。
+          ...(row.bar ? { value: row.bar.price ?? 0 } : {}),
+        }))
+      )
+      this.timeshareAvgSeries?.setData(
+        renderRows.map(row => ({
+          time: row.time as UTCTimestamp,
+          // pointType='timeshare' 必含 avgPrice；占位行省略 value（whitespace）。
+          ...(row.bar ? { value: row.bar.avgPrice ?? 0 } : {}),
+        }))
+      )
+      // 右刻度承载 series 同步价格数据（修复）：right scale 必须有
+      // firstValue（非空数据）——否则左刻度关 + 右刻度开时，库 defaultPriceScale
+      // 回退到 right（空 scale）→ 十字星横线 price/y = NaN 消失；同步 price 后
+      // right 范围与 left 同源一致，横线与指示值均正常。
+      this.timeshareRightAxisSeries?.setData(
+        renderRows.map(row => ({
+          time: row.time as UTCTimestamp,
+          ...(row.bar ? { value: row.bar.price ?? 0 } : {}),
+        }))
+      )
+      // 成交量锚点数据回放（成交量组开启时回放 + 均量 / 信息行缓存重建，
+      // 关闭时 volumeSeries 为 null 跳过；可见 1px 细柱由 VolumeBarPrimitive 自绘）。
+      this.applyVolumeData()
+      // 指标缓存重建（分时：成交量均量 / 附图指标 / 主图指标见 indicatorManager 守卫）。
+      this.indicatorManager.rebuildIndicatorData()
+      this.indicatorManager.refreshMainIndicatorData()
+      // 分时 pane1 价格范围：以首根 preClose 为对称中心（左右刻度中间对齐）。
+      this.timeshareManager.applyPriceRange()
+      return
+    }
+
     // K 线周期（原逻辑）：蜡烛 + 成交量自绘柱体。
     // 恢复价格轴自动缩放与库默认 margins（分时固定范围 + 对称 margins 不带到 K 线周期；
     // K 线刻度为坐标反算值，与十字星同源，无"固定中间值"矛盾）。
@@ -654,46 +683,20 @@ export class KLineChartController {
     this.indicatorManager.refreshMainIndicatorData()
   }
 
-  // 分时 series 写入（applyData 分时分支 / 实时末尾占位重建共用，见 RealtimePipeline）：
-  // 渲染行 = 按 dayPoints 给每个交易日补齐槽位后的行（占位行省略 value → 库按
-  // whitespace 处理：只占横轴宽度、不画线/柱）。因此盘中未满时右侧留白，
-  // 数据严格占「已有点数 / dayPoints」宽度，而不是被 fitContent 拉伸满窗。
-  private applyTimeshareSeries = (): void => {
-    // K 线 series 清空（分时无 OHLC 蜡烛），避免残留旧周期图形。
-    this.klineSeries.setData([])
-    const renderRows = this.timeshareManager.renderRows
-    this.timesharePriceSeries?.setData(
-      renderRows.map(row => ({
-        time: row.time as UTCTimestamp,
-        // pointType='timeshare' 必含 price；占位行省略 value（whitespace）。
-        ...(row.bar ? { value: row.bar.price ?? 0 } : {}),
-      }))
-    )
-    this.timeshareAvgSeries?.setData(
-      renderRows.map(row => ({
-        time: row.time as UTCTimestamp,
-        // pointType='timeshare' 必含 avgPrice；占位行省略 value（whitespace）。
-        ...(row.bar ? { value: row.bar.avgPrice ?? 0 } : {}),
-      }))
-    )
-    // 右刻度承载 series 同步价格数据（修复）：right scale 必须有
-    // firstValue（非空数据）——否则左刻度关 + 右刻度开时，库 defaultPriceScale
-    // 回退到 right（空 scale）→ 十字星横线 price/y = NaN 消失；同步 price 后
-    // right 范围与 left 同源一致，横线与指示值均正常。
-    this.timeshareRightAxisSeries?.setData(
-      renderRows.map(row => ({
-        time: row.time as UTCTimestamp,
-        ...(row.bar ? { value: row.bar.price ?? 0 } : {}),
-      }))
-    )
-    // 成交量锚点数据回放（成交量组开启时回放 + 均量 / 信息行缓存重建，
-    // 关闭时 volumeSeries 为 null 跳过；可见 1px 细柱由 VolumeBarPrimitive 自绘）。
-    this.applyVolumeData()
-    // 指标缓存重建（分时：成交量均量 / 附图指标 / 主图指标见 indicatorManager 守卫）。
-    this.indicatorManager.rebuildIndicatorData()
-    this.indicatorManager.refreshMainIndicatorData()
-    // 分时 pane1 价格范围：以首根 preClose 为对称中心（左右刻度中间对齐）。
-    this.timeshareManager.applyPriceRange()
+  // 分时视口：按「交易日 × dayPoints」铺满全部槽位（from -0.5 起，数据左对齐），
+  // 而不是 fitContent —— fitContent 只按实际渲染行 fit，最后一个交易日盘中未满
+  // （120/240）时 120 行被拉伸满窗。视口预留右侧槽位后，数据从左边开始画、
+  // 右侧留白表示当日尚未交易（120/240 → 正好占半窗）。
+  private applyTimeshareViewport = (): void => {
+    const slots = this.timeshareManager.slotCount
+    if (slots <= 0) return
+    // 历史日用 dayPoints 补齐、最后一日不补 → rows 通常 < slots；
+    // 数据本身超过槽位（dayPoints 配小于实际点数）时按数据量铺满，避免裁切。
+    const rows = this.timeshareManager.renderRows.length
+    this.chart.timeScale().setVisibleLogicalRange({
+      from: -0.5,
+      to: Math.max(slots, rows) - 0.5,
+    })
   }
 
   /* ===================== 数据（service 集成） ===================== */
@@ -719,7 +722,8 @@ export class KLineChartController {
    * 重建 series / 指标缓存并设置初始视口（周期切换、首次加载统一入口）。
    *  - K 线：视口仅展示最近 VISIBLE_BAR_COUNT（120）根，右边缘对齐
    *    （数据不足 120 根时全部展示）；左滑边缘仍可翻更早历史。
-   *  - 分时：全量 N 日数据（1d~5d）fitContent，不参与左滑翻页（hasMoreHistory=false）。
+   *  - 分时：按「交易日 × dayPoints」全部槽位铺满视口（数据左对齐、最后一日右侧留白），
+   *    不参与左滑翻页（hasMoreHistory=false）。
    *
    * @param points 外部数据点数组（未过滤，按当前周期语义筛选）。
    */
@@ -739,7 +743,7 @@ export class KLineChartController {
     // 分时数据为完整 N 个交易日（无更早分页），不触发左滑边缘加载。
     if (this.timeshareManager.isTimeshare) {
       this.dataBridge.setHasMoreHistory(false)
-      this.chart.timeScale().fitContent()
+      this.applyTimeshareViewport()
       return
     }
     this.dataBridge.setHasMoreHistory(points.length >= (this.service?.fetchLimit ?? 0))
@@ -873,7 +877,7 @@ export class KLineChartController {
    *
    * @remarks
    * 信息行分段在 draw 时现取 getPeriod，此处仅存值 + 触发重绘；
-   * 分时不可平移（分时整日数据 fitContent 固定视口，滚轮 / 按住拖拽 /
+   * 分时不可平移（分时整日数据按全部槽位固定视口，滚轮 / 按住拖拽 /
    * 触摸平移全部关闭；缩放仍由工具栏按钮控制，handleScale 全局已禁滚轮）；
    * 切回 K 线周期恢复默认平移交互。
    *
@@ -891,7 +895,7 @@ export class KLineChartController {
    * @remarks
    * 仅影响分时周期的渲染宽度（每交易日补齐到该点数，A 股 241 / 港股 331 /
    * 美股 391 … 由调用方直接传数字）；非分时周期只存值，不触发重绘。
-   * 非法值（0 / 负数 / NaN）回退默认 241。切换后重新 fitContent（分时数据全量可见）。
+   * 非法值（0 / 负数 / NaN）回退默认 241。切换后按新点数重设分时视口槽位。
    *
    * @param value 每交易日分时点数（正整数）。
    */
@@ -901,7 +905,7 @@ export class KLineChartController {
     this.dayPoints = next
     if (!this.timeshareManager.isTimeshare) return
     this.applyData()
-    this.chart.timeScale().fitContent()
+    this.applyTimeshareViewport()
   }
 
   // 平移交互按周期应用（抽取）：分时（1d~5d）禁用滚轮 / 拖拽平移，

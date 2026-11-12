@@ -128,6 +128,22 @@ export class TimeshareManager {
   }
 
   /**
+   * 分时视口应占的全部横轴槽位（交易日数 × dayPoints）。
+   *
+   * @remarks
+   * 渲染行只包含"已有数据 + 历史日补齐"，最后一个交易日（盘中最新日）不补齐，
+   * 因此 rows.length 往往小于本值——差值就是右侧应留白的槽位（尚未交易的分钟）。
+   * 视口按本值铺满（见 KLineChartController.applyTimeshareViewport），
+   * 才能让当日 120/240 的数据严格占半窗宽度，而不是被 fitContent 拉伸满窗。
+   *
+   * @returns 槽位总数（非分时 / 无数据返回 0）。
+   */
+  get slotCount(): number {
+    if (!this.isTimeshare) return 0
+    return Math.max(this.dayCount, 1) * this.dayPoints
+  }
+
+  /**
    * 分时渲染行：按"每交易日固定槽位（dayPoints）"对齐。
    *
    * @remarks
@@ -137,10 +153,8 @@ export class TimeshareManager {
    *  - 多日分时每天占宽严格相等（不再出现某天被压缩 / 拉伸）；
    *  - 竖线栅格按天数等分即落在真实交易日分界。
    * 占位行只参与横轴槽位，价格线 / 均价线 / 成交量以 whitespace 形式跳过。
-   * 最后一个交易日（盘中最新日）同样补齐：当日只有 120/240 条时，右侧 120 个
-   * 槽位留白（呈现"当天还没走完"），数据严格占 120/240 宽度而不是被拉伸满窗。
-   * 实时推送时末尾占位会占住未来时间槽位，由 realtimePipeline 检测
-   * （hasTrailingPlaceholder）改为整段重排，占位随真实点数增加自动缩短。
+   * 注意：最后一个交易日（盘中最新日）不补齐——其数据仍在实时增长，
+   * 补位会占用实时 update 的时间槽位（series.update 要求时间递增）。
    *
    * @returns 渲染行数组；非分时周期返回空数组。
    */
@@ -161,8 +175,8 @@ export class TimeshareManager {
       }
       // 补齐：该日不足 dayPoints 时尾部补占位（时间 = 末点 + 1 分钟递增），
       // 与次日首个数据点时间冲突时停止（保持严格递增，不覆盖真实数据）。
-      // 最后一个交易日同样补齐（无次日 → 上限 Infinity），右侧留白表示尚未交易。
-      {
+      // 最后一个交易日（盘中最新日）不补：实时推送还在增长，补位会占住 update 槽位。
+      if (j < bars.length) {
         const lastTime = bars[j - 1].time
         for (let k = j - i; k < dayPoints; k++) {
           const time = lastTime + (k - (j - i) + 1) * 60
@@ -198,20 +212,6 @@ export class TimeshareManager {
       this.renderRowsCacheKey = key
     }
     return this.renderRowsCache
-  }
-
-  /**
-   * 末尾是否存在占位行（最后一个交易日盘中未满）。
-   *
-   * @remarks
-   * 占位行时间落在"未来"（当日尚未交易到的分钟），实时推送 / 新增分钟点时
-   * series.update 会与既有末点时间冲突（库要求时间不早于最后数据），故实时管线
-   * 需检测该标记并改为整段重排（见 RealtimePipeline.applyRealtimePoint）。
-   */
-  get hasTrailingPlaceholder(): boolean {
-    if (!this.isTimeshare) return false
-    const rows = this.renderRows
-    return rows.length > 0 && rows[rows.length - 1].bar === null
   }
 
   /**

@@ -91,24 +91,18 @@ describe('分时每交易日点数', () => {
     const day1 = buildBars('2026-11-10', 240, 1_760_000_000)
     const day2 = buildBars('2026-11-11', 1, day1[day1.length - 1].time + 3600)
     const rows = createManager([...day1, ...day2], '2d').buildRenderRows()
-    // day1 补齐 1 行 → 241；day2（盘中最新日）同样补齐 240 行 → 241，共 482。
-    expect(rows).toHaveLength(482)
+    // day1 补齐 1 行 → 241；day2 是最后交易日（盘中最新日）不补齐 → 1。
+    expect(rows).toHaveLength(242)
     const placeholder = rows[240]
     expect(placeholder.bar).toBeNull()
     expect(placeholder.time).toBe(day1[day1.length - 1].time + 60)
-    expect(rows[rows.length - 1].bar).toBeNull()
   })
 
-  it('最后交易日（盘中最新日）同样补齐：100 条 → 241 行，右侧留白表示尚未交易', () => {
+  it('最后交易日（盘中最新日）不补齐：避免占用实时 update 槽位', () => {
     const bars = buildBars('2026-11-10', 100, 1_760_000_000)
-    const manager = createManager(bars, '1d')
-    const rows = manager.buildRenderRows()
-    // 数据只占 100/241 宽度，其余 141 行为占位（whitespace 只占横轴、不画线）。
-    expect(rows).toHaveLength(241)
-    expect(rows.filter(row => row.bar === null)).toHaveLength(141)
-    expect(manager.hasTrailingPlaceholder).toBe(true)
-    // 占位时间逐分钟递增，接在真实末点之后。
-    expect(rows[100].time).toBe(bars[bars.length - 1].time + 60)
+    const rows = createManager(bars, '1d').buildRenderRows()
+    expect(rows).toHaveLength(100)
+    expect(rows.every(row => row.bar !== null)).toBe(true)
   })
 
   it('多日分时：每天补齐后严格等宽（rows / 天数 = dayPoints）', () => {
@@ -125,14 +119,25 @@ describe('分时每交易日点数', () => {
     const day1 = buildBars('2026-11-10', 240, 1_760_000_000)
     const day2 = buildBars('2026-11-11', 1, day1[day1.length - 1].time + 60)
     const rows = createManager([...day1, ...day2], '2d').buildRenderRows()
-    // day1 占位时间 = 末点 + 60 = 次日首点 → 冲突，不补（保持 240 行）；
-    // day2 为最后交易日，同样补齐 240 行 → 241。共 481。
-    expect(rows).toHaveLength(481)
-    expect(rows.filter(row => row.bar === null)).toHaveLength(240)
-    // day1 末行是真实点，紧接着就是 day2 首点（无占位插入）。
-    expect(rows[239].bar).not.toBeNull()
-    expect(rows[240].bar).not.toBeNull()
-    expect(rows[240].time).toBe(day2[0].time)
+    // day1 占位时间 = 末点 + 60 = 次日首点 → 冲突，不补；day2 为最后交易日不补。
+    expect(rows).toHaveLength(241)
+    expect(rows.every(row => row.bar !== null)).toBe(true)
+  })
+
+  it('视口槽位 slotCount = 交易日数 × dayPoints（最后一日未满时差额即右侧留白）', () => {
+    // 1d：当日 100 条，每交易日 241 槽位 → 数据占 100/241，视口预留 141 槽。
+    const oneDay = buildBars('2026-11-10', 100, 1_760_000_000)
+    expect(createManager(oneDay, '1d').slotCount).toBe(241)
+    // 2d：两天 → 482 槽位（历史日补齐 241、当日不补）。
+    const twoDays = [
+      ...buildBars('2026-11-10', 200, 1_760_000_000),
+      ...buildBars('2026-11-11', 100, 1_760_086_400),
+    ]
+    expect(createManager(twoDays, '2d').slotCount).toBe(482)
+    // 直接传数字：美股口径 391 → 每天 391 槽位。
+    expect(createManager(twoDays, '2d', 391).slotCount).toBe(782)
+    // 非分时不参与槽位预留。
+    expect(createManager(oneDay, 'day').slotCount).toBe(0)
   })
 
   it('竖线等分数：1d 固定 4；多日按实际交易日数（周期 5d 但仅 3 天 → 3）', () => {
@@ -159,8 +164,7 @@ describe('分时每交易日点数', () => {
     const manager = createManager([...day1, ...day2, ...day3], '3d')
     const rows = manager.renderRows
     const ratios = manager.verticalRatios
-    // 最后一日（100 条）同样补齐到 241 → 三天严格等宽。
-    expect(rows).toHaveLength(241 * 3)
+    expect(rows).toHaveLength(241 + 241 + 100)
     expect(ratios).not.toBeNull()
     expect(ratios).toEqual([241 / (rows.length - 1), 482 / (rows.length - 1)])
   })
@@ -193,9 +197,9 @@ describe('分时每交易日点数', () => {
       ...buildBars('2026-11-11', 50, 1_760_086_400),
     ]
     const rows = createManager(bars, '2d', 391).renderRows
-    // 每天严格 391 槽位：day1 补 150、day2 补 341 → 782 行。
-    expect(rows).toHaveLength(391 * 2)
-    expect(rows.filter(row => row.bar === null)).toHaveLength(150 + 341)
+    // day1 补齐 150；day2 为最后交易日不补 → 241 + 150 + 50。
+    expect(rows).toHaveLength(241 + 150 + 50)
+    expect(rows.filter(row => row.bar === null)).toHaveLength(150)
   })
 
   it('formatShortDate：多日分时时间轴天界标签 MM-DD', () => {

@@ -64,35 +64,34 @@ describe('分时测试数据：当日已有点数', () => {
     }
   })
 
-  it('1d / dayPoints 240 / 当日 120 条：补齐到 240 槽位，数据占 120/240 宽度', async () => {
+  it('1d / dayPoints 240 / 当日 120 条：最后交易日不补齐，渲染行 = 120', async () => {
     const bars = await fetchTimeshare(
       new MockChartDataService({ fetchLimit: 200, todayPoints: 120 }),
     )
     const manager = createManager(bars, '1d', 240)
     const rows = manager.renderRows
-    // 当天同样补齐：120 真实 + 120 占位 = 240 槽位（右侧半窗留白）。
-    expect(rows).toHaveLength(240)
-    expect(rows.filter(row => row.bar !== null)).toHaveLength(120)
-    expect(rows.filter(row => row.bar === null)).toHaveLength(120)
-    // 末尾存在占位 → 实时管线走整段重排（update 会与占位时间冲突）。
-    expect(manager.hasTrailingPlaceholder).toBe(true)
+    expect(rows).toHaveLength(120)
+    expect(rows.every(row => row.bar !== null)).toBe(true)
+    // 视口预留 240 槽位 → 数据占 120/240（左起、右侧半窗留白）。
+    expect(manager.slotCount).toBe(240)
     // 单日分时竖线回退 4 等分（不做天界比例）。
     expect(manager.verticalCount).toBe(4)
     expect(manager.verticalRatios).toBeNull()
   })
 
-  it('2d / dayPoints 240 / 当日 120 条：每天都补齐到 240，竖线落在天界', async () => {
+  it('2d / dayPoints 240 / 当日 120 条：前一日补齐到 240、当日 120 不补，竖线落在天界', async () => {
     const bars = await fetchTimeshare(
       new MockChartDataService({ fetchLimit: 200, todayPoints: 120 }),
       '2d',
     )
     const manager = createManager(bars, '2d', 240)
     const rows = manager.renderRows
-    // 每天严格 240 槽位（前一日 80 真实 + 160 占位，当日 120 真实 + 120 占位）。
-    expect(rows).toHaveLength(240 * 2)
+    // 前一日（含补齐）240 + 当日 120。
+    expect(rows).toHaveLength(240 + 120)
     expect(manager.dayCount).toBe(2)
+    // 视口 480 槽位：前一日满 240、当日 120 + 右侧 120 留白。
+    expect(manager.slotCount).toBe(480)
     expect(manager.verticalRatios).toEqual([240 / (rows.length - 1)])
-    expect(manager.hasTrailingPlaceholder).toBe(true)
   })
 
   it('K 线数据不受 todayPoints 影响：day 周期仍返回 min(limit, 池大小)', async () => {
