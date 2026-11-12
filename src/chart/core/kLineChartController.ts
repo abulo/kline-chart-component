@@ -89,7 +89,6 @@ import {
   formatShortDate,
 } from '../util/format'
 import { type PeriodValueOrEmpty } from '../periods'
-import { DEFAULT_MARKET, type MarketProfile } from '../market'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive'
 import { CrosshairTooltip, type TooltipBounds } from '../crosshair/crosshairTooltip'
@@ -97,7 +96,7 @@ import { IndicatorManager } from './indicatorManager'
 import { ChartDataBridge } from './chartDataBridge'
 import { RealtimePipeline } from './realtimePipeline'
 import { CrosshairManager } from './crosshairManager'
-import { PRICE_SCALE_MIN_WIDTH, VISIBLE_BAR_COUNT } from './constants'
+import { PRICE_SCALE_MIN_WIDTH, VISIBLE_BAR_COUNT, normalizeDayPoints } from './constants'
 import type { KLineChartOptions, ChartLoadStatus } from './types'
 import type { MainIndicatorType } from '../indicator'
 import type { ChartDataService } from '../../services/chartDataService'
@@ -150,8 +149,8 @@ export class KLineChartController {
   // 允许 '' 空值 = 周期未设置，init 不发起请求）。
   private period: PeriodValueOrEmpty
   // 当前市场（决定每个交易日分时点数：A 股 241 / 港股 331 / 美股 391 …；
-  // props.market 构造透传，setMarket 运行时切换）。
-  private market: MarketProfile
+  // props.dayPoints 构造透传，setDayPoints 运行时切换）。
+  private dayPoints: number
   // 多日分时每个交易日首根 time 集合：时间轴刻度在天界显示 MM-DD，
   // 其余显示 HH:mm（rebuildBarIndex 重建）。
   private dayStartTimes: ReadonlySet<number> = new Set()
@@ -388,7 +387,7 @@ export class KLineChartController {
       getShowIndicator: () => this.indicatorManager.getShowIndicator(),
       getTheme: () => this.theme,
       getPriceSeries: () => this.timesharePriceSeries,
-      getMarket: () => this.market,
+      getDayPoints: () => this.dayPoints,
     })
     // 十字星管理器：构造即订阅十字星移动（pane0 不触发 / 内容 Pane 注入左刻度指示值 /
     // 命中更新数据浮层）。
@@ -450,8 +449,8 @@ export class KLineChartController {
     // 默认值语义：options.period 为 undefined（父组件未传）→ ''（不设置，
     // init 守卫跳过，与 symbol 空值守卫一致）；显式传具体周期 → 按该周期加载。
     this.period = options.period ?? ''
-    // 市场口径（每天分时点数按市场预设：A 股 241 / 港股 331 / 美股 391 …）。
-    this.market = options.market ?? DEFAULT_MARKET
+    // 分时每交易日点数（用户直接传数字：A 股 241 / 港股 331 / 美股 391 …，非法值回退 241）。
+    this.dayPoints = normalizeDayPoints(options.dayPoints)
     // 最后价线显隐（默认 true；组件 props.priceLineVisible 透传，
     // setPriceLineVisible 可运行时切换）。
     this.setPriceLineVisible(options.priceLineVisible ?? true)
@@ -876,17 +875,19 @@ export class KLineChartController {
   }
 
   /**
-   * 市场切换：按新市场的每天分时点数重排分时渲染（每天槽位 / 竖线天界）。
+   * 设置分时每交易日点数：按新点数重排分时渲染（每天槽位 / 竖线天界）。
    *
    * @remarks
-   * 仅影响分时周期的渲染宽度（每交易日补齐到该市场 dayPoints）；
-   * 非分时周期只存值，不触发重绘。切换后重新 fitContent（分时整日数据全量可见）。
+   * 仅影响分时周期的渲染宽度（每交易日补齐到该点数，A 股 241 / 港股 331 /
+   * 美股 391 … 由调用方直接传数字）；非分时周期只存值，不触发重绘。
+   * 非法值（0 / 负数 / NaN）回退默认 241。切换后重新 fitContent（分时数据全量可见）。
    *
-   * @param market 目标市场（'cn' | 'hk' | 'us' | 'jp' | 'kr'）。
+   * @param value 每交易日分时点数（正整数）。
    */
-  setMarket = (market: MarketProfile): void => {
-    if (this.market === market) return
-    this.market = market
+  setDayPoints = (value: number): void => {
+    const next = normalizeDayPoints(value)
+    if (this.dayPoints === next) return
+    this.dayPoints = next
     if (!this.timeshareManager.isTimeshare) return
     this.applyData()
     this.chart.timeScale().fitContent()

@@ -27,5 +27,24 @@ export const SWITCH_DEBOUNCE_MS = 200
  *  重建指标缓存，trailing 保留末次点不丢数据；60ms ≈ 1 渲染帧。 */
 export const REALTIME_FLUSH_MS = 60
 
+/** 分时每交易日默认点数（A 股口径 241；组件未传 / 传非法值时使用）。 */
+export const DEFAULT_TIMESHARE_DAY_POINTS = 241
+
+/**
+ * 归一化分时每交易日点数。
+ *
+ * @remarks
+ * 只接受正数（向下取整）；0 / 负数 / NaN / Infinity / 非数字一律回退默认 241，
+ * 避免非法入参导致渲染行无限补齐或除零。市场差异（A 股 241 / 港股 331 /
+ * 美股 391 …）由调用方直接传数字，不再维护市场映射表。
+ *
+ * @param value 用户传入的每交易日分时点数。
+ * @returns 有效点数（≥ 1，默认 241）。
+ */
+export const normalizeDayPoints = (value?: number): number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.max(1, Math.floor(value))
+    : DEFAULT_TIMESHARE_DAY_POINTS
+
 /** 左右刻度区最小宽度（打开时固定宽度，左右一致；单位 px）。 */
 export const PRICE_SCALE_MIN_WIDTH = 72

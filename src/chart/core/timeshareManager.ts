@@ -12,7 +12,7 @@
 import type { ISeriesApi } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
 import { isTimesharePeriod, type PeriodValueOrEmpty } from '../periods'
-import { getMarketDayPoints, type MarketProfile } from '../market'
+import { normalizeDayPoints } from './constants'
 import { symmetricExpandRange, buildTimeshareScaleValues } from '../util/timeshareScale'
 import { normalizeChartTime } from '../util/format'
 import { themeColors, type ChartThemeName } from './theme'
@@ -42,8 +42,8 @@ export interface TimeshareManagerDeps {
   getTheme: () => ChartThemeName
   /** 分时价格线 series（autoscaleInfoProvider 固定对称范围）。 */
   getPriceSeries: () => ISeriesApi<'Line'> | null
-  /** 当前市场（决定每个交易日分时点数：A 股 241 / 港股 331 / 美股 391 …）。 */
-  getMarket: () => MarketProfile
+  /** 当前市场每个交易日分时点数（用户直接传入数字，默认 241）。 */
+  getDayPoints: () => number
 }
 
 /**
@@ -89,9 +89,9 @@ export class TimeshareManager {
     return isTimesharePeriod(this.deps.getPeriod())
   }
 
-  /** 当前市场每个交易日分时点数（A 股 241 / 港股 331 / 美股 391 / 日股 331 / 韩股 391）。 */
+  /** 当前市场每个交易日分时点数（组件传入，非法值回退默认 241）。 */
   get dayPoints(): number {
-    return getMarketDayPoints(this.deps.getMarket())
+    return normalizeDayPoints(this.deps.getDayPoints())
   }
 
   /**

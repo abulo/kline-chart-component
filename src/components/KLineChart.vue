@@ -19,7 +19,7 @@ import { isTimesharePeriod } from "../chart/periods";
 import type { ChartDataService } from "../services/chartDataService";
 import type { ChartDataPoint } from "../types/chart";
 import type { ChartLoadStatus } from "../chart/core/types";
-import type { MarketProfile } from "../chart/market";
+import { DEFAULT_TIMESHARE_DAY_POINTS } from "../chart/core/constants";
 import { MockChartDataService } from "../services/mockChartDataService";
 import { debounce } from "../chart/util/timing";
 import { SWITCH_DEBOUNCE_MS } from "../chart/core/constants";
@@ -78,14 +78,15 @@ const props = withDefaults(
     /** 分时均价线显隐：默认渲染；关闭时均价线不渲染，pane0 信息行 / tooltip 同步隐藏均价。 */
     avgLineVisible?: boolean;
     /**
-     * 分时市场口径：'cn' | 'hk' | 'us' | 'jp' | 'kr'（默认 'cn'）。
+     * 分时每交易日点数（直接传数字，默认 241）。
      *
      * @remarks
      * 不同市场每个交易日分时点数不同（A 股 241 / 港股 331 / 美股 391 /
      * 日股 331 / 韩股 391）。分时渲染按该值给每个交易日补齐固定槽位，
-     * 使多日分时每天等宽、竖线栅格落在交易日分界；未知值回退 A 股口径。
+     * 使多日分时每天等宽、竖线栅格落在交易日分界；新增市场直接传实际点数即可，
+     * 非法值（0 / 负数 / NaN）回退默认 241。
      */
-    market?: MarketProfile;
+    dayPoints?: number;
     /** 全屏：true 时组件铺满浏览器视口（fixed 覆盖），false 保持父容器布局。 */
     fullscreen?: boolean;
   }>(),
@@ -102,7 +103,7 @@ const props = withDefaults(
     priceLineVisible: true,
     volumeVisible: true,
     avgLineVisible: true,
-    market: "cn",
+    dayPoints: DEFAULT_TIMESHARE_DAY_POINTS,
     fullscreen: false,
   },
 );
@@ -220,8 +221,8 @@ onMounted(() => {
     volumeVisible: props.volumeVisible,
     // 分时均价线显隐（构造即应用；watch 负责运行时切换）。
     avgLineVisible: props.avgLineVisible,
-    // 分时市场口径（每天分时点数：A 股 241 / 港股 331 / 美股 391 …）。
-    market: props.market as MarketProfile,
+    // 分时每交易日点数（A 股 241 / 港股 331 / 美股 391 …）。
+    dayPoints: props.dayPoints,
   });
   // 创建后立即应用全部 Props 初始值（与控制器构造默认值一致时幂等无副作用）。
   controller.value.applyTheme(props.theme as ChartThemeName);
@@ -357,10 +358,10 @@ watch(
   () => props.name,
   (value) => controller.value?.setName(value),
 );
-// market 变化 → 按新市场的每天分时点数重排分时渲染（无需重拉数据）。
+// dayPoints 变化 → 按新的每交易日点数重排分时渲染（无需重拉数据）。
 watch(
-  () => props.market,
-  (value) => controller.value?.setMarket(value as MarketProfile),
+  () => props.dayPoints,
+  (value) => controller.value?.setDayPoints(value),
 );
 // service 实例变化 → 更新控制器服务 + 防抖重新 init（init 使用新 service）。
 watch(

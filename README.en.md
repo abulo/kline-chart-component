@@ -6,7 +6,7 @@
 [![Vue](https://img.shields.io/badge/Vue-3.5.44-42b883)](https://vuejs.org/)
 [![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.2.1-0593ff)](https://github.com/tradingview/lightweight-charts)
 [![pnpm](https://img.shields.io/badge/pnpm-12.15.0-orange)](https://pnpm.io/)
-[![Tests](https://img.shields.io/badge/tests-287%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-286%20passed-brightgreen)](tests/)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-success)](https://abulo.github.io/kline-chart-component/)
 
 ---
@@ -36,13 +36,13 @@
 - 🧬 **Interface / implementation separation**: the data layer goes through the `ChartDataService` interface (paginated history + realtime subscription); a built-in Mock service works out of the box, and switching to real quotes only means swapping in `HttpChartDataService` — zero component changes
 - 📦 **Multi-pane layout**: pane0 info row → pane1 main chart → pane2 volume info row → pane3 volume chart → pane4 indicator info row → pane5 sub-indicator chart; `60 : 20 : 20` configurable, volume group and indicator group independently toggleable (four-state layout)
 - 🕯️ **K-line main chart**: Candlestick + main indicators (MA / EXPMA / BOLL / SAR / BBI, mutually exclusive) + high / low price markers + last-price line (priceLine, dashed, toggleable) + hollow red bars
-- ⏱️ **Intraday chart (1d~5d)**: LineSeries dual lines (price + average price, avg line toggleable), 1px histograms for volume / MACD, grid verticals positioned on trading-day boundaries (1d keeps 4 equal divisions), left/right price scales symmetrically expanded around the first bar's `preClose` (right side in percentage), three-state up/down coloring
+- ⏱️ **Intraday chart (1d~5d)**: LineSeries dual lines (price + average price, avg line toggleable), 1px histograms for volume / MACD, dayPoints parameter (pass the number directly: A-share 241 / HK 331 / US 391 / JP 331 / KR 391), grid verticals positioned on trading-day boundaries (1d keeps 4 equal divisions), left/right price scales symmetrically expanded around the first bar's `preClose` (right side in percentage), three-state up/down coloring
 - 📈 **Ten sub-indicators**: RSI / KDJ / MACD / WR / DMI / BIAS / OBV / CCI / ROC / CR, mutually exclusive single-select (no CR in intraday); every indicator is a pure function, independently unit-testable
 - 🎯 **Crosshair linkage**: vertical / horizontal dashed lines (6px on / 4px off) + left / right scale indicator values + draggable tooltip (with up/down coloring); speed-adaptive — pixel-level tracking on fast moves, magnetic snap on slow moves / dwell
 - ⌨️ **Keyboard navigation**: left / right arrow keys move one bar at a time, viewport auto-follows at the edges, auto-repeat after 40ms hold
 - 🎨 **Dark / light themes**: all colors centralized in `theme.ts` (no scattered hardcoded hex values on pages); red up / green down, flat = white (dark) / black (light)
 - 🧠 **Memory & performance**: crosshair rAF throttling, primitive view singleton reuse, viewport-only render culling (~120 visible bars per frame even with 10,000 bars), Mock pool LRU eviction (`touchCache`), Http history LRU cache + known-total cap, `destroy()` fully unsubscribes to prevent leaks
-- ✅ **Strict mode**: zero type errors under `strict: true`; vitest 30 files / 287 cases all green (incl. LRU cache, intraday market profiles, indicator and memory-specific tests)
+- ✅ **Strict mode**: zero type errors under `strict: true`; vitest 30 files / 286 cases all green (incl. LRU cache, intraday day points, indicator and memory-specific tests)
 
 ---
 
@@ -150,7 +150,7 @@ interface KLineChartProps {
   priceLineVisible?: boolean // last-price line
   volumeVisible?: boolean    // volume group
   avgLineVisible?: boolean   // intraday average-price line
-  market?: MarketProfile     // intraday market profile (cn/hk/us/jp/kr → 241/331/391/331/391 points per day)
+  dayPoints?: number         // intraday points per trading day (A-share 241 / HK 331 / US 391 …, default 241)
   fullscreen?: boolean       // fullscreen
 }
 ```
@@ -182,7 +182,7 @@ chartRef.value?.controller?.setSymbol('600519')       // (symbol: string) → up
 chartRef.value?.controller?.setName('贵州茅台')        // (name: string) → update stock name
 chartRef.value?.controller?.setService(mockService)   // (service: ChartDataService) → swap data service
 chartRef.value?.controller?.setPeriod('day')          // (period: PeriodValue) → switch period (time format follows)
-chartRef.value?.controller?.setMarket('hk')           // (market: MarketProfile) → intraday market profile (331 points per day)
+chartRef.value?.controller?.setDayPoints(331)          // (dayPoints: number) → intraday points per trading day (HK 331)
 
 // —— state setters (already auto-called by Prop watchers; manual use is for programmatic control) ——
 chartRef.value?.controller?.applyTheme('light')       // (theme: ChartThemeName)
@@ -222,7 +222,7 @@ chartRef.value?.loadStatus                            // 'idle' | 'loading' | 'l
 | `priceLineVisible` | `boolean` | `true` | last-price line on the K-line main chart |
 | `volumeVisible` | `boolean` | `true` | volume group (pane2 info row + pane3 chart; closing destroys the whole group + recomputes layout + hides volume/turnover in tooltip and info row) |
 | `avgLineVisible` | `boolean` | `true` | intraday average-price line (when off: line not rendered, avg price hidden in pane0 info row / tooltip; intraday periods only) |
-| `market` | `MarketProfile` | `'cn'` | intraday market profile: `'cn'` 241 / `'hk'` 331 / `'us'` 391 / `'jp'` 331 / `'kr'` 391 (intraday points per trading day; multi-day intraday is aligned to equal day widths; unknown values fall back to 241) |
+| `dayPoints` | `number` | `241` | intraday points per trading day; multi-day intraday is aligned to equal day widths (A-share 241 / HK 331 / US 391 / JP 331 / KR 391). No market enum is kept — new markets just pass their real count; invalid values fall back to 241 |
 | `fullscreen` | `boolean` | `false` | fullscreen (true fills the browser viewport; Esc exits) |
 
 ### 6.2 MockChartDataService constructor options
@@ -283,7 +283,6 @@ All public types carry `export` declarations and can be imported straight from s
 | `MainIndicatorType` | `src/chart/indicator/` | main indicator name union: `'ma' \| 'expma' \| 'boll' \| 'sar' \| 'bbi'` |
 | `SubIndicatorType` | `src/chart/indicator/` | sub indicator name union (10 entries) |
 | `PeriodValue / PeriodValueOrEmpty` | `src/chart/periods.ts` | period value / period value or empty |
-| `MarketProfile` | `src/chart/market.ts` | intraday market profile: `'cn' \| 'hk' \| 'us' \| 'jp' \| 'kr'` (241/331/391/331/391 points per day) |
 | `ChartThemeName` | `src/chart/core/theme.ts` | theme name: `'dark' \| 'light'` |
 | `ChartLoadStatus` | `src/chart/core/types.ts` | load status union |
 
@@ -324,13 +323,13 @@ export interface ChartDataPoint {
 
 > In intraday mode: pan / zoom buttons hidden, no main indicator, no CR sub-indicator, time format `YYYY-MM-DD HH:mm`, average line toggleable.
 >
-> Market profile: `market` derives intraday points per trading day (A-share 241 / HK 331 / US 391 / JP 331 / KR 391).
+> Points per trading day: `dayPoints` is passed as a number (A-share 241 / HK 331 / US 391 / JP 331 / KR 391, default 241).
 > Intraday rendering pads each day to that fixed slot count (padding occupies the x-axis only, no price drawn), so multi-day
 > intraday days are equally wide and grid verticals land on real trading-day boundaries; the first bar of each day
 > shows `MM-DD` on the time axis, the rest `HH:mm`.
 
 ```vue
-<KLineChart symbol="00700" name="腾讯控股" :period="'5d'" market="hk" theme="dark" />
+<KLineChart symbol="00700" name="腾讯控股" :period="'5d'" :day-points="331" theme="dark" />
 ```
 
 ### 8.3 Data point format (ChartDataPoint)
@@ -476,7 +475,7 @@ const toggleRightScale = () => chartRef.value?.controller?.setRightScaleVisible(
 | `pnpm install` | install dependencies (locked via `pnpm-lock.yaml`, lightweight-charts 5.2.1) |
 | `pnpm dev` | dev preview http://127.0.0.1:5199 (`/api` proxied to backend, `ws: true` proxies WebSocket) |
 | `pnpm type-check` | type check (`vue-tsc --noEmit`, strict zero errors) |
-| `pnpm test` | unit tests (vitest, 30 files / 287 cases) |
+| `pnpm test` | unit tests (vitest, 30 files / 286 cases) |
 | `pnpm build` | type check + build (`vite build`, output `dist/`, base `/kline-chart-component/`) |
 | `pnpm preview` | preview the build http://127.0.0.1:4173/kline-chart-component/ |
 
@@ -585,7 +584,7 @@ Licensed under the **MIT License**, see [LICENSE](LICENSE) (Copyright (c) 2026 a
 
 ## Version History
 
-- **v1.7.20 (current)**: intraday rendering gains a `market` profile prop that fixes misaligned rendering when markets return different intraday points per day. Market → points per day: `cn` 241 / `hk` 331 / `us` 391 / `jp` 331 / `kr` 391 (default `cn`, unknown values fall back to 241). Intraday rendering pads every trading day to that fixed slot count (whitespace padding: occupies the x-axis width only, no price / volume drawn), so multi-day intraday days are strictly equal-width and a single day's data width is no longer squeezed or stretched; grid verticals are positioned by real trading-day boundaries (`GridPrimitive.getVerticalRatios`, drawn at the boundary row's index ratio), so lines stay on the boundary even when the live last day is still filling up; 1d keeps 4 equal divisions. The first bar of each day shows `MM-DD` on the time axis, the rest `HH:mm`. The last trading day (the live, in-progress day) is not padded, so realtime `update` time slots stay free. Added `src/chart/market.ts` (`MarketProfile` / `MARKET_PROFILES` / `getMarketDayPoints`), controller `setMarket`, and `TimeshareManager.dayPoints / dayCount / verticalCount / buildRenderRows / verticalRatios`. Verified: tsc 0 errors, vitest 30 files / 287 tests green.
+- **v1.7.20 (current)**: intraday rendering gains a `dayPoints` prop that fixes misaligned rendering when markets return different intraday points per day. The number is passed directly (A-share 241 / HK 331 / US 391 / JP 331 / KR 391; default 241, invalid values fall back to 241) — no market enum mapping is kept, so a new market just passes its real count. Intraday rendering pads every trading day to that fixed slot count (whitespace padding: occupies the x-axis width only, no price / volume drawn), so multi-day intraday days are strictly equal-width and a single day's data width is no longer squeezed or stretched; grid verticals are positioned by real trading-day boundaries (`GridPrimitive.getVerticalRatios`, drawn at the boundary row's index ratio), so lines stay on the boundary even when the live last day is still filling up; 1d keeps 4 equal divisions. The first bar of each day shows `MM-DD` on the time axis, the rest `HH:mm`. The last trading day (the live, in-progress day) is not padded, so realtime `update` time slots stay free. Added `core/constants.ts` (`DEFAULT_TIMESHARE_DAY_POINTS` / `normalizeDayPoints`), controller `setDayPoints`, and `TimeshareManager.dayPoints / dayCount / verticalCount / buildRenderRows / verticalRatios`. Verified: tsc 0 errors, vitest 30 files / 286 tests green.
 
 - **v1.7.19**: `HistoryQuery` gains `latest` (the time of the last bar already held, second-level timestamp). HttpChartDataService maintains it per symbol|period automatically — shared by history fetches and realtime pushes (ws / sse / poll update it as points arrive); history requests append `latest=<n>` and the poll request carries `latest` too (so the backend can return increments only). Passing `latest` explicitly overrides the derived value, and the first request (no data yet) omits it. The Mock service generates data locally and ignores this field. README (zh / en): new "6.4 HistoryQuery request parameters" table, constructor-option, realtime-mode notes and exported-type tables updated. Verified: tsc 0 errors, vitest 29 files / 272 tests green.
 
