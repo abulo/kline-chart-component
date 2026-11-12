@@ -4,7 +4,7 @@
 //   2. 在 App.vue 中把 MockChartDataService 替换为 HttpChartDataService 实例；
 //   3. 鉴权 / 租户 / 版本等上下文经外部参数注入：headers（附加请求头）、
 //      cookies（对象形式，序列化注入 Cookie 头）、params（附加 URL 查询参数）。
-// 后端接口约定：GET {historyUrl}?symbol=&period=&before=&limit=&total= 返回
+// 后端接口约定：GET {historyUrl}?symbol=&period=&before=&lasttime=&limit=&total= 返回
 // { code: 200, msg?, data: [ { time, tradeDate, preClose, open, high, low, close, volume, amount } ] }
 // 数组按 time 升序；返回条数 < limit 表示已无更早数据。兼容字段缩写 o/h/l/c/v。
 // 数据缓存（默认开启）：按 symbol|period 缓存历史（含分页前置插入的旧页），重复滑动
@@ -57,7 +57,7 @@ export interface HttpChartDataServiceOptions {
    * 附加 URL 查询参数，附加到所有请求（history / latest / SSE / WS）的查询字符串中。
    *
    * @remarks
-   * 同名冲突时 symbol / period / before / limit 等核心参数优先（外部 params 不会覆盖）。
+   * 同名冲突时 symbol / period / before / lasttime / limit 等核心参数优先（外部 params 不会覆盖）。
    */
   params?: Record<string, string | number | boolean>
   /** 历史数据缓存开关，默认 true。 */
@@ -158,6 +158,16 @@ export class HttpChartDataService implements ChartDataService {
    */
   private knownTotals = new Map<string, number>()
 
+  /**
+   * 「已知最后一根时间」knownLastTimes（key = `${symbol}|${period}`）。
+   *
+   * @remarks
+   * 该 key 已持有数据的最后一根 time（单调不减）。与历史缓存解耦：缓存条目被 LRU
+   * 淘汰、或 cache=false 时仍保留；仅按 maxKnownTotals 上限随 total 一同淘汰。
+   * 用途：fetchNetwork 自动附加 `lasttime=<n>` 供后端增量 / 续传判断。
+   */
+  private knownLastTimes = new Map<string, number>()
+
   constructor(options: HttpChartDataServiceOptions) {
     this.fetchLimit = options.fetchLimit
     this.opts = {
@@ -198,6 +208,7 @@ export class HttpChartDataService implements ChartDataService {
       const points = await this.fetchNetwork(query, query.total ?? this.knownTotals.get(key))
       // 自动计算 = 本次拉取并去重后的条数（后端不返回 total 字段，纯前端口径）。
       this.recordTotal(key, Math.max(this.knownTotals.get(key) ?? 0, points.length))
+      this.recordLastTime(key, points)
       return points
     }
 
@@ -226,8 +237,11 @@ export class HttpChartDataService implements ChartDataService {
     // 即使缓存 LRU 淘汰也由 knownTotals 持久记住，满足"包括缓存淘汰的"）。
     const autoTotal = query.total ?? this.knownTotals.get(key)
     const page = await this.fetchNetwork(query, autoTotal)
-    const mergedCount = entry ? mergePoints(page, entry.points).length : page.length
+    // 合并结果同时用于条数统计与「最后一根时间」记录（避免重复 merge 扫描）。
+    const merged = entry ? mergePoints(page, entry.points) : page
+    const mergedCount = merged.length
     this.recordTotal(key, Math.max(this.knownTotals.get(key) ?? 0, mergedCount))
+    this.recordLastTime(key, merged)
     if (!this.opts.cache) return page
 
     if (!entry) {
@@ -279,6 +293,22 @@ export class HttpChartDataService implements ChartDataService {
       const oldest = this.knownTotals.keys().next().value
       if (oldest === undefined) break
       this.knownTotals.delete(oldest)
+    }
+  }
+
+  // 记录某 key 已持有数据的最后一根 time（单调不减，覆盖分页 / 增量场景）：
+  //  - 传入的是合并后的整页数据，末尾即当前最新一根；
+  //  - 与 knownTotals 共用 maxKnownTotals 上限独立淘汰，防止内存无限增长。
+  private recordLastTime = (key: string, points: ChartDataPoint[]): void => {
+    if (!points.length) return
+    const last = points[points.length - 1].time
+    const prev = this.knownLastTimes.get(key)
+    this.knownLastTimes.delete(key)
+    this.knownLastTimes.set(key, prev === undefined ? last : Math.max(prev, last))
+    while (this.knownLastTimes.size > this.opts.maxKnownTotals) {
+      const oldest = this.knownLastTimes.keys().next().value
+      if (oldest === undefined) break
+      this.knownLastTimes.delete(oldest)
     }
   }
 
@@ -577,6 +607,10 @@ export class HttpChartDataService implements ChartDataService {
       limit: String(query.limit),
     }
     if (query.before !== undefined) core.before = String(query.before)
+    // lasttime（已持有最后一根时间）：显式传入优先，否则取自动记录的 knownLastTimes；
+    // 首次请求（尚无数据）不附加，由后端返回最新一页。
+    const lastTime = query.lastTime ?? this.knownLastTimes.get(`${query.symbol}|${query.period}`)
+    if (lastTime !== undefined) core.lasttime = String(lastTime)
     // total 无条件附加：第一次请求（knownTotal 未知）时置 0，保证后端每次请求都能
     // 收到 total 参数；后续请求携带自动计算 / 显式传入的值。
     core.total = String(knownTotal ?? 0)

@@ -236,7 +236,7 @@ interface MockChartDataServiceOptions {
 ```ts
 interface HttpChartDataServiceOptions {
   fetchLimit: number                  // 必填：每页拉取条数
-  historyUrl: string                  // 必填：历史完整地址（GET?symbol=&period=&before=&limit=&total=）
+  historyUrl: string                  // 必填：历史完整地址（GET?symbol=&period=&before=&lasttime=&limit=&total=）
   realtimeTransport?: 'ws' | 'sse' | 'poll' // 实时模式，默认 'ws'
   wsUrl?: string                      // 'ws' 模式必填完整地址
   sseUrl?: string                     // 'sse' 模式必填完整地址
@@ -254,6 +254,17 @@ interface HttpChartDataServiceOptions {
 }
 ```
 
+### 6.4 HistoryQuery 请求参数
+
+| 字段 | 类型 | 必填 | URL 参数 | 说明 |
+|---|---|---|---|---|
+| `symbol` | `string` | 是 | `symbol` | 证券代码（后端标识） |
+| `period` | `string` | 是 | `period` | 周期标识；K 线 `day / week / month / 60min … 1min`，分时 `1d`~`5d` |
+| `before` | `number` | 否 | `before` | 拉取锚点（秒级时间戳）：取该时刻之前的一页；向左分页加载更早历史时传，不传取最新页 |
+| `lastTime` | `number` | 否 | `lasttime` | 已持有数据的最后一根时间（秒级时间戳）：供后端增量 / 续传判断；Http 服务自动推导，首次请求不传 |
+| `limit` | `number` | 是 | `limit` | 每页条数（与服务实例 `fetchLimit` 同值） |
+| `total` | `number` | 否 | `total` | 已持有数据条数（含缓存已淘汰数据）：Http 服务自动推导并以 `total=<n>` 附加 |
+
 ---
 
 ## 7. 类型导出 Types
@@ -263,7 +274,7 @@ interface HttpChartDataServiceOptions {
 | 类型 | 定义位置 | 说明 |
 |---|---|---|
 | `ChartDataPoint` | `src/types/chart.ts` | 统一数据点（K 线 / 分时 / 集合竞价），`pointType` 类型守卫 |
-| `HistoryQuery` | `src/services/chartDataService.ts` | 历史查询入参（symbol / period / before / limit / total） |
+| `HistoryQuery` | `src/services/chartDataService.ts` | 历史查询入参（symbol / period / before / lastTime / limit / total） |
 | `RealtimeHandler` | `src/services/chartDataService.ts` | 实时回调出参：`(point: ChartDataPoint) => void` |
 | `ChartDataService` | `src/services/chartDataService.ts` | 数据服务接口（组件只依赖它） |
 | `MainIndicatorType` | `src/chart/indicator/` | 主图指标名联合类型：`'ma' \| 'expma' \| 'boll' \| 'sar' \| 'bbi'` |
@@ -518,7 +529,7 @@ src/
 
 版本记录**内置于本文件底部**（不单设 CHANGELOG 文件），见 [版本记录](#版本记录)。
 
-- 完整历史：v1.7.4 ~ v1.7.18（分时图 / 刻度算法 / 十字星 / 成交量开关 / 布局重构 / 数据服务拆分 / README 迭代等）
+- 完整历史：v1.7.4 ~ v1.7.19（分时图 / 刻度算法 / 十字星 / 成交量开关 / 布局重构 / 数据服务拆分 / README 迭代等）
 - 发布流程：commit → push `main` → GitHub Pages Actions 自动部署 https://abulo.github.io/kline-chart-component/
 
 ---
@@ -561,7 +572,13 @@ src/
 
 ## 版本记录
 
-- **v1.7.18（当前）**：README 按「TypeScript 开源项目标准模板」重写——先价值后上手再细节：
+- **v1.7.19（当前）**：`HistoryQuery` 新增 `lastTime`（已持有数据的最后一根时间，秒级时间戳）。
+  HttpChartDataService 按 symbol|period 自动记录最后一根 time，并以 `lasttime=<n>` 附加到历史请求；
+  显式传入 `lastTime` 可覆盖自动值，首次请求（尚无数据）不附加。Mock 本地生成数据，忽略该字段。
+  README 中英同步：新增「6.4 HistoryQuery 请求参数」表，更新构造参数与类型导出表。
+  验证：tsc 0 错误、vitest 29 文件 270 tests 全绿。
+
+- **v1.7.18**：README 按「TypeScript 开源项目标准模板」重写——先价值后上手再细节：
   头部横幅 + 徽章 → 特性（TS 卖点：类型守卫 / 接口分离 / strict 零错误）→ 安装（源码仓库形态 +
   Node/pnpm/TS 版本要求）→ 快速上手（最小用法 + 自定义数据直通）→ 文档入口（Pages / 英文
   README）→ API 参考（Props / 事件 / 控制器方法含类型签名）→ 配置项（Props 总表 + Mock/Http

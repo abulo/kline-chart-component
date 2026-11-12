@@ -26,6 +26,16 @@ export interface HistoryQuery {
    */
   before?: number
 
+  /**
+   * 已持有数据的最后一根时间（秒级时间戳）。
+   *
+   * @remarks
+   * 供后端做增量 / 续传判断（对应请求 URL 的 `lasttime` 参数）；首次请求尚无数据时不传。
+   * HttpChartDataService 会自动推导：取该 symbol|period 已拉取数据中最后一根的 time，
+   * 调用方也可显式传入以覆盖自动值。
+   */
+  lastTime?: number
+
   /** 每页条数，与服务实例级 fetchLimit 同值。 */
   limit: number
 

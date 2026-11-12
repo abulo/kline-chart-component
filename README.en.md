@@ -236,7 +236,7 @@ interface MockChartDataServiceOptions {
 ```ts
 interface HttpChartDataServiceOptions {
   fetchLimit: number                  // required: page size
-  historyUrl: string                  // required: full history URL (GET?symbol=&period=&before=&limit=&total=)
+  historyUrl: string                  // required: full history URL (GET?symbol=&period=&before=&lasttime=&limit=&total=)
   realtimeTransport?: 'ws' | 'sse' | 'poll' // realtime mode, default 'ws'
   wsUrl?: string                      // 'ws' mode: full URL required
   sseUrl?: string                     // 'sse' mode: full URL required
@@ -254,6 +254,17 @@ interface HttpChartDataServiceOptions {
 }
 ```
 
+### 6.4 HistoryQuery request parameters
+
+| Field | Type | Required | URL param | Description |
+|---|---|---|---|---|
+| `symbol` | `string` | yes | `symbol` | security code (backend identifier) |
+| `period` | `string` | yes | `period` | period id; K-line `day / week / month / 60min … 1min`, intraday `1d`~`5d` |
+| `before` | `number` | no | `before` | paging anchor (seconds): fetch the page before this timestamp; pass it when loading earlier history, omit for the newest page |
+| `lastTime` | `number` | no | `lasttime` | time of the last bar already held (seconds): lets the backend detect increments / resume; derived automatically by the Http service, omitted on the first request |
+| `limit` | `number` | yes | `limit` | page size (same as the service instance `fetchLimit`) |
+| `total` | `number` | no | `total` | number of bars already held (including evicted cache entries): derived automatically by the Http service and appended as `total=<n>` |
+
 ---
 
 ## 7. Types
@@ -263,7 +274,7 @@ All public types carry `export` declarations and can be imported straight from s
 | Type | Defined in | Description |
 |---|---|---|
 | `ChartDataPoint` | `src/types/chart.ts` | unified data point (K-line / intraday / call auction), `pointType` type guard |
-| `HistoryQuery` | `src/services/chartDataService.ts` | history query input (symbol / period / before / limit / total) |
+| `HistoryQuery` | `src/services/chartDataService.ts` | history query input (symbol / period / before / lastTime / limit / total) |
 | `RealtimeHandler` | `src/services/chartDataService.ts` | realtime callback output: `(point: ChartDataPoint) => void` |
 | `ChartDataService` | `src/services/chartDataService.ts` | data service interface (the component depends only on it) |
 | `MainIndicatorType` | `src/chart/indicator/` | main indicator name union: `'ma' \| 'expma' \| 'boll' \| 'sar' \| 'bbi'` |
@@ -518,7 +529,7 @@ PRs and issues are welcome. Before submitting:
 
 The version history is **embedded at the bottom of this file** (no separate CHANGELOG file), see [Version History](#version-history).
 
-- Full history: v1.7.3 ~ v1.7.18 (intraday chart / scale algorithm / crosshair / volume toggle / layout refactor / data-service split / README iterations, etc.)
+- Full history: v1.7.3 ~ v1.7.19 (intraday chart / scale algorithm / crosshair / volume toggle / layout refactor / data-service split / README iterations, etc.)
 - Release flow: commit → push `main` → GitHub Pages Actions auto-deploys https://abulo.github.io/kline-chart-component/
 
 ---
@@ -561,7 +572,9 @@ Licensed under the **MIT License**, see [LICENSE](LICENSE) (Copyright (c) 2026 a
 
 ## Version History
 
-- **v1.7.18 (current)**: README rewritten to the "TypeScript OSS standard template" — value first, then quick start, then details: hero banner + badges → features (TS selling points: type guard / interface separation / strict zero errors) → installation (source-repo form + Node/pnpm/TS requirements) → quick start (minimal usage + custom-data passthrough) → documentation (Pages / EN README) → API reference (Props / events / controller methods with type signatures) → options (Props table + Mock/Http constructor tables) → exported types (9 public types) → examples (6 scenarios) → development (commands + directory tree + engineering constraints) → contributing → changelog (built-in version history) → FAQ (6 real high-frequency questions) → credits → license. Full version history preserved. Verified: tsc 0 errors, vitest 27 files / 257 tests green.
+- **v1.7.19 (current)**: `HistoryQuery` gains `lastTime` (the time of the last bar already held, second-level timestamp). HttpChartDataService records the last bar time per symbol|period automatically and appends `lasttime=<n>` to history requests; passing `lastTime` explicitly overrides the derived value, and the first request (no data yet) omits it. The Mock service generates data locally and ignores this field. README (zh / en): new "6.4 HistoryQuery request parameters" table, constructor-option and exported-type tables updated. Verified: tsc 0 errors, vitest 29 files / 270 tests green.
+
+- **v1.7.18**: README rewritten to the "TypeScript OSS standard template" — value first, then quick start, then details: hero banner + badges → features (TS selling points: type guard / interface separation / strict zero errors) → installation (source-repo form + Node/pnpm/TS requirements) → quick start (minimal usage + custom-data passthrough) → documentation (Pages / EN README) → API reference (Props / events / controller methods with type signatures) → options (Props table + Mock/Http constructor tables) → exported types (9 public types) → examples (6 scenarios) → development (commands + directory tree + engineering constraints) → contributing → changelog (built-in version history) → FAQ (6 real high-frequency questions) → credits → license. Full version history preserved. Verified: tsc 0 errors, vitest 27 files / 257 tests green.
   Additions: section "8.5 Realtime transport modes in detail (ws / sse / poll)" — parameter overview, backend contracts, behavior semantics (reconnect / reentrancy guard / incremental filter / cache merge), shared auth-option table, cheat sheet; MIT LICENSE file added, License section points to it.
 
 - **v1.7.17**: README fully rewritten + core code comments upgraded. README restructured as standard OSS docs: project intro (positioning / tech stack / capabilities / architecture layers), quick start (install / minimal usage / custom-data passthrough), component API (Props input table / events output table / controller methods inputs→outputs), data access (ChartDataService interface docs: HistoryQuery inputs, fetchHistory outputs, subscribeRealtime outputs, Mock/Http constructor tables), data-point format (all ChartDataPoint fields), periods & indicators, theme colors, layout structure, directory tree, build/test/package, memory & performance, Pages deployment; full version history preserved. Code comments upgraded to an input/output standard: `types/chart.ts` (field purposes), `services/chartDataService.ts` (interface methods @param/@returns), `services/mockChartDataService.ts` (fetchHistory / subscribeRealtime / ensurePool / ensureTsPool / ensurePeriodPool / lowerBound / touchCache), `services/mockDataGenerator.ts` (core generator functions @param/@returns), `chart/periods.ts`, `chart/util/format.ts`. Verified: tsc 0 errors, vitest 27 files / 257 tests green.

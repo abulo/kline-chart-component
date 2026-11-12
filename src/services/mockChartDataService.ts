@@ -467,8 +467,9 @@ export class MockChartDataService implements ChartDataService {
    * - 分时周期（1d~5d）：返回最近 N 个交易日的全部分时点（升序，N = 周期数字；
    *   每日条数随形态变化：半日 120 / 最新日完整 241 / 久远日 240）；
    * - K 线周期：按 before 锚点分页——取该时间戳之前的一页（数量 = limit）。
+   *   lastTime 仅 HttpChartDataService 用于后端增量判断，Mock 本地生成数据不依赖该字段。
    *
-   * @param query 查询入参（symbol / period / before / limit，见 {@link HistoryQuery}）。
+   * @param query 查询入参（symbol / period / before / lastTime / limit，见 {@link HistoryQuery}）。
    * @returns 按 time 升序的数据点克隆数组（每次返回深拷贝，防调用方污染内部池）；
    *          返回条数 < limit 表示已无更早数据。
    */
