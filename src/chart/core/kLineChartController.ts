@@ -340,6 +340,10 @@ export class KLineChartController {
       timeScale: {
         borderVisible: false,
         allowBoldLabels: false,
+        // 最小 barSpacing 放宽到 0.1px：5 日分时是 1200 槽整窗铺满，504px 宽下
+        // 需要 0.42px/槽，库默认下限 0.5 会把最左侧一天挤出视口
+        //（现象：5 日分时只显示 4 天多、竖线等分位置偏）。
+        minBarSpacing: 0.1,
         // 时间轴刻度标签：K 线状态 → YYYY-MM-DD；分时状态 → HH:mm
         //（不随 format 参数变化；十字光标时间格式仍走下方 localization.timeFormatter）。
         tickMarkFormatter: (t: Time) => {
@@ -689,6 +693,31 @@ export class KLineChartController {
     this.indicatorManager.refreshMainIndicatorData()
   }
 
+  // 视口设置统一入口：同帧设置 + 次帧复核。
+  //
+  // 跨周期切换（分时 1200+ 槽 ⇄ K 线 120 根）时 `series.setData` 刚写入新数据，
+  // lightweight-charts 内部按逻辑索引换算仍沿用上一周期的映射，同帧
+  // `setVisibleLogicalRange` 会被算成「上一周期的画布宽度」：
+  // 分时表现为 1 天数据被压在右侧 1/5，K 线表现为 120 根挤成一团（5 日分时 → 日K 时出现）。
+  // 次帧时内部索引已刷新，同一逻辑范围重设即正确；两次设置幂等，无视觉跳动。
+  private setViewportRange = (
+    resolve: () => { from: number; to: number } | null,
+    afterFrame?: () => void,
+  ): void => {
+    const ts = this.chart.timeScale()
+    const first = resolve()
+    if (!first) return
+    ts.setVisibleLogicalRange(first)
+    requestAnimationFrame(() => {
+      // 次帧按「当时的数据」重算：首帧到次帧之间可能发生 prependHistory（左滑补历史，
+      // 索引整体后移）—— 沿用首帧算好的旧范围会把视口拽回旧数据段
+      // （现象：日K 切换后画面停在半年前的 120 根）。重算即与 prepend 的偏移恢复一致。
+      const again = resolve()
+      if (again) ts.setVisibleLogicalRange(again)
+      afterFrame?.()
+    })
+  }
+
   // 分时视口：按「交易日 × dayPoints」铺满全部槽位（from -0.5 起，数据左对齐），
   // 而不是 fitContent —— fitContent 只按实际渲染行 fit，最后一个交易日盘中未满
   // （120/240）时 120 行被拉伸满窗。视口预留右侧槽位后，数据从左边开始画、
@@ -701,14 +730,9 @@ export class KLineChartController {
     const rows = this.timeshareManager.renderRows.length
     const from = -0.5
     const to = Math.max(slots, rows) - 0.5
-    this.chart.timeScale().setVisibleLogicalRange({ from, to })
-    // 同帧设置 + 次帧复核：跨周期切换时（如 5d → 1d）setData 刚写入新数据，
-    // 库内部按逻辑索引换算仍沿用上一周期的换算结果，同帧设置会被算成
-    // 「宽度 = 上一周期视口宽」的超宽范围（现象：1 天数据被压在右侧 1/5）。
-    // 次帧时内部索引已刷新，同一逻辑范围重设即铺满；两次设置幂等，无视觉跳动。
-    requestAnimationFrame(() => {
-      const ts = this.chart.timeScale()
-      ts.setVisibleLogicalRange({ from, to })
+    this.setViewportRange(
+      () => ({ from, to }),
+      () => {
       // 像素回读补偿：lightweight-charts 的 barSpacing 与逻辑槽位换算存在取整，
       // 逻辑范围设为「整窗」后数据右端仍可能与绘图区右缘差出 1~2 根槽位
       // （现象：1 日分时右侧空一格）。读末行实际坐标把差额折回逻辑槽位再设一次，
@@ -716,17 +740,18 @@ export class KLineChartController {
       // 只在「数据已填满槽位」时补偿：rows < slots 表示最新交易日未收盘
       // （120/241 占半窗），右侧留白是设计本身，不能被拉平。
       if (rows <= 0 || rows < slots) return
+      const ts = this.chart.timeScale()
       const lastX = ts.logicalToCoordinate((rows - 1) as Logical)
       const bs = ts.options().barSpacing
-      if (lastX !== null && bs > 0) {
-        const gap = ts.width() - lastX
-        const expect = bs / 2
+      if (lastX === null || bs <= 0) return
+      const gap = ts.width() - lastX
+      const expect = bs / 2
         if (Math.abs(gap - expect) > 0.6) {
           const nextTo = Math.max(from + 1, to - (gap - expect) / bs)
           if (nextTo > from + 1) ts.setVisibleLogicalRange({ from, to: nextTo })
         }
-      }
-    })
+      },
+    )
   }
 
   // 历史请求条数：分时按「交易日 × 每交易日点数」整窗取（service 层会按 limit
@@ -787,11 +812,10 @@ export class KLineChartController {
     }
     this.dataBridge.setHasMoreHistory(points.length >= (this.service?.fetchLimit ?? 0))
     // K 线初始视口：仅展示最近 VISIBLE_BAR_COUNT 根（右边缘对齐，from 不为负）。
-    const total = this.bars.length
-    if (total > 0) {
-      this.chart.timeScale().setVisibleLogicalRange({
-        from: Math.max(total - VISIBLE_BAR_COUNT, 0),
-        to: total - 1,
+    if (this.bars.length > 0) {
+      this.setViewportRange(() => {
+        const total = this.bars.length
+        return { from: Math.max(total - VISIBLE_BAR_COUNT, 0), to: total - 1 }
       })
     }
   }
