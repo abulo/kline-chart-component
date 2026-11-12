@@ -34,17 +34,22 @@ export const DEFAULT_TIMESHARE_DAY_POINTS = 241
  * 归一化分时每交易日点数。
  *
  * @remarks
- * 只接受正数（向下取整）；0 / 负数 / NaN / Infinity / 非数字一律回退默认 241，
+ * 只接受正数（向下取整）；0 / 负数 / NaN / Infinity / 空串一律回退默认 241。
  * 避免非法入参导致渲染行无限补齐或除零。市场差异（A 股 241 / 港股 331 /
  * 美股 391 …）由调用方直接传数字，不再维护市场映射表。
  *
- * @param value 用户传入的每交易日分时点数。
+ * 接受数字与数字字符串：模板里写成静态属性（day-points="240"）时拿到的是
+ * 字符串，若不转换会静默回退默认值，调用方会误以为「传了却不生效」。
+ *
+ * @param value 用户传入的每交易日分时点数（数字或数字字符串）。
  * @returns 有效点数（≥ 1，默认 241）。
  */
-export const normalizeDayPoints = (value?: number): number =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? Math.max(1, Math.floor(value))
+export const normalizeDayPoints = (value?: number | string): number => {
+  const num = typeof value === 'string' ? Number(value.trim()) : value
+  return typeof num === 'number' && Number.isFinite(num) && num > 0
+    ? Math.max(1, Math.floor(num))
     : DEFAULT_TIMESHARE_DAY_POINTS
+}
 
 /** 左右刻度区最小宽度（打开时固定宽度，左右一致；单位 px）。 */
 export const PRICE_SCALE_MIN_WIDTH = 72

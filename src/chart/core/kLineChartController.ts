@@ -56,6 +56,7 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
   type LogicalRange,
+  type Logical,
   type Time,
 } from 'lightweight-charts'
 import { themeColors, chartFontFamily, type ChartThemeName } from './theme'
@@ -706,7 +707,25 @@ export class KLineChartController {
     // 「宽度 = 上一周期视口宽」的超宽范围（现象：1 天数据被压在右侧 1/5）。
     // 次帧时内部索引已刷新，同一逻辑范围重设即铺满；两次设置幂等，无视觉跳动。
     requestAnimationFrame(() => {
-      this.chart.timeScale().setVisibleLogicalRange({ from, to })
+      const ts = this.chart.timeScale()
+      ts.setVisibleLogicalRange({ from, to })
+      // 像素回读补偿：lightweight-charts 的 barSpacing 与逻辑槽位换算存在取整，
+      // 逻辑范围设为「整窗」后数据右端仍可能与绘图区右缘差出 1~2 根槽位
+      // （现象：1 日分时右侧空一格）。读末行实际坐标把差额折回逻辑槽位再设一次，
+      // 目标是「末行中心距右缘半根」（bar 完整可见且贴边）；收敛一次即可，误差 < 1px。
+      // 只在「数据已填满槽位」时补偿：rows < slots 表示最新交易日未收盘
+      // （120/241 占半窗），右侧留白是设计本身，不能被拉平。
+      if (rows <= 0 || rows < slots) return
+      const lastX = ts.logicalToCoordinate((rows - 1) as Logical)
+      const bs = ts.options().barSpacing
+      if (lastX !== null && bs > 0) {
+        const gap = ts.width() - lastX
+        const expect = bs / 2
+        if (Math.abs(gap - expect) > 0.6) {
+          const nextTo = Math.max(from + 1, to - (gap - expect) / bs)
+          if (nextTo > from + 1) ts.setVisibleLogicalRange({ from, to: nextTo })
+        }
+      }
     })
   }
 
@@ -951,7 +970,7 @@ export class KLineChartController {
    *
    * @param value 每交易日分时点数（正整数）。
    */
-  setDayPoints = (value: number): void => {
+  setDayPoints = (value: number | string): void => {
     const next = normalizeDayPoints(value)
     if (this.dayPoints === next) return
     this.dayPoints = next

@@ -40,6 +40,10 @@ const onChartStatusChange = (status: string): void => {
   console.log('[KLineChart] status:', status)
 }
 
+// 分时每交易日点数：按后端实际返回条数传（当前后端 A 股 1d 为 240 点，
+// 09:31~15:00；换市场或换后端只需改这一个值，不再维护市场映射表）。
+const TIMESHARE_DAY_POINTS = 240
+
 // 当前周期（互斥单选，默认日K；仅维护状态，周期数据请求另行接入）。
 const activePeriod = ref<PeriodValueOrEmpty>('1d')
 
@@ -242,6 +246,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         :sub-indicator="activeSubIndicator ?? ''"
         :period="activePeriod"
         :service="chartDataService"
+        :day-points="TIMESHARE_DAY_POINTS"
         :fullscreen="isFullscreen"
         @status-change="onChartStatusChange"
         @period-change="onPeriodChange"

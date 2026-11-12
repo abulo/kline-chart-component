@@ -66,6 +66,13 @@ describe('分时每交易日点数', () => {
     expect(normalizeDayPoints(241.8)).toBe(241)
     // 不设上限：新市场直接传实际点数。
     expect(normalizeDayPoints(480)).toBe(480)
+    // 数字字符串（模板静态属性 day-points="240" 的实参类型）按数字解析，
+    // 不能静默回退默认值。
+    expect(normalizeDayPoints('240')).toBe(240)
+    expect(normalizeDayPoints(' 331 ')).toBe(331)
+    expect(normalizeDayPoints('241.8')).toBe(241)
+    expect(normalizeDayPoints('')).toBe(241)
+    expect(normalizeDayPoints('abc')).toBe(241)
     expect(DEFAULT_TIMESHARE_DAY_POINTS).toBe(241)
   })
 

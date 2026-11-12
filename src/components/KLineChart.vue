@@ -86,7 +86,7 @@ const props = withDefaults(
      * 使多日分时每天等宽、竖线栅格落在交易日分界；新增市场直接传实际点数即可，
      * 非法值（0 / 负数 / NaN）回退默认 241。
      */
-    dayPoints?: number;
+    dayPoints?: number | string;
     /** 全屏：true 时组件铺满浏览器视口（fixed 覆盖），false 保持父容器布局。 */
     fullscreen?: boolean;
   }>(),

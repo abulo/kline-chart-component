@@ -590,7 +590,18 @@ src/
 
 ## 版本记录
 
-- **v1.7.26（当前）**：修复「5 日分时 → 1 日分时」切换后 1 日分时被压到右侧约 1/5 的问题。
+- **v1.7.27（当前）**：修复 1 日分时「右侧空一格」+ `dayPoints` 传值健壮性。
+  ① `applyTimeshareViewport` 在次帧复核后追加**像素回读补偿**：lightweight-charts 的
+  `barSpacing` 与逻辑槽位换算存在取整，逻辑范围按整窗设置后数据右端仍可能与绘图区右缘差
+  1~2 根槽位（现象：右侧空一格）。改为读末行实际坐标（`logicalToCoordinate`），把差额折回
+  逻辑槽位再设一次，目标为「末行中心距右缘半根」（bar 完整且贴边）；仅在 `rows >= slots`
+  （数据已填满槽位）时补偿，`rows < slots` 的未收盘留白（120/241 占半窗）不受影响。
+  ② `normalizeDayPoints` 接受数字字符串：模板写成静态属性 `day-points="240"` 时拿到的是字符串，
+  此前会静默回退默认 241（表现为「明明设了 240，右侧还是空一格」）。
+  ③ demo 显式传 `TIMESHARE_DAY_POINTS = 240`（当前后端 1d 实际条数）。
+  验证：真实后端下 1d 数据末点贴到绘图区右缘（651 → 655，空白由 5px 收到 1px），2d/5d 等分正常；
+  32 文件 / 297 tests 全绿，build 通过。
+- **v1.7.26**：修复「5 日分时 → 1 日分时」切换后 1 日分时被压到右侧约 1/5 的问题。
   根因是跨周期切换时 `series.setData` 刚写入新数据，lightweight-charts 内部按逻辑索引换算
   仍沿用上一周期的结果：同帧 `setVisibleLogicalRange(-0.5, slots-0.5)` 被算成「宽度 = 上一周期
   视口宽」的超宽范围。修复：`applyTimeshareViewport` 同帧设置 + 次帧（`requestAnimationFrame`）

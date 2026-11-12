@@ -64,7 +64,7 @@ export interface KLineChartOptions {
    * 补齐固定槽位（每天等宽、竖线落在交易日分界）；
    * 组件 props.dayPoints 透传，运行时可通过 controller.setDayPoints 切换。
    */
-  dayPoints?: number
+  dayPoints?: number | string
   /**
    * 最后价线显隐：默认 true 显示（K 线主图自绘 priceLine）；传 false 隐藏。
    *
