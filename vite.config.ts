@@ -10,13 +10,15 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 5199,
-    // 开发环境代理：把 /api 请求转发到你的后端，规避跨域
-    // 按需把 target 改成你的后端地址
+    // 开发环境代理：/api → 本地行情后端（同源请求，规避浏览器 CORS）。
+    // 后端真实路径是 /v1/quant/...，因此转发时剥掉 /api 前缀；
+    // headers（如 x-access-token）由代理原样转发，不再触发预检。
     proxy: {
       '/api': {
-        target: 'http://10.0.0.8:8080',
+        target: 'http://127.0.0.1:11000',
         changeOrigin: true,
         ws: true, // 同时代理 WebSocket（实时行情）
+        rewrite: path => path.replace(/^\/api/, ''),
       },
     },
   },

@@ -590,7 +590,14 @@ src/
 
 ## 版本记录
 
-- **v1.7.24（当前）**：移除 demo 的「分时测试」入口（v1.7.20 引入的验证开关）。
+- **v1.7.25（当前）**：demo 开发环境接真实行情，用 vite proxy 绕开浏览器 CORS。
+  `vite.config.ts` 的 `server.proxy` 改为 `/api → http://127.0.0.1:11000`（`changeOrigin` + `ws`，
+  `rewrite` 剥掉 `/api` 前缀，因为后端真实路径是 `/v1/quant/...`）；`App.vue` 的 `historyUrl` / `pollUrl`
+  改成同源相对路径 `/api/v1/quant/kline/history`、`/api/v1/quant/kline/latest`，`x-access-token`
+  由代理原样转发、不再触发预检（后端目前只放行 `Origin,Content-Length,Content-Type`）。
+  验证：代理直连 200；浏览器 1 日分时正常渲染真实数据（青山纸业 2026-11-12，240 点 09:31~15:00，
+  上午一字涨停 price 恒 3.61 故价格线贴顶）。
+- **v1.7.24**：移除 demo 的「分时测试」入口（v1.7.20 引入的验证开关）。
   `App.vue` 删掉 `timeshareTestMode`、`TEST_TIMESHARE_DAY_POINTS`(240)、`TEST_TIMESHARE_TODAY_POINTS`(120)、
   `timeshareDayPoints` computed、`toggleTimeshareTestMode`、工具栏按钮与模板上的 `:day-points` 绑定
   （组件不传时走默认 `DEFAULT_TIMESHARE_DAY_POINTS = 241`），同时清掉 `MockChartDataService` /

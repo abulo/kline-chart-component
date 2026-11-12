@@ -24,9 +24,10 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 // 当前接真实行情（HttpChartDataService）；无后端时换成 MockChartDataService
 // （内置模拟行情，组件 / 控制器零改动）。
 const chartDataService = new HttpChartDataService({
-  historyUrl: 'http://0.0.0.0:11000/v1/quant/kline/history', // 必填完整地址（v1.6.30）
+  // 走 vite dev proxy（/api → 127.0.0.1:11000，见 vite.config.ts），同源无 CORS。
+  historyUrl: '/api/v1/quant/kline/history',
   realtimeTransport: 'poll',
-  pollUrl: 'http://0.0.0.0:11000/v1/quant/kline/latest', // 必填完整地址（v1.6.30）
+  pollUrl: '/api/v1/quant/kline/latest',
   fetchLimit: 200,
   // v1.7.2：history 默认超时 8s 偏紧（首次冷加载 / 后端慢易 AbortError），放宽到 15s；
   // 偶发超时另有 controller 层自动重试兜底（见 KLineChartController.fetchHistoryWithRetry）
