@@ -85,6 +85,17 @@ export const touchCache = <V>(
 export interface MockChartDataServiceOptions {
   /** 每页拉取条数（构造必填，如 200）。 */
   fetchLimit: number
+
+  /**
+   * 分时最新交易日已生成的分钟点数（模拟盘中，1~241）。
+   *
+   * @remarks
+   * 缺省 = 完整一天（241 条）。传 120 即上午 09:30~11:30 收盘状态：分时池当日
+   * 只有 120 条，配合组件 `dayPoints` 可验证"最后交易日不补齐"时的渲染
+   * （末点 11:30 之后不在交易分钟序列内，实时只刷新末根、不追加）。
+   * 仅影响分时周期（1d~5d），K 线数据不受影响。
+   */
+  todayPoints?: number
 }
 
 /**
@@ -98,6 +109,8 @@ export interface MockChartDataServiceOptions {
 export class MockChartDataService implements ChartDataService {
   /** 每页拉取条数（构造必填）。 */
   readonly fetchLimit: number
+  /** 分时最新交易日已有点数（undefined = 完整一天）。 */
+  readonly todayPoints: number | undefined
 
   // symbol → 该标的的完整数据池（懒生成）。
   private pools = new Map<string, ChartDataPoint[]>()
@@ -110,6 +123,15 @@ export class MockChartDataService implements ChartDataService {
 
   constructor(options: MockChartDataServiceOptions) {
     this.fetchLimit = options.fetchLimit
+    // 归一化：只接受 1~241 的正整数（小数向下取整，越界回退完整一天）。
+    const todayPoints = options.todayPoints
+    this.todayPoints =
+      typeof todayPoints === 'number' &&
+      Number.isFinite(todayPoints) &&
+      todayPoints > 0 &&
+      todayPoints < sessionMinutes().length
+        ? Math.floor(todayPoints)
+        : undefined
   }
 
   // 生成（或获取）某标的的完整日 K 池（懒生成 + LRU 缓存）：趋势波段状态机 +
@@ -275,7 +297,7 @@ export class MockChartDataService implements ChartDataService {
       const minutes = pattern === 'half-day'
         ? fullMinutes.slice(1, 1 + 120) // 半日：09:31~11:30 共 120 条
         : dayIndex === lastDays.length - 1
-          ? fullMinutes // 最新日完整 241 条
+          ? (this.todayPoints ? fullMinutes.slice(0, this.todayPoints) : fullMinutes) // 最新日：盘中截断 / 完整 241 条
           : fullMinutes.slice(1) // 久远日缺首分钟 240 条
       const path = timesharePatternPath(pattern, day.preClose, minutes, rand)
       const dayStart = day.preClose
@@ -538,7 +560,9 @@ export class MockChartDataService implements ChartDataService {
         const last = ts[ts.length - 1]
         if (!last) return
 
-        if (tickCount % TS_NEW_MINUTE_EVERY === 0) {
+        // 测试数据场景（todayPoints 配置）：冻结在指定条数，只刷新末根不追加，
+        // 保证「当日 N 条」稳定可复现（不随实时推进变成完整一天）。
+        if (tickCount % TS_NEW_MINUTE_EVERY === 0 && this.todayPoints == null) {
           // 仅交易时段内追加新分时分钟点（09:30 为历史首点；实时仅追加 09:31-11:30 /
           // 13:01-15:00，UTC 口径与 ensureTsPool 一致）；收盘后不再追加（只刷新最后一根）。
           // 北京时间口径（time 为「北京时间对应的 UTC 时刻」，+8h 后取 UTC 字段即北京时间）。

@@ -9,13 +9,14 @@
 //  - 放大 / 缩小 / 左移 / 右移（瞬时动作）经 chartRef 直接调用控制器。
 //
 // 所有开关操作不得破坏整体布局尺寸，仅控制可见性 / 样式。
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import KLineChart from './components/KLineChart.vue'
 import { themeColors, type ChartThemeName } from './chart/core/theme'
 import { MainIndicatorOptions, SubIndicatorOptions } from './chart/indicator/options'
 import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
 import { Periods, isTimesharePeriod, type PeriodValueOrEmpty } from './chart/periods'
 import { MockChartDataService } from './services/mockChartDataService'
+import { DEFAULT_TIMESHARE_DAY_POINTS } from './chart/core/constants'
 
 // 图表组件 ref（访问控制器）。
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
@@ -23,7 +24,33 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 // 数据服务实例（v1.6.16）：App 层集中选择并注入组件，组件内部管理。
 // 当前为 MockChartDataService（内置模拟行情）；接入真实行情时替换为
 // HttpChartDataService 即可（组件 / 控制器零改动）。
-const chartDataService = new MockChartDataService({ fetchLimit: 200 })
+const chartDataService = shallowRef<MockChartDataService>(
+  new MockChartDataService({ fetchLimit: 200 }),
+)
+
+// 分时测试数据场景（v1.7.20）：一键准备「1 日分时 + 每交易日 240 点 + 当日仅 120 条」
+// 的验证数据（模拟上午 11:30 收盘）。切换时重建 Mock 服务（数据池随配置重建），
+// 组件经 service watch 重新 init；同时把周期切到 1d 并传 dayPoints=240。
+const timeshareTestMode = ref(false)
+// 测试场景口径：每交易日点数 240 / 当日已有点数 120（用户指定）。
+const TEST_TIMESHARE_DAY_POINTS = 240
+const TEST_TIMESHARE_TODAY_POINTS = 120
+
+// 传给组件的 dayPoints：测试场景 240，否则默认 241（与组件默认一致）。
+const timeshareDayPoints = computed(() =>
+  timeshareTestMode.value ? TEST_TIMESHARE_DAY_POINTS : DEFAULT_TIMESHARE_DAY_POINTS,
+)
+
+// 切换测试数据：重建服务（todayPoints 变化 → 分时池当日条数变化）+ 固定 1d 分时。
+const toggleTimeshareTestMode = (): void => {
+  timeshareTestMode.value = !timeshareTestMode.value
+  chartDataService.value = new MockChartDataService({
+    fetchLimit: 200,
+    todayPoints: timeshareTestMode.value ? TEST_TIMESHARE_TODAY_POINTS : undefined,
+  })
+  // 打开场景时固定到 1 日分时（关闭不强制切回，保持用户当前周期）。
+  if (timeshareTestMode.value && activePeriod.value !== '1d') togglePeriod('1d')
+}
 
 // 图表加载状态（v1.6.18 示例：可从 controller.init 收到 loading / ready / error）。
 const onChartStatusChange = (status: string): void => {
@@ -204,6 +231,10 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
       <button class="btn" :class="{ active: showVolume }" @click="toggleVolume">
         成交量{{ showVolume ? '开' : '关' }}
       </button>
+      <!-- 分时测试数据（v1.7.20）：1 日分时 / dayPoints 240 / 当日已有 120 条 -->
+      <button class="btn" :class="{ active: timeshareTestMode }" @click="toggleTimeshareTestMode">
+        分时测试{{ timeshareTestMode ? '开' : '关' }}
+      </button>
       <!-- 平移 / 缩放（分时周期不可用：分时按时间轴自然滚动，无平移缩放语义，v1.7.0） -->
       <button v-if="!isTimeshare" class="btn" @click="shiftLeft">左移</button>
       <button v-if="!isTimeshare" class="btn" @click="shiftRight">右移</button>
@@ -231,6 +262,7 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
         :main-indicator="activeMainIndicator ?? ''"
         :sub-indicator="activeSubIndicator ?? ''"
         :period="activePeriod"
+        :day-points="timeshareDayPoints"
         :service="chartDataService"
         :fullscreen="isFullscreen"
         @status-change="onChartStatusChange"

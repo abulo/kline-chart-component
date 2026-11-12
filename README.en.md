@@ -6,7 +6,7 @@
 [![Vue](https://img.shields.io/badge/Vue-3.5.44-42b883)](https://vuejs.org/)
 [![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.2.1-0593ff)](https://github.com/tradingview/lightweight-charts)
 [![pnpm](https://img.shields.io/badge/pnpm-12.15.0-orange)](https://pnpm.io/)
-[![Tests](https://img.shields.io/badge/tests-286%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-292%20passed-brightgreen)](tests/)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-success)](https://abulo.github.io/kline-chart-component/)
 
 ---
@@ -42,7 +42,7 @@
 - ⌨️ **Keyboard navigation**: left / right arrow keys move one bar at a time, viewport auto-follows at the edges, auto-repeat after 40ms hold
 - 🎨 **Dark / light themes**: all colors centralized in `theme.ts` (no scattered hardcoded hex values on pages); red up / green down, flat = white (dark) / black (light)
 - 🧠 **Memory & performance**: crosshair rAF throttling, primitive view singleton reuse, viewport-only render culling (~120 visible bars per frame even with 10,000 bars), Mock pool LRU eviction (`touchCache`), Http history LRU cache + known-total cap, `destroy()` fully unsubscribes to prevent leaks
-- ✅ **Strict mode**: zero type errors under `strict: true`; vitest 30 files / 286 cases all green (incl. LRU cache, intraday day points, indicator and memory-specific tests)
+- ✅ **Strict mode**: zero type errors under `strict: true`; vitest 31 files / 292 cases all green (incl. LRU cache, intraday day points, indicator and memory-specific tests)
 
 ---
 
@@ -231,8 +231,13 @@ chartRef.value?.loadStatus                            // 'idle' | 'loading' | 'l
 interface MockChartDataServiceOptions {
   /** page size (shared by history & left-scroll pagination, required) */
   fetchLimit: number
+  /** points already available on the latest intraday trading day (simulated mid-session, 1~241; omitted = full day, intraday periods only) */
+  todayPoints?: number
 }
 ```
+
+> Test-data setup: `todayPoints: 120` plus the component's `:day-points="240"` gives the "1-day intraday / 240 points per trading day / 120 points already available today" scenario
+> (first 120 minutes 09:30–11:29), used to verify that the live last day is not padded and verticals land on trading-day boundaries. The App toolbar's "分时测试" button toggles this scenario.
 
 ### 6.3 HttpChartDataService constructor options
 
@@ -475,7 +480,7 @@ const toggleRightScale = () => chartRef.value?.controller?.setRightScaleVisible(
 | `pnpm install` | install dependencies (locked via `pnpm-lock.yaml`, lightweight-charts 5.2.1) |
 | `pnpm dev` | dev preview http://127.0.0.1:5199 (`/api` proxied to backend, `ws: true` proxies WebSocket) |
 | `pnpm type-check` | type check (`vue-tsc --noEmit`, strict zero errors) |
-| `pnpm test` | unit tests (vitest, 30 files / 286 cases) |
+| `pnpm test` | unit tests (vitest, 31 files / 292 cases) |
 | `pnpm build` | type check + build (`vite build`, output `dist/`, base `/kline-chart-component/`) |
 | `pnpm preview` | preview the build http://127.0.0.1:4173/kline-chart-component/ |
 
@@ -584,7 +589,7 @@ Licensed under the **MIT License**, see [LICENSE](LICENSE) (Copyright (c) 2026 a
 
 ## Version History
 
-- **v1.7.20 (current)**: intraday rendering gains a `dayPoints` prop that fixes misaligned rendering when markets return different intraday points per day. The number is passed directly (A-share 241 / HK 331 / US 391 / JP 331 / KR 391; default 241, invalid values fall back to 241) — no market enum mapping is kept, so a new market just passes its real count. Intraday rendering pads every trading day to that fixed slot count (whitespace padding: occupies the x-axis width only, no price / volume drawn), so multi-day intraday days are strictly equal-width and a single day's data width is no longer squeezed or stretched; grid verticals are positioned by real trading-day boundaries (`GridPrimitive.getVerticalRatios`, drawn at the boundary row's index ratio), so lines stay on the boundary even when the live last day is still filling up; 1d keeps 4 equal divisions. The first bar of each day shows `MM-DD` on the time axis, the rest `HH:mm`. The last trading day (the live, in-progress day) is not padded, so realtime `update` time slots stay free. Added `core/constants.ts` (`DEFAULT_TIMESHARE_DAY_POINTS` / `normalizeDayPoints`), controller `setDayPoints`, and `TimeshareManager.dayPoints / dayCount / verticalCount / buildRenderRows / verticalRatios`. Verified: tsc 0 errors, vitest 30 files / 286 tests green.
+- **v1.7.20 (current)**: intraday rendering gains a `dayPoints` prop that fixes misaligned rendering when markets return different intraday points per day. The number is passed directly (A-share 241 / HK 331 / US 391 / JP 331 / KR 391; default 241, invalid values fall back to 241) — no market enum mapping is kept, so a new market just passes its real count. Intraday rendering pads every trading day to that fixed slot count (whitespace padding: occupies the x-axis width only, no price / volume drawn), so multi-day intraday days are strictly equal-width and a single day's data width is no longer squeezed or stretched; grid verticals are positioned by real trading-day boundaries (`GridPrimitive.getVerticalRatios`, drawn at the boundary row's index ratio), so lines stay on the boundary even when the live last day is still filling up; 1d keeps 4 equal divisions. The first bar of each day shows `MM-DD` on the time axis, the rest `HH:mm`. The last trading day (the live, in-progress day) is not padded, so realtime `update` time slots stay free. Added `core/constants.ts` (`DEFAULT_TIMESHARE_DAY_POINTS` / `normalizeDayPoints`), controller `setDayPoints`, and `TimeshareManager.dayPoints / dayCount / verticalCount / buildRenderRows / verticalRatios`. The Mock service gains `todayPoints` (points already available on the latest intraday day, simulated mid-session: the count is frozen and not appended), and the App gains an intraday-test toggle (1-day intraday / dayPoints 240 / 120 points today). Verified: tsc 0 errors, vitest 31 files / 292 tests green.
 
 - **v1.7.19**: `HistoryQuery` gains `latest` (the time of the last bar already held, second-level timestamp). HttpChartDataService maintains it per symbol|period automatically — shared by history fetches and realtime pushes (ws / sse / poll update it as points arrive); history requests append `latest=<n>` and the poll request carries `latest` too (so the backend can return increments only). Passing `latest` explicitly overrides the derived value, and the first request (no data yet) omits it. The Mock service generates data locally and ignores this field. README (zh / en): new "6.4 HistoryQuery request parameters" table, constructor-option, realtime-mode notes and exported-type tables updated. Verified: tsc 0 errors, vitest 29 files / 272 tests green.
 

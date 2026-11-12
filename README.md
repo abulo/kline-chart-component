@@ -42,7 +42,7 @@
 - ⌨️ **键盘导航**：左右方向键逐 bar 移动，到可视区边缘自动平移跟随，按住 40ms 自动连发
 - 🎨 **深 / 浅双主题**：全部颜色集中在 `theme.ts` 公共文件（页面零散落硬编码色值），红涨绿跌、平盘深系白 / 浅系黑
 - 🧠 **内存与性能**：十字星 rAF 节流、primitive 视图单例复用、可视区渲染裁剪（10000 条数据下每帧仅绘制可视 ~120 根）、Mock 池 LRU 淘汰（`touchCache`）、Http 历史缓存 LRU + 已知 total 上限，`destroy()` 完整退订防泄漏
-- ✅ **严格模式**：`strict: true` 下类型检查零错误；vitest 30 文件 / 286 用例全绿（含 LRU 缓存、分时每交易日点数、指标、内存相关专测）
+- ✅ **严格模式**：`strict: true` 下类型检查零错误；vitest 31 文件 / 292 用例全绿（含 LRU 缓存、分时每交易日点数、指标、内存相关专测）
 
 ---
 
@@ -231,8 +231,13 @@ chartRef.value?.loadStatus                            // 'idle' | 'loading' | 'l
 interface MockChartDataServiceOptions {
   /** 每页拉取条数（历史 / 左滑分页共用，必填） */
   fetchLimit: number
+  /** 分时最新交易日已有点数（模拟盘中，1~241；缺省 = 完整一天，仅影响分时周期） */
+  todayPoints?: number
 }
 ```
+
+> 测试数据准备：`todayPoints: 120` + 组件 `:day-points="240"` 即「1 日分时 / 每交易日 240 点 / 当日已有 120 条」场景
+> （前 120 分钟 09:30~11:29），用于验证最后交易日不补齐、竖线按交易日分界。App 工具栏「分时测试」按钮可直接切换该场景。
 
 ### 6.3 HttpChartDataService 构造参数
 
@@ -592,7 +597,9 @@ src/
   最后一个交易日（盘中最新日）不补齐，避免占用实时 `update` 的时间槽位。
   新增 `core/constants.ts` 的 `DEFAULT_TIMESHARE_DAY_POINTS / normalizeDayPoints`、控制器 `setDayPoints`、
   `TimeshareManager.dayPoints / dayCount / verticalCount / buildRenderRows / verticalRatios`。
-  验证：tsc 0 错误、vitest 30 文件 286 tests 全绿。
+  Mock 服务新增 `todayPoints`（分时当日已有点数，模拟盘中：冻结条数不追加），App 新增「分时测试」开关
+  （1 日分时 / dayPoints 240 / 当日 120 条）。
+  验证：tsc 0 错误、vitest 31 文件 292 tests 全绿。
 
 - **v1.7.19**：`HistoryQuery` 新增 `latest`（已持有数据的最后一根时间，秒级时间戳）。
   HttpChartDataService 按 symbol|period 自动维护该值——历史拉取与实时推送（ws / sse / poll 收到点
