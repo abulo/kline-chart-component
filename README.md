@@ -237,7 +237,8 @@ interface MockChartDataServiceOptions {
 ```
 
 > 测试数据准备：`todayPoints: 120` + 组件 `:day-points="240"` 即「1 日分时 / 每交易日 240 点 / 当日已有 120 条」场景
-> （前 120 分钟 09:30~11:29），用于验证最后交易日不补齐、竖线按交易日分界。App 工具栏「分时测试」按钮可直接切换该场景。
+> （前 120 分钟 09:30~11:29），用于验证当日数据只占 120/240 宽度（右侧 120 个槽位留白 = 尚未交易的分钟线）。
+> App 工具栏「分时测试」按钮可直接切换该场景。
 
 ### 6.3 HttpChartDataService 构造参数
 
@@ -588,13 +589,23 @@ src/
 
 ## 版本记录
 
-- **v1.7.20（当前）**：分时渲染新增 `dayPoints` 每交易日点数参数，修复不同市场每天分时点数不同导致的渲染错位。
+- **v1.7.21（当前）**：修复分时最后一个交易日的数据占满整个窗口宽度的问题（1d / `dayPoints=240` / 当日已有 120 条时
+  渲染行只有 120 条，`fitContent` 后被拉伸满窗）。最后一个交易日改为与历史交易日一致补齐到 `dayPoints` 槽位（whitespace 占位），
+  盘中未满时右侧留白，数据严格按「已有点数 / dayPoints」占宽（120/240 = 半窗）。
+  为此 `TimeshareManager` 新增 `hasTrailingPlaceholder`（末尾是否为占位行）；实时管线检测到末尾占位时不再走 `series.update`
+  （占位已占住未来时间槽位，库会报 Cannot update oldest data），改为「先维护 bars → 整段重排」（`RealtimePipelineDeps`
+  新增 `getTimeshareTrailingPlaceholder / onRebuildTimeshareSeries`，bars 维护抽为私有 `upsertBar`）；控制器抽出
+  `applyTimeshareSeries`（`applyData` 分时分支与实时重排共用）。占位随真实点数增加自动缩短，占满当天槽位后恢复增量更新。
+  取代 v1.7.20 中「最后一个交易日不补齐」的口径；新增 `tests/realtimeTimesharePlaceholder.test.ts`（2 例），
+  分时相关用例按「所有交易日都补齐」重算。验证：tsc 0 错误、vitest 32 文件 294 tests 全绿。
+
+- **v1.7.20**：分时渲染新增 `dayPoints` 每交易日点数参数，修复不同市场每天分时点数不同导致的渲染错位。
   参数直接传数字（A 股 241 / 港股 331 / 美股 391 / 日股 331 / 韩股 391，默认 241，非法值回退 241），
   不维护市场枚举映射，后期新增市场直接传实际点数。分时渲染按该值为每个交易日补齐固定槽位（whitespace 占位：只占横轴宽度、
   不画价格 / 成交），多日分时每天严格等宽，一天的数据宽度不再被压缩或拉伸；竖向栅格改为按交易日分界定位
   （`GridPrimitive` 新增 `getVerticalRatios`，按渲染行中天界索引占比画线），盘中最后一天未满时竖线也不会偏离分界；
   1d 仍固定 4 等分。多日分时时间轴每个交易日首根显示 `MM-DD`，其余 `HH:mm`。
-  最后一个交易日（盘中最新日）不补齐，避免占用实时 `update` 的时间槽位。
+  最后一个交易日（盘中最新日）不补齐，避免占用实时 `update` 的时间槽位（v1.7.21 已调整为同样补齐 + 实时整段重排）。
   新增 `core/constants.ts` 的 `DEFAULT_TIMESHARE_DAY_POINTS / normalizeDayPoints`、控制器 `setDayPoints`、
   `TimeshareManager.dayPoints / dayCount / verticalCount / buildRenderRows / verticalRatios`。
   Mock 服务新增 `todayPoints`（分时当日已有点数，模拟盘中：冻结条数不追加），App 新增「分时测试」开关

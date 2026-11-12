@@ -41,6 +41,10 @@ export interface RealtimePipelineDeps {
   getTimeshareRightAxisSeries: () => ISeriesApi<'Line'> | undefined
   /** 指标缓存统一重建（controller：volume / 主图 / 附图 / 分时价格范围）。 */
   onRebuildIndicators: () => void
+  /** 分时末尾是否存在占位行（盘中未满：占位占住未来时间槽位，update 会冲突）。 */
+  getTimeshareTrailingPlaceholder: () => boolean
+  /** 分时 series 整段重排（末尾占位时由实时点触发，占位随真实点数增加自动缩短）。 */
+  onRebuildTimeshareSeries: () => void
 }
 
 /**
@@ -98,6 +102,16 @@ export class RealtimePipeline {
     // 避免 lightweight-charts "Cannot update oldest data, last time=[object Object]"。
     const last = bars[bars.length - 1]
     if (last && time < normalizeChartTime(last.time)!) return
+    // 分时末尾占位（最后一个交易日盘中未满）：占位行已占住收盘前的时间槽位，
+    // 对 series.update 而言新点时间早于既有末点（库直接报错 / 不更新）。
+    // 处理：先维护 bars（真实数据不含占位），再整段重排 series；占位随真实点数
+    // 增加自动缩短，占满当天槽位后回到增量 update。
+    if (isTimeshare && this.deps.getTimeshareTrailingPlaceholder()) {
+      this.upsertBar(point, time)
+      this.deps.onRebuildTimeshareSeries()
+      this.deps.getBarIndex().set(time, { ...point, time })
+      return
+    }
     if (isTimeshare) {
       // 分时：更新价格 / 均价线 + 成交量锚点（1px 细柱由 VolumeBarPrimitive 自绘，
       // 红绿按 price vs preClose 三态）。
@@ -137,6 +151,16 @@ export class RealtimePipeline {
         value: point.close ?? 0,
       })
     }
+    this.upsertBar(point, time)
+    // 实时增量维护 tooltip 索引（O(1)；批量场景走 rebuildBarIndex）。
+    this.deps.getBarIndex().set(time, { ...point, time })
+  }
+
+  // bars / barIndex 维护（同 time 覆盖末点、更大 time 追加 + 视口跟随）：
+  // 末尾占位重建路径与常规增量路径共用（重建先维护 bars 再整段重排）。
+  private upsertBar = (point: ChartDataPoint, time: number): void => {
+    const bars = this.deps.getBars()
+    const last = bars[bars.length - 1]
     if (last && time > normalizeChartTime(last.time)!) {
       bars.push({ ...point, time })
       // priceLine 修复：实时追加新 bar 后最后 bar 的 logical index 变大，
@@ -149,8 +173,6 @@ export class RealtimePipeline {
       const index = bars.findIndex(bar => normalizeChartTime(bar.time) === time)
       if (index >= 0) bars[index] = { ...point, time }
     }
-    // 实时增量维护 tooltip 索引（O(1)；批量场景走 rebuildBarIndex）。
-    this.deps.getBarIndex().set(time, { ...point, time })
   }
 
   // 实时视口跟随（priceLine 修复）：K 线模式实时追加新 bar 后，
