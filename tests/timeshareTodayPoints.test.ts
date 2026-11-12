@@ -3,7 +3,7 @@
  *
  * 验证 MockChartDataService 的 `todayPoints` 配置：分时最新交易日按指定条数
  * 截断（模拟盘中），用于验证「1 日分时 / dayPoints 240 / 当日已有 120 条」
- * 场景下最后交易日不补齐、竖线按交易日分界渲染；K 线数据不受影响。
+ * 场景下最后交易日不补齐（视口按槽位留白）、竖线按周期天数等分；K 线数据不受影响。
  */
 import { describe, expect, it } from 'vitest'
 import { MockChartDataService } from '../src/services/mockChartDataService'
@@ -74,9 +74,8 @@ describe('分时测试数据：当日已有点数', () => {
     expect(rows.every(row => row.bar !== null)).toBe(true)
     // 视口预留 240 槽位 → 数据占 120/240（左起、右侧半窗留白）。
     expect(manager.slotCount).toBe(240)
-    // 单日分时竖线回退 4 等分（不做天界比例）。
+    // 单日分时竖线固定 4 等分。
     expect(manager.verticalCount).toBe(4)
-    expect(manager.verticalRatios).toBeNull()
   })
 
   it('2d / dayPoints 240 / 当日 120 条：前一日补齐到 240、当日 120 不补，竖线落在天界', async () => {
@@ -91,7 +90,7 @@ describe('分时测试数据：当日已有点数', () => {
     expect(manager.dayCount).toBe(2)
     // 视口 480 槽位：前一日满 240、当日 120 + 右侧 120 留白。
     expect(manager.slotCount).toBe(480)
-    expect(manager.verticalRatios).toEqual([240 / (rows.length - 1)])
+    expect(manager.verticalCount).toBe(2)
   })
 
   it('K 线数据不受 todayPoints 影响：day 周期仍返回 min(limit, 池大小)', async () => {

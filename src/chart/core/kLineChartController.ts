@@ -374,9 +374,8 @@ export class KLineChartController {
       getShowVolume: () => this.volumeVisible,
       // 均价线显隐（pane0 分时信息行隐藏 均价 段）。
       getShowAvg: () => this.avgLineVisible,
-      // 附图 pane5 竖线份数：与 pane1 / pane3 同口径（分时按实际交易日数）。
+      // 附图 pane5 竖线份数：与 pane1 / pane3 同口径（分时按周期名义天数）。
       getTimeshareVerticalCount: () => this.timeshareManager.verticalCount,
-      getTimeshareVerticalRatios: () => this.timeshareManager.verticalRatios,
     })
     // 分时（1d~5d）计算管理器：刻度 / 值域 / 等分计算全部收敛于此，
     // controller 只负责调用与数据写入；依赖 chart / bars / indicatorManager（惰性读取）。

@@ -201,8 +201,6 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
       getHorizontalCount: () => (indicatorManager.getShowIndicator() ? 6 : 8),
       getVerticalCount: () =>
         timeshareManager.isTimeshare ? timeshareManager.verticalCount : 4,
-      // 多日分时：竖线按真实交易日分界（0~1 比例；1d 返回 null → 回退 4 等分）。
-      getVerticalRatios: () => timeshareManager.verticalRatios,
     }),
   )
   // pane1 左刻度标签：与栅格横线对齐（值 = 横线处价格，K 线价格 2 位小数）。
@@ -451,14 +449,13 @@ export const createVolumePanes = (deps: VolumePaneDeps): VolumePaneBundle => {
   volumeSeries.attachPrimitive(
     new PaneBorderPrimitive(() => themeColors(getTheme()).paneBorder),
   )
-  // pane3 栅格：竖 4 等分（分时：1d=4 等分；多日按实际交易日数等分）；横向 2 等分。
+  // pane3 栅格：竖 4 等分（分时：1d=4、2d~5d 按周期名义天数等分）；横向 2 等分。
   volumeSeries.attachPrimitive(
     new GridPrimitive({
       getColor: () => themeColors(getTheme()).grid,
       getHorizontalCount: () => 2,
       getVerticalCount: () =>
         timeshareManager.isTimeshare ? timeshareManager.verticalCount : 4,
-      getVerticalRatios: () => timeshareManager.verticalRatios,
     }),
   )
   // pane3 左刻度标签：与栅格横线对齐（值 = 横线处成交量，万 / 亿格式化）。

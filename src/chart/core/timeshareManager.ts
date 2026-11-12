@@ -11,7 +11,7 @@
 //  - scaleValueColor：刻度值 vs preClose 三态着色（> 红 / < 绿 / = 平盘深白浅黑）。
 import type { ISeriesApi } from 'lightweight-charts'
 import type { ChartDataPoint } from '../../types/chart'
-import { isTimesharePeriod, type PeriodValueOrEmpty } from '../periods'
+import { isTimesharePeriod, TIMESHARE_PERIODS, timeshareGridVerticalCount, type PeriodValueOrEmpty } from '../periods'
 import { normalizeDayPoints } from './constants'
 import { symmetricExpandRange, buildTimeshareScaleValues } from '../util/timeshareScale'
 import { normalizeChartTime } from '../util/format'
@@ -99,7 +99,7 @@ export class TimeshareManager {
    *
    * @remarks
    * 多日分时竖线栅格按实际天数等分（不再是"周期名义天数"）：
-   * 周期 5d 但数据只有 3 天时，按 3 天等分，竖线仍落在真实交易日分界。
+   * 周期 5d 但数据只有 3 天时，仍按 5 等分（视口同步预留 5 天槽位）。
    */
   get dayCount(): number {
     let count = 0
@@ -117,18 +117,22 @@ export class TimeshareManager {
    * 分时竖向栅格等分数（多日分时的回退口径）。
    *
    * @remarks
-   * 1d → 4 等分（延续 K 线竖等分风格）；多日分时 → 实际交易日数
-   * （每个交易日交界一条竖线）。多日分时正常由 verticalRatios 按天界索引精确定位，
-   * 本值在渲染行不足 2 行时作为回退；数据为空时至少按 1（不画竖线）。
+   * 1d → 4 等分（延续 K 线竖等分风格）；2d / 3d / 4d / 5d → 2 / 3 / 4 / 5 等分
+   * （按周期名义天数，与数据实际天数无关）。视口槽位 slotCount 与本节分数同源，
+   * 因此竖线 i/n 处恰好落在第 i 个交易日的分界。
    */
   get verticalCount(): number {
     const period = this.deps.getPeriod()
-    if (period === '1d') return 4
-    return Math.max(this.dayCount, 1)
+    // 按周期名义天数等分（1d → 4；2d / 3d / 4d / 5d → 2 / 3 / 4 / 5），
+    // 与数据实际天数无关：5d 图只拉到 1 天数据时仍分 5 格（传统行情软件版式）。
+    if (TIMESHARE_PERIODS.has(period)) {
+      return timeshareGridVerticalCount[period as '1d' | '2d' | '3d' | '4d' | '5d'] ?? 4
+    }
+    return 4
   }
 
   /**
-   * 分时视口应占的全部横轴槽位（交易日数 × dayPoints）。
+   * 分时视口应占的全部横轴槽位（周期名义天数 × dayPoints）。
    *
    * @remarks
    * 渲染行只包含"已有数据 + 历史日补齐"，最后一个交易日（盘中最新日）不补齐，
@@ -140,7 +144,10 @@ export class TimeshareManager {
    */
   get slotCount(): number {
     if (!this.isTimeshare) return 0
-    return Math.max(this.dayCount, 1) * this.dayPoints
+    // 视口槽位按周期名义天数（2d~5d → 2/3/4/5 天；1d → 1 天）铺满，
+    // 与 verticalCount 等分份数同源 → 竖线 i/n 处恰好是第 i 个交易日的分界。
+    const days = this.deps.getPeriod() === '1d' ? 1 : this.verticalCount
+    return days * this.dayPoints
   }
 
   /**
@@ -151,7 +158,7 @@ export class TimeshareManager {
    * 若某交易日点数不足 dayPoints（半日市 / 缺失点），该日尾部补占位行
    * （时间按 1 分钟递增推算，不与次日首点冲突），使：
    *  - 多日分时每天占宽严格相等（不再出现某天被压缩 / 拉伸）；
-   *  - 竖线栅格按天数等分即落在真实交易日分界。
+   *  - 竖线栅格按周期名义天数等分即落在交易日分界（视口槽位同源）。
    * 占位行只参与横轴槽位，价格线 / 均价线 / 成交量以 whitespace 形式跳过。
    * 注意：最后一个交易日（盘中最新日）不补齐——其数据仍在实时增长，
    * 补位会占用实时 update 的时间槽位（series.update 要求时间递增）。
@@ -214,28 +221,6 @@ export class TimeshareManager {
     return this.renderRowsCache
   }
 
-  /**
-   * 多日分时交易日分界的竖向栅格位置（0~1 比例，相对 Pane 宽度）。
-   *
-   * @remarks
-   * 竖线不再按"天数等分"画（最后交易日盘中未满时等分位置会偏离真实天界），
-   * 而是按渲染行中交易日首行的索引占比定位：全量 fitContent 时索引与像素线性，
-   * 竖线落在真实交易日分界。1d 单日返回 null（回退 4 等分，见 verticalCount）。
-   *
-   * @returns 天界比例数组（排除首行 0）；单日 / 非分时返回 null。
-   */
-  get verticalRatios(): number[] | null {
-    if (!this.isTimeshare || this.deps.getPeriod() === '1d') return null
-    const rows = this.renderRows
-    if (rows.length < 2) return []
-    const ratios: number[] = []
-    for (let i = 1; i < rows.length; i++) {
-      if (rows[i].tradeDate !== rows[i - 1].tradeDate) {
-        ratios.push(i / (rows.length - 1))
-      }
-    }
-    return ratios
-  }
 
   // 归一化 bars（time 为秒级数字，过滤非法条）——与 controller 同一口径。
   private normalizedBars = (): { bar: ChartDataPoint; time: number }[] =>

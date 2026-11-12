@@ -86,7 +86,7 @@ export const TIMESHARE_PERIODS: ReadonlySet<string> = new Set(['1d', '2d', '3d',
  * @remarks
  * 分时与 K 线在渲染 / 交互上的差异（v1.7.0）：pane1 用 LineSeries 双线（价格 / 均价），
  * 无 K 线主图指标；pane3 成交量用直方图（Histogram）；附图指标无 CR；竖线栅格份数按
- * 实际交易日数（TimeshareManager.verticalCount）；App 平移 / 缩放按钮隐藏。
+ * 周期名义天数（TimeshareManager.verticalCount：1d→4、2d~5d→2/3/4/5）；App 平移 / 缩放按钮隐藏。
  *
  * @param period 周期标识。
  * @returns true = 分时周期（'1d' ~ '5d'）。
@@ -100,7 +100,7 @@ export const isTimesharePeriod = (period: string): boolean =>
  * @remarks
  * 统一收口 timeshareGridVerticalCount 的索引：period 为 PeriodValue 全联合时，
  * 直接索引 Partial<Record<timeshare>> 会触发 TS7053，故先断言为表键类型再索引。
- * 渲染层已改用 `TimeshareManager.verticalCount`（按实际交易日数，v1.7.20）。
+ * 渲染层由 `TimeshareManager.verticalCount` 提供（按周期名义天数，v1.7.21）。
  *
  * @param period 周期标识。
  * @returns 名义等分数：分时按表（1d=4 / 2d=2 / 3d=3 / 4d=4 / 5d=5），非分时回退 4。

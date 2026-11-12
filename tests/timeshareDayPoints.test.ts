@@ -3,7 +3,7 @@
  *
  * 验证：dayPoints 归一化（默认 241 / 非法值回退 / 直接传任意数字）；
  * 分时渲染行按每交易日固定槽位补齐（每天等宽、占位行不画价格）；
- * 多日分时竖线按真实交易日分界（verticalRatios）；时间轴天界 MM-DD 格式化。
+ * 竖线按周期名义天数等分（1d→4、2d~5d→2/3/4/5）+ 视口槽位 slotCount；时间轴天界 MM-DD 格式化。
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -140,38 +140,26 @@ describe('分时每交易日点数', () => {
     expect(createManager(oneDay, 'day').slotCount).toBe(0)
   })
 
-  it('竖线等分数：1d 固定 4；多日按实际交易日数（周期 5d 但仅 3 天 → 3）', () => {
+  it('竖线等分数按周期名义天数：1d→4、2d→2、3d→3、4d→4、5d→5（与数据天数无关）', () => {
     const twoDays = [
       ...buildBars('2026-11-10', 241, 1_760_000_000),
       ...buildBars('2026-11-11', 241, 1_760_086_400),
     ]
     expect(createManager(twoDays, '1d').verticalCount).toBe(4)
     expect(createManager(twoDays, '2d').verticalCount).toBe(2)
+    expect(createManager(twoDays, '3d').verticalCount).toBe(3)
+    expect(createManager(twoDays, '4d').verticalCount).toBe(4)
+    // 5d 只拉到 3 天数据（或 1 天）仍按 5 等分。
     const threeDays = [...twoDays, ...buildBars('2026-11-12', 241, 1_760_172_800)]
-    expect(createManager(threeDays, '5d').verticalCount).toBe(3)
-    expect(createManager([], '5d').verticalCount).toBe(1)
+    expect(createManager(threeDays, '5d').verticalCount).toBe(5)
+    expect(createManager(threeDays, '5d').slotCount).toBe(241 * 5)
+    expect(createManager([], '5d').verticalCount).toBe(5)
+    expect(createManager(twoDays, 'day').verticalCount).toBe(4)
   })
 
   it('非分时周期不产生渲染行（K 线保持原渲染路径）', () => {
     const bars = buildBars('2026-11-10', 241, 1_760_000_000)
     expect(createManager(bars, 'day').buildRenderRows()).toEqual([])
-  })
-
-  it('多日分时竖线按真实交易日分界：比例 = 天界行索引 / (行数 - 1)', () => {
-    const day1 = buildBars('2026-11-10', 241, 1_760_000_000)
-    const day2 = buildBars('2026-11-11', 241, 1_760_086_400)
-    const day3 = buildBars('2026-11-12', 100, 1_760_172_800) // 最后一日盘中未满
-    const manager = createManager([...day1, ...day2, ...day3], '3d')
-    const rows = manager.renderRows
-    const ratios = manager.verticalRatios
-    expect(rows).toHaveLength(241 + 241 + 100)
-    expect(ratios).not.toBeNull()
-    expect(ratios).toEqual([241 / (rows.length - 1), 482 / (rows.length - 1)])
-  })
-
-  it('单日分时不做天界比例（返回 null，回退 4 等分）', () => {
-    const bars = buildBars('2026-11-10', 241, 1_760_000_000)
-    expect(createManager(bars, '1d').verticalRatios).toBeNull()
   })
 
   it('renderRows 带缓存：数据未变化时返回同一引用', () => {

@@ -41,10 +41,8 @@ export class GridPaneView implements IPrimitivePaneView {
           const config = this.source.config
           // 横向等分数（动态，随指标开关变化）。
           const hCount = config.getHorizontalCount()
-          // 竖向等分数（动态：K 线默认 4，分时按周期份数；draw 时现取，周期切换无需重建）。
+          // 竖向等分数（动态：K 线默认 4，分时按周期名义天数；draw 时现取，周期切换无需重建）。
           const vCount = config.getVerticalCount?.() ?? 4
-          // 竖向自定义位置（多日分时交易日分界）：非空时优先按比例画，不再等分。
-          const vRatios = config.getVerticalRatios?.() ?? null
 
           context.lineWidth = 1
           context.strokeStyle = config.getColor()
@@ -57,21 +55,13 @@ export class GridPaneView implements IPrimitivePaneView {
             context.lineTo(width - 0.5, y)
           }
 
-          // 竖线：优先自定义天界比例（多日分时每个交易日分界一条），否则 i / vCount 等分。
-          if (vRatios && vRatios.length > 0) {
-            for (const ratio of vRatios) {
-              if (ratio <= 0 || ratio >= 1) continue
-              const x = Math.round(width * ratio) + 0.5
-              context.moveTo(x, 0.5)
-              context.lineTo(x, height - 0.5)
-            }
-          } else {
-            // 等分：i / vCount 处（i = 1..vCount-1），避开首尾。
-            for (let i = 1; i < vCount; i++) {
-              const x = Math.round((width * i) / vCount) + 0.5
-              context.moveTo(x, 0.5)
-              context.lineTo(x, height - 0.5)
-            }
+          // 竖线：i / vCount 等分（i = 1..vCount-1），避开首尾。
+          // 分时的 vCount = 周期名义天数，且视口按「名义天数 × dayPoints」槽位铺满，
+          // 所以等分位置恰好落在每个交易日的分界（2d → 1/2、5d → 1/5…）。
+          for (let i = 1; i < vCount; i++) {
+            const x = Math.round((width * i) / vCount) + 0.5
+            context.moveTo(x, 0.5)
+            context.lineTo(x, height - 0.5)
           }
 
           context.stroke()
