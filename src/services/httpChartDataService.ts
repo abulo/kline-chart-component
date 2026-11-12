@@ -4,7 +4,7 @@
 //   2. 在 App.vue 中把 MockChartDataService 替换为 HttpChartDataService 实例；
 //   3. 鉴权 / 租户 / 版本等上下文经外部参数注入：headers（附加请求头）、
 //      cookies（对象形式，序列化注入 Cookie 头）、params（附加 URL 查询参数）。
-// 后端接口约定：GET {historyUrl}?symbol=&period=&before=&lasttime=&limit=&total= 返回
+// 后端接口约定：GET {historyUrl}?symbol=&period=&before=&latest=&limit=&total= 返回
 // { code: 200, msg?, data: [ { time, tradeDate, preClose, open, high, low, close, volume, amount } ] }
 // 数组按 time 升序；返回条数 < limit 表示已无更早数据。兼容字段缩写 o/h/l/c/v。
 // 数据缓存（默认开启）：按 symbol|period 缓存历史（含分页前置插入的旧页），重复滑动
@@ -28,7 +28,13 @@ export interface HttpChartDataServiceOptions {
   sseEventName?: string
   /** 实时传输方式：'ws' WebSocket 推送（默认）/ 'poll' HTTP 轮询 / 'sse' Server-Sent Events。 */
   realtimeTransport?: 'ws' | 'poll' | 'sse'
-  /** HTTP 轮询专用实时接口（realtimeTransport = 'poll' 时使用，必填完整地址；缺省不轮询）。 */
+  /**
+   * HTTP 轮询专用实时接口（realtimeTransport = 'poll' 时使用，必填完整地址；缺省不轮询）。
+   *
+   * @remarks
+   * 请求格式：GET {pollUrl}?symbol=&period=&latest=[&total]，latest = 已持有数据的
+   * 最后一根时间（秒级时间戳，首次轮询尚无数据时不带），供后端只返回增量。
+   */
   pollUrl?: string
   /** HTTP 轮询频率 ms（realtimeTransport = 'poll' 时生效），默认 3000。 */
   pollIntervalMs?: number
@@ -57,7 +63,7 @@ export interface HttpChartDataServiceOptions {
    * 附加 URL 查询参数，附加到所有请求（history / latest / SSE / WS）的查询字符串中。
    *
    * @remarks
-   * 同名冲突时 symbol / period / before / lasttime / limit 等核心参数优先（外部 params 不会覆盖）。
+   * 同名冲突时 symbol / period / before / latest / limit 等核心参数优先（外部 params 不会覆盖）。
    */
   params?: Record<string, string | number | boolean>
   /** 历史数据缓存开关，默认 true。 */
@@ -112,10 +118,11 @@ interface CacheEntry {
  * - fetchHistory：HTTP GET {historyUrl}（fetch + AbortController 超时）；
  * - subscribeRealtime：三种实时模式（realtimeTransport 切换）——
  *   'ws'：WebSocket {wsUrl}?symbol=&period=（返回 () => ws.close() 清理函数）；
- *   'poll'：HTTP 轮询（默认 3000ms 一次，独立实时接口 {pollUrl}，不附加 limit，
- *   后端返回多少就回调多少；增量过滤 + 同根刷新回调；防重入；返回清理函数）；
+ *   'poll'：HTTP 轮询（默认 3000ms 一次，独立实时接口 {pollUrl}?symbol=&period=&latest=，
+ *   不附加 limit，后端返回多少就回调多少；增量过滤 + 同根刷新回调；防重入；返回清理函数）；
  *   'sse'：Server-Sent Events（基于 @microsoft/fetch-event-source，可注入
  *   headers/cookies；默认监听 message 事件，断线自动重连；返回 () => ctrl.abort()）；
+ *   三种模式收到实时点后都会更新已持有最后一根时间（latest），后续历史 / 轮询请求自动携带；
  * - 历史数据 LRU 缓存（Map + 容量上限，防内存无限增长）；
  * - normalizePoint：兼容 open/high/low/close/volume 与 o/h/l/c/v 缩写字段。
  */
@@ -159,14 +166,15 @@ export class HttpChartDataService implements ChartDataService {
   private knownTotals = new Map<string, number>()
 
   /**
-   * 「已知最后一根时间」knownLastTimes（key = `${symbol}|${period}`）。
+   * 「已知最后一根时间」knownLatest（key = `${symbol}|${period}`）。
    *
    * @remarks
-   * 该 key 已持有数据的最后一根 time（单调不减）。与历史缓存解耦：缓存条目被 LRU
-   * 淘汰、或 cache=false 时仍保留；仅按 maxKnownTotals 上限随 total 一同淘汰。
-   * 用途：fetchNetwork 自动附加 `lasttime=<n>` 供后端增量 / 续传判断。
+   * 该 key 已持有数据的最后一根 time（单调不减）。历史拉取（fetchHistory）与实时推送
+   * （ws / sse / poll，收到点即更新）共用该记录；与历史缓存解耦：缓存条目被 LRU
+   * 淘汰、或 cache=false 时仍保留；仅按 maxKnownTotals 上限独立淘汰。
+   * 用途：fetchNetwork / fetchLatest 自动附加 `latest=<n>` 供后端增量 / 续传判断。
    */
-  private knownLastTimes = new Map<string, number>()
+  private knownLatest = new Map<string, number>()
 
   constructor(options: HttpChartDataServiceOptions) {
     this.fetchLimit = options.fetchLimit
@@ -208,7 +216,7 @@ export class HttpChartDataService implements ChartDataService {
       const points = await this.fetchNetwork(query, query.total ?? this.knownTotals.get(key))
       // 自动计算 = 本次拉取并去重后的条数（后端不返回 total 字段，纯前端口径）。
       this.recordTotal(key, Math.max(this.knownTotals.get(key) ?? 0, points.length))
-      this.recordLastTime(key, points)
+      this.recordLatest(key, points)
       return points
     }
 
@@ -241,7 +249,7 @@ export class HttpChartDataService implements ChartDataService {
     const merged = entry ? mergePoints(page, entry.points) : page
     const mergedCount = merged.length
     this.recordTotal(key, Math.max(this.knownTotals.get(key) ?? 0, mergedCount))
-    this.recordLastTime(key, merged)
+    this.recordLatest(key, merged)
     if (!this.opts.cache) return page
 
     if (!entry) {
@@ -299,16 +307,16 @@ export class HttpChartDataService implements ChartDataService {
   // 记录某 key 已持有数据的最后一根 time（单调不减，覆盖分页 / 增量场景）：
   //  - 传入的是合并后的整页数据，末尾即当前最新一根；
   //  - 与 knownTotals 共用 maxKnownTotals 上限独立淘汰，防止内存无限增长。
-  private recordLastTime = (key: string, points: ChartDataPoint[]): void => {
+  private recordLatest = (key: string, points: ChartDataPoint[]): void => {
     if (!points.length) return
     const last = points[points.length - 1].time
-    const prev = this.knownLastTimes.get(key)
-    this.knownLastTimes.delete(key)
-    this.knownLastTimes.set(key, prev === undefined ? last : Math.max(prev, last))
-    while (this.knownLastTimes.size > this.opts.maxKnownTotals) {
-      const oldest = this.knownLastTimes.keys().next().value
+    const prev = this.knownLatest.get(key)
+    this.knownLatest.delete(key)
+    this.knownLatest.set(key, prev === undefined ? last : Math.max(prev, last))
+    while (this.knownLatest.size > this.opts.maxKnownTotals) {
+      const oldest = this.knownLatest.keys().next().value
       if (oldest === undefined) break
-      this.knownLastTimes.delete(oldest)
+      this.knownLatest.delete(oldest)
     }
   }
 
@@ -353,7 +361,10 @@ export class HttpChartDataService implements ChartDataService {
         // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）。
         const points = Array.isArray(msg) ? msg : msg.data !== undefined ? msg.data : msg
         const list = Array.isArray(points) ? points : points !== undefined ? [points] : []
-        list.forEach(raw => handler(normalizePoint(raw as Record<string, unknown>)))
+        const normalized = list.map(raw => normalizePoint(raw as Record<string, unknown>))
+        // 记录已持有最后一根时间：后续历史 / 轮询请求以 latest 携带。
+        this.recordLatest(`${symbol}|${period}`, normalized)
+        normalized.forEach(p => handler(p))
       } catch (e) {
         console.error('[HttpChartDataService] 实时消息解析失败：', e)
       }
@@ -371,17 +382,19 @@ export class HttpChartDataService implements ChartDataService {
   // 行为约定：
   //  - 频率：注册后立即拉取一次，之后每 pollIntervalMs 拉取一次（setInterval）；
   //  - 数据源：独立实时接口 fetchLatest（不复用 history 历史接口），GET {pollUrl}?
-  //    symbol=&period=（不附加 limit，后端返回多少就回调多少），直接 fetch 网络
+  //    symbol=&period=&latest=[&total]（latest = 已持有最后一根时间，供后端增量返回；
+  //    不附加 limit，后端返回多少就回调多少），直接 fetch 网络
   //    （不走历史缓存，保证每次拿到后端最新）；
   //  - 增量过滤：只回调 time >= 已回调最大 time 的点（升序；同根盘中刷新也回调，
   //    控制器 series.update() 对同 time 是覆盖语义，无重复副作用）；
   //  - 防重入：上一次请求未返回时跳过本轮（慢接口不叠加请求、不并发）；
   //  - 缓存同步：每次成功拉取后 merge 进历史缓存（保持最新快照一致）；
+  //  - latest 更新：每次成功拉取后记录最后一根 time，下一轮轮询 / 后续历史请求自动携带；
   //  - 清理：返回 () => { stopped = true; clearInterval(timer) }。
   private startPolling(symbol: string, period: string, handler: RealtimeHandler): () => void {
     let inFlight = false
     let stopped = false
-    let lastTime = -Infinity // 已回调的最大 time；>= 它才回调（首次拉取整页最新全回调）
+    let sinceTime = -Infinity // 已回调的最大 time；>= 它才回调（首次拉取整页最新全回调）
 
     const tick = async () => {
       if (stopped || inFlight) return
@@ -395,14 +408,16 @@ export class HttpChartDataService implements ChartDataService {
           },
           this.knownTotals.get(key) // 自动计算的已知条数（含缓存淘汰），附加到 latest URL
         )
-        // 增量过滤（同根刷新也保留）：仅回调 time >= lastTime 的点。
-        const fresh = points.filter(p => p.time >= lastTime)
-        if (fresh.length) lastTime = fresh[fresh.length - 1].time
+        // 增量过滤（同根刷新也保留）：仅回调 time >= sinceTime 的点。
+        const fresh = points.filter(p => p.time >= sinceTime)
+        if (fresh.length) sinceTime = fresh[fresh.length - 1].time
         fresh.forEach(p => handler(p))
         // 同步进历史缓存（不读取缓存，只写入，保持最新快照一致）。
         this.mergeIntoCache(symbol, period, points)
         // 自动计算 knownTotals = max(已知, 累计去重后持有条数)（后端不返回 total）。
         this.recordTotal(key, Math.max(this.knownTotals.get(key) ?? 0, points.length))
+        // 记录已持有最后一根时间：下一轮轮询 / 后续历史请求以 latest 携带。
+        this.recordLatest(key, points)
       } catch (e) {
         // 单次失败不中断轮询（网络抖动自愈），下一轮自动重试。
         console.error('[HttpChartDataService] HTTP 轮询失败（下轮自动重试）：', e)
@@ -451,7 +466,10 @@ export class HttpChartDataService implements ChartDataService {
         // 三种形态：数组 | { data: 点/数组 } | 裸单点对象（data 缺省时按 msg 本身处理）。
         const points = Array.isArray(msg) ? msg : msg.data !== undefined ? msg.data : msg
         const list = Array.isArray(points) ? points : points !== undefined ? [points] : []
-        list.forEach(raw => handler(normalizePoint(raw as Record<string, unknown>)))
+        const normalized = list.map(raw => normalizePoint(raw as Record<string, unknown>))
+        // 记录已持有最后一根时间：后续历史 / 轮询请求以 latest 携带。
+        this.recordLatest(`${symbol}|${period}`, normalized)
+        normalized.forEach(p => handler(p))
       } catch (e) {
         console.error('[HttpChartDataService] SSE 消息解析失败：', e)
       }
@@ -567,9 +585,10 @@ export class HttpChartDataService implements ChartDataService {
     }
   }
 
-  // HTTP 轮询实时专用接口：GET {pollUrl}?symbol=&period=（+可选 total）。
+  // HTTP 轮询实时专用接口：GET {pollUrl}?symbol=&period=&latest=[&total]。
   // 与 fetchNetwork（history 历史接口）相互独立——实时轮询不经过历史接口，后端可对
-  // /kline/latest 单独做轻量响应。不附加 limit 参数：后端返回多少数据就回调多少
+  // /kline/latest 单独做轻量响应。latest 必传（已持有最后一根时间，供后端只返回增量；
+  // 尚无数据时不附加）。不附加 limit 参数：后端返回多少数据就回调多少
   // （调用方按增量过滤消费）。响应格式与 history 一致：{ code: 200, data: [...] }。
   private async fetchLatest(
     query: Omit<HistoryQuery, 'limit'> & { limit?: number },
@@ -579,6 +598,9 @@ export class HttpChartDataService implements ChartDataService {
       symbol: query.symbol,
       period: query.period,
     }
+    // latest：显式传入优先，否则取自动记录值；尚无数据（首次轮询）不附加。
+    const latestValue = query.latest ?? this.knownLatest.get(`${query.symbol}|${query.period}`)
+    if (latestValue !== undefined) core.latest = String(latestValue)
     // limit 可选：不传时 URL 不附加 limit（后端返回多少就更新多少）。
     if (query.limit !== undefined) core.limit = String(query.limit)
     if (knownTotal !== undefined) core.total = String(knownTotal) // 自动计算 / 显式传入的 total
@@ -607,10 +629,10 @@ export class HttpChartDataService implements ChartDataService {
       limit: String(query.limit),
     }
     if (query.before !== undefined) core.before = String(query.before)
-    // lasttime（已持有最后一根时间）：显式传入优先，否则取自动记录的 knownLastTimes；
+    // latest（已持有最后一根时间）：显式传入优先，否则取自动记录的 knownLatest；
     // 首次请求（尚无数据）不附加，由后端返回最新一页。
-    const lastTime = query.lastTime ?? this.knownLastTimes.get(`${query.symbol}|${query.period}`)
-    if (lastTime !== undefined) core.lasttime = String(lastTime)
+    const latestValue = query.latest ?? this.knownLatest.get(`${query.symbol}|${query.period}`)
+    if (latestValue !== undefined) core.latest = String(latestValue)
     // total 无条件附加：第一次请求（knownTotal 未知）时置 0，保证后端每次请求都能
     // 收到 total 参数；后续请求携带自动计算 / 显式传入的值。
     core.total = String(knownTotal ?? 0)

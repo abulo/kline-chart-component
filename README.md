@@ -236,12 +236,12 @@ interface MockChartDataServiceOptions {
 ```ts
 interface HttpChartDataServiceOptions {
   fetchLimit: number                  // 必填：每页拉取条数
-  historyUrl: string                  // 必填：历史完整地址（GET?symbol=&period=&before=&lasttime=&limit=&total=）
+  historyUrl: string                  // 必填：历史完整地址（GET?symbol=&period=&before=&latest=&limit=&total=）
   realtimeTransport?: 'ws' | 'sse' | 'poll' // 实时模式，默认 'ws'
   wsUrl?: string                      // 'ws' 模式必填完整地址
   sseUrl?: string                     // 'sse' 模式必填完整地址
   sseEventName?: string               // SSE 事件名，默认 'message'
-  pollUrl?: string                    // 'poll' 模式必填完整地址
+  pollUrl?: string                    // 'poll' 模式必填完整地址（请求带 symbol / period / latest）
   pollIntervalMs?: number             // 轮询频率 ms，默认 3000
   timeoutMs?: number                  // fetch 超时 ms，默认 8000
   headers?: Record<string, string>    // 注入所有 HTTP 请求头
@@ -261,7 +261,7 @@ interface HttpChartDataServiceOptions {
 | `symbol` | `string` | 是 | `symbol` | 证券代码（后端标识） |
 | `period` | `string` | 是 | `period` | 周期标识；K 线 `day / week / month / 60min … 1min`，分时 `1d`~`5d` |
 | `before` | `number` | 否 | `before` | 拉取锚点（秒级时间戳）：取该时刻之前的一页；向左分页加载更早历史时传，不传取最新页 |
-| `lastTime` | `number` | 否 | `lasttime` | 已持有数据的最后一根时间（秒级时间戳）：供后端增量 / 续传判断；Http 服务自动推导，首次请求不传 |
+| `latest` | `number` | 否 | `latest` | 已持有数据的最后一根时间（秒级时间戳）：供后端增量 / 续传判断；历史拉取与实时推送（ws / sse / poll）都会更新，Http 服务自动推导，首次请求不传 |
 | `limit` | `number` | 是 | `limit` | 每页条数（与服务实例 `fetchLimit` 同值） |
 | `total` | `number` | 否 | `total` | 已持有数据条数（含缓存已淘汰数据）：Http 服务自动推导并以 `total=<n>` 附加 |
 
@@ -274,7 +274,7 @@ interface HttpChartDataServiceOptions {
 | 类型 | 定义位置 | 说明 |
 |---|---|---|
 | `ChartDataPoint` | `src/types/chart.ts` | 统一数据点（K 线 / 分时 / 集合竞价），`pointType` 类型守卫 |
-| `HistoryQuery` | `src/services/chartDataService.ts` | 历史查询入参（symbol / period / before / lastTime / limit / total） |
+| `HistoryQuery` | `src/services/chartDataService.ts` | 历史查询入参（symbol / period / before / latest / limit / total） |
 | `RealtimeHandler` | `src/services/chartDataService.ts` | 实时回调出参：`(point: ChartDataPoint) => void` |
 | `ChartDataService` | `src/services/chartDataService.ts` | 数据服务接口（组件只依赖它） |
 | `MainIndicatorType` | `src/chart/indicator/` | 主图指标名联合类型：`'ma' \| 'expma' \| 'boll' \| 'sar' \| 'bbi'` |
@@ -366,7 +366,7 @@ const service = new HttpChartDataService({
 | `wsUrl` | `string` | — | **ws** | WebSocket 完整地址；不传则不做实时订阅 |
 | `sseUrl` | `string` | — | **sse** | SSE 完整地址；缺省不订阅（warn） |
 | `sseEventName` | `string` | `'message'` | **sse** | 后端自定义事件名（如 `'quote'`） |
-| `pollUrl` | `string` | — | **poll** | 轮询专用实时接口（**不复用 historyUrl**） |
+| `pollUrl` | `string` | — | **poll** | 轮询专用实时接口（**不复用 historyUrl**；请求带 `symbol` / `period` / `latest`） |
 | `pollIntervalMs` | `number` | `3000` | **poll** | 轮询频率 |
 
 **① `'ws'` WebSocket 推送（默认，低延迟首选）**
@@ -389,7 +389,7 @@ new HttpChartDataService({
 [{...},{...}]                                               // 裸数组
 ```
 
-行为：收到消息即回调 `handler`；返回 `() => ws.close()` 清理函数。`time` 与最后一根相同 = 刷新该根，更大 = 追加新 K 线。
+行为：收到消息即回调 `handler`，并把最后一根 `time` 记入 `latest`（后续历史 / 轮询请求自动携带）；返回 `() => ws.close()` 清理函数。`time` 与最后一根相同 = 刷新该根，更大 = 追加新 K 线。
 局限：浏览器 WebSocket 无法注入自定义请求头 / Cookie（鉴权只能靠 URL query 或同源 Cookie），**鉴权依赖自定义头时改用 sse / poll**。
 
 **② `'sse'` Server-Sent Events（可带鉴权头）**
@@ -406,7 +406,7 @@ new HttpChartDataService({
 ```
 
 后端约定：`{sseUrl}?symbol=&period=`，服务端按 SSE 协议流式输出（`event: <sseEventName>` / `data: <JSON>`），数据体与 WS 同构。
-行为：基于 `@microsoft/fetch-event-source`（fetch 流式读取），**可注入 `headers` / `cookies` 鉴权**（原生 EventSource 做不到）；断线自动 **3s 重连**，HTTP **401/403 立即中止**（防鉴权失败死循环重连）；返回 `() => ctrl.abort()` 清理。适用：单向服务端推送 + 需要鉴权头。
+行为：基于 `@microsoft/fetch-event-source`（fetch 流式读取），**可注入 `headers` / `cookies` 鉴权**（原生 EventSource 做不到）；收到点后同步更新 `latest`；断线自动 **3s 重连**，HTTP **401/403 立即中止**（防鉴权失败死循环重连）；返回 `() => ctrl.abort()` 清理。适用：单向服务端推送 + 需要鉴权头。
 
 **③ `'poll'` HTTP 轮询（最简单、最稳）**
 
@@ -420,8 +420,8 @@ new HttpChartDataService({
 })
 ```
 
-后端约定：`GET {pollUrl}?symbol=&period=[&total=N]` 直接返回**最新快照数组**（不附加 limit——后端返回多少就回调多少）。
-行为：注册后**立即拉取一次**，之后每 `pollIntervalMs` 一次；走独立 `fetchLatest`（不复用历史缓存，每次都是最新快照）；**防重入**（上一次请求未返回时跳过本轮，慢接口不叠加并发）；**增量过滤**（只回调 `time >= 已回调最大 time` 的点，同根盘中刷新也回调，库对同 time 是覆盖语义）；每次拉取后 **merge 进历史缓存**（后续 `fetchHistory` 命中最新快照）；返回 `() => { stopped = true; clearInterval(timer) }`。适用：后端无 WS/SSE 基建、需最简单接入、对延迟不敏感。
+后端约定：`GET {pollUrl}?symbol=&period=&latest=[&total=N]` 直接返回**最新快照数组**（不附加 limit——后端返回多少就回调多少）；`latest` = 已持有数据的最后一根时间（秒级时间戳，首次轮询尚无数据时不带），可只返回增量。
+行为：注册后**立即拉取一次**，之后每 `pollIntervalMs` 一次；走独立 `fetchLatest`（不复用历史缓存，每次都是最新快照）；**携带 latest**（已持有最后一根时间，后端可只返回增量）；**防重入**（上一次请求未返回时跳过本轮，慢接口不叠加并发）；**增量过滤**（只回调 `time >= 已回调最大 time` 的点，同根盘中刷新也回调，库对同 time 是覆盖语义）；每次拉取后 **merge 进历史缓存**并更新 latest（后续 `fetchHistory` 命中最新快照）；返回 `() => { stopped = true; clearInterval(timer) }`。适用：后端无 WS/SSE 基建、需最简单接入、对延迟不敏感。
 
 **共享参数（鉴权 / 附加上下文，三模式通用）**
 
@@ -572,11 +572,12 @@ src/
 
 ## 版本记录
 
-- **v1.7.19（当前）**：`HistoryQuery` 新增 `lastTime`（已持有数据的最后一根时间，秒级时间戳）。
-  HttpChartDataService 按 symbol|period 自动记录最后一根 time，并以 `lasttime=<n>` 附加到历史请求；
-  显式传入 `lastTime` 可覆盖自动值，首次请求（尚无数据）不附加。Mock 本地生成数据，忽略该字段。
-  README 中英同步：新增「6.4 HistoryQuery 请求参数」表，更新构造参数与类型导出表。
-  验证：tsc 0 错误、vitest 29 文件 270 tests 全绿。
+- **v1.7.19（当前）**：`HistoryQuery` 新增 `latest`（已持有数据的最后一根时间，秒级时间戳）。
+  HttpChartDataService 按 symbol|period 自动维护该值——历史拉取与实时推送（ws / sse / poll 收到点
+  即更新）共用；历史请求以 `latest=<n>` 附加，poll 轮询请求同样携带 latest（供后端只返回增量）；
+  显式传入 `latest` 可覆盖自动值，首次请求（尚无数据）不附加。Mock 本地生成数据，忽略该字段。
+  README 中英同步：新增「6.4 HistoryQuery 请求参数」表，更新构造参数、实时模式说明与类型导出表。
+  验证：tsc 0 错误、vitest 29 文件 272 tests 全绿。
 
 - **v1.7.18**：README 按「TypeScript 开源项目标准模板」重写——先价值后上手再细节：
   头部横幅 + 徽章 → 特性（TS 卖点：类型守卫 / 接口分离 / strict 零错误）→ 安装（源码仓库形态 +

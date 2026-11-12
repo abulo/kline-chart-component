@@ -30,11 +30,11 @@ export interface HistoryQuery {
    * 已持有数据的最后一根时间（秒级时间戳）。
    *
    * @remarks
-   * 供后端做增量 / 续传判断（对应请求 URL 的 `lasttime` 参数）；首次请求尚无数据时不传。
-   * HttpChartDataService 会自动推导：取该 symbol|period 已拉取数据中最后一根的 time，
-   * 调用方也可显式传入以覆盖自动值。
+   * 供后端做增量 / 续传判断（对应请求 URL 的 `latest` 参数）；首次请求尚无数据时不传。
+   * HttpChartDataService 会自动推导：历史拉取与实时推送（ws / sse / poll）都会更新该值，
+   * 取该 symbol|period 已持有数据中最后一根的 time；调用方也可显式传入以覆盖自动值。
    */
-  lastTime?: number
+  latest?: number
 
   /** 每页条数，与服务实例级 fetchLimit 同值。 */
   limit: number
@@ -78,6 +78,10 @@ export interface ChartDataService {
 
   /**
    * 订阅实时数据（K 线 tick / 分时每分钟刷新推送）。
+   *
+   * @remarks
+   * 实现层收到实时点后会更新「已持有最后一根时间」，即后续 fetchHistory 的
+   * {@link HistoryQuery.latest}：HttpChartDataService 的 ws / sse / poll 三种模式均如此。
    *
    * @param symbol 证券代码。
    * @param period 周期标识。

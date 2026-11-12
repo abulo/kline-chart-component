@@ -236,12 +236,12 @@ interface MockChartDataServiceOptions {
 ```ts
 interface HttpChartDataServiceOptions {
   fetchLimit: number                  // required: page size
-  historyUrl: string                  // required: full history URL (GET?symbol=&period=&before=&lasttime=&limit=&total=)
+  historyUrl: string                  // required: full history URL (GET?symbol=&period=&before=&latest=&limit=&total=)
   realtimeTransport?: 'ws' | 'sse' | 'poll' // realtime mode, default 'ws'
   wsUrl?: string                      // 'ws' mode: full URL required
   sseUrl?: string                     // 'sse' mode: full URL required
   sseEventName?: string               // SSE event name, default 'message'
-  pollUrl?: string                    // 'poll' mode: full URL required
+  pollUrl?: string                    // 'poll' mode: full URL required (request carries symbol / period / latest)
   pollIntervalMs?: number             // polling interval ms, default 3000
   timeoutMs?: number                  // fetch timeout ms, default 8000
   headers?: Record<string, string>    // injected into all HTTP request headers
@@ -261,7 +261,7 @@ interface HttpChartDataServiceOptions {
 | `symbol` | `string` | yes | `symbol` | security code (backend identifier) |
 | `period` | `string` | yes | `period` | period id; K-line `day / week / month / 60min … 1min`, intraday `1d`~`5d` |
 | `before` | `number` | no | `before` | paging anchor (seconds): fetch the page before this timestamp; pass it when loading earlier history, omit for the newest page |
-| `lastTime` | `number` | no | `lasttime` | time of the last bar already held (seconds): lets the backend detect increments / resume; derived automatically by the Http service, omitted on the first request |
+| `latest` | `number` | no | `latest` | time of the last bar already held (seconds): lets the backend detect increments / resume; updated by both history fetches and realtime pushes (ws / sse / poll); derived automatically by the Http service, omitted on the first request |
 | `limit` | `number` | yes | `limit` | page size (same as the service instance `fetchLimit`) |
 | `total` | `number` | no | `total` | number of bars already held (including evicted cache entries): derived automatically by the Http service and appended as `total=<n>` |
 
@@ -274,7 +274,7 @@ All public types carry `export` declarations and can be imported straight from s
 | Type | Defined in | Description |
 |---|---|---|
 | `ChartDataPoint` | `src/types/chart.ts` | unified data point (K-line / intraday / call auction), `pointType` type guard |
-| `HistoryQuery` | `src/services/chartDataService.ts` | history query input (symbol / period / before / lastTime / limit / total) |
+| `HistoryQuery` | `src/services/chartDataService.ts` | history query input (symbol / period / before / latest / limit / total) |
 | `RealtimeHandler` | `src/services/chartDataService.ts` | realtime callback output: `(point: ChartDataPoint) => void` |
 | `ChartDataService` | `src/services/chartDataService.ts` | data service interface (the component depends only on it) |
 | `MainIndicatorType` | `src/chart/indicator/` | main indicator name union: `'ma' \| 'expma' \| 'boll' \| 'sar' \| 'bbi'` |
@@ -366,7 +366,7 @@ const service = new HttpChartDataService({
 | `wsUrl` | `string` | — | **ws** | full WebSocket URL; no subscription when omitted |
 | `sseUrl` | `string` | — | **sse** | full SSE URL; no subscription when omitted (warn) |
 | `sseEventName` | `string` | `'message'` | **sse** | backend custom event name (e.g. `'quote'`) |
-| `pollUrl` | `string` | — | **poll** | dedicated polling endpoint (**not** the history URL) |
+| `pollUrl` | `string` | — | **poll** | dedicated polling endpoint (**not** the history URL; request carries `symbol` / `period` / `latest`) |
 | `pollIntervalMs` | `number` | `3000` | **poll** | polling interval |
 
 **① `'ws'` WebSocket push (default, lowest latency)**
@@ -389,7 +389,7 @@ Backend contract: `{wsUrl}?symbol=<code>&period=<period>`, pushing any of four s
 [{...},{...}]                                               // bare array
 ```
 
-Behavior: `handler` is called on every message; returns `() => ws.close()` as the cleanup function. `time` equal to the last bar = refresh that bar; larger = append a new bar.
+Behavior: `handler` is called on every message and the last bar's `time` is recorded into `latest` (later history / poll requests carry it automatically); returns `() => ws.close()` as the cleanup function. `time` equal to the last bar = refresh that bar; larger = append a new bar.
 Limitation: browsers cannot inject custom headers / cookies into WebSocket (auth only via URL query or same-origin cookies) — **use sse / poll when auth depends on custom headers**.
 
 **② `'sse'` Server-Sent Events (custom auth headers supported)**
@@ -406,7 +406,7 @@ new HttpChartDataService({
 ```
 
 Backend contract: `{sseUrl}?symbol=&period=`, the server streams SSE (`event: <sseEventName>` / `data: <JSON>`); payload shape identical to WS.
-Behavior: built on `@microsoft/fetch-event-source` (fetch streaming) so **`headers` / `cookies` auth is injectable** (impossible with native EventSource); auto-reconnect after **3s** on drop; HTTP **401/403 aborts immediately** (no infinite reconnect loop on auth failure); returns `() => ctrl.abort()` as cleanup. Best for: one-way server push with auth headers.
+Behavior: built on `@microsoft/fetch-event-source` (fetch streaming) so **`headers` / `cookies` auth is injectable** (impossible with native EventSource); `latest` is updated as points arrive; auto-reconnect after **3s** on drop; HTTP **401/403 aborts immediately** (no infinite reconnect loop on auth failure); returns `() => ctrl.abort()` as cleanup. Best for: one-way server push with auth headers.
 
 **③ `'poll'` HTTP polling (simplest, most robust)**
 
@@ -420,8 +420,8 @@ new HttpChartDataService({
 })
 ```
 
-Backend contract: `GET {pollUrl}?symbol=&period=[&total=N]` returns the **latest snapshot array** directly (no `limit` attached — the backend returns whatever it has and everything is delivered).
-Behavior: fetches **once immediately** on subscribe, then every `pollIntervalMs`; uses the dedicated `fetchLatest` (bypasses the history cache so every call is fresh); **reentrancy guard** (skips a tick while a previous request is in flight — slow endpoints never pile up requests); **incremental filter** (only points with `time >= max delivered time` are delivered; same-bar intraday refresh also delivered — the library treats same-`time` as overwrite); every successful fetch is **merged into the history cache** (later `fetchHistory` hits the fresh snapshot); returns `() => { stopped = true; clearInterval(timer) }` as cleanup. Best for: no WS/SSE infrastructure, simplest integration, latency-insensitive.
+Backend contract: `GET {pollUrl}?symbol=&period=&latest=[&total=N]` returns the **latest snapshot array** directly (no `limit` attached — the backend returns whatever it has and everything is delivered); `latest` is the time of the last bar already held (seconds, omitted before the first poll), so the backend can return increments only.
+Behavior: fetches **once immediately** on subscribe, then every `pollIntervalMs`; uses the dedicated `fetchLatest` (bypasses the history cache so every call is fresh); **latest is carried** (time of the last bar already held, so the backend can return increments only); **reentrancy guard** (skips a tick while a previous request is in flight — slow endpoints never pile up requests); **incremental filter** (only points with `time >= max delivered time` are delivered; same-bar intraday refresh also delivered — the library treats same-`time` as overwrite); every successful fetch is **merged into the history cache** and updates `latest` (later `fetchHistory` hits the fresh snapshot); returns `() => { stopped = true; clearInterval(timer) }` as cleanup. Best for: no WS/SSE infrastructure, simplest integration, latency-insensitive.
 
 **Shared options (auth / context, common to all three modes)**
 
@@ -572,7 +572,7 @@ Licensed under the **MIT License**, see [LICENSE](LICENSE) (Copyright (c) 2026 a
 
 ## Version History
 
-- **v1.7.19 (current)**: `HistoryQuery` gains `lastTime` (the time of the last bar already held, second-level timestamp). HttpChartDataService records the last bar time per symbol|period automatically and appends `lasttime=<n>` to history requests; passing `lastTime` explicitly overrides the derived value, and the first request (no data yet) omits it. The Mock service generates data locally and ignores this field. README (zh / en): new "6.4 HistoryQuery request parameters" table, constructor-option and exported-type tables updated. Verified: tsc 0 errors, vitest 29 files / 270 tests green.
+- **v1.7.19 (current)**: `HistoryQuery` gains `latest` (the time of the last bar already held, second-level timestamp). HttpChartDataService maintains it per symbol|period automatically — shared by history fetches and realtime pushes (ws / sse / poll update it as points arrive); history requests append `latest=<n>` and the poll request carries `latest` too (so the backend can return increments only). Passing `latest` explicitly overrides the derived value, and the first request (no data yet) omits it. The Mock service generates data locally and ignores this field. README (zh / en): new "6.4 HistoryQuery request parameters" table, constructor-option, realtime-mode notes and exported-type tables updated. Verified: tsc 0 errors, vitest 29 files / 272 tests green.
 
 - **v1.7.18**: README rewritten to the "TypeScript OSS standard template" — value first, then quick start, then details: hero banner + badges → features (TS selling points: type guard / interface separation / strict zero errors) → installation (source-repo form + Node/pnpm/TS requirements) → quick start (minimal usage + custom-data passthrough) → documentation (Pages / EN README) → API reference (Props / events / controller methods with type signatures) → options (Props table + Mock/Http constructor tables) → exported types (9 public types) → examples (6 scenarios) → development (commands + directory tree + engineering constraints) → contributing → changelog (built-in version history) → FAQ (6 real high-frequency questions) → credits → license. Full version history preserved. Verified: tsc 0 errors, vitest 27 files / 257 tests green.
   Additions: section "8.5 Realtime transport modes in detail (ws / sse / poll)" — parameter overview, backend contracts, behavior semantics (reconnect / reentrancy guard / incremental filter / cache merge), shared auth-option table, cheat sheet; MIT LICENSE file added, License section points to it.
