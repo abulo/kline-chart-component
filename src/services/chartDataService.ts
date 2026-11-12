@@ -89,4 +89,18 @@ export interface ChartDataService {
    * @returns 取消订阅函数，调用后停止推送并清理定时器 / 连接（防内存泄漏）。
    */
   subscribeRealtime(symbol: string, period: string, handler: RealtimeHandler): () => void
+
+  /**
+   * 清空已持有的增量游标（latest / 已知总条数）。
+   *
+   * @remarks
+   * 周期 / 标的切换且图表已清空时调用：图表数据已丢弃，若 history 仍携带旧
+   * `latest`（语义 =「我已持有到该时间为止的数据」），后端只会返回该时间之后的
+   * 增量 → 清空后的图表几乎空白。清掉游标后下一次 history 按全量拉取。
+   * 无游标实现的服务（mock 等）可不实现本方法。
+   *
+   * @param symbol 证券代码（省略 = 清空全部）。
+   * @param period 周期标识（省略 = 清空全部）。
+   */
+  resetLatest?(symbol?: string, period?: string): void
 }

@@ -590,7 +590,18 @@ src/
 
 ## 版本记录
 
-- **v1.7.22（当前）**：修复周期 / 标的切换时请求错序——网络面板里先出现旧周期的 `/kline/latest`（poll 轮询）、
+- **v1.7.23（当前）**：周期 / 标的切换改为「先清空、再全量 history、最后才 latest」。
+  切换入口（`setPeriod` / `setSymbol`）按序三件事：① 退订旧实时订阅（`dataBridge.unsubscribe()`）——
+  旧周期 poll 不再打 `/latest`；② `controller.clearChartData()` 清空图上旧数据（bars / barIndex 置空后
+  `applyData` 把 K 线与分时两套 series 各自写空、指标缓存按空数据重建、自绘柱体 / 最后价线 / 十字星
+  现取空 bars 不绘制；无数据时不重置视口，新数据由 `setKlineData` 统一铺视口）；③ 丢弃该 key 的
+  latest 游标（新增 `ChartDataService.resetLatest?(symbol?, period?)`，`HttpChartDataService` 实现：
+  删除 `knownLatest` / `knownTotals` 对应项，不传参清全部，历史缓存不动）——图表已清空，若 history
+  仍携带旧 `latest` 后端只返回增量 → 图会空白，所以必须全量重拉。新订阅由 `bridge.init` 在
+  history 回填成功后才建立，因此首轮 `latest` 一定发生在 history 之后。新增 2 例 `resetLatest`
+  测试（清后 history 不带 latest、只清指定 key 不影响其它 symbol / period）。
+  验证：tsc 0 错误、vitest 32 文件 / 296 tests 全绿。
+- **v1.7.22**：修复周期 / 标的切换时请求错序——网络面板里先出现旧周期的 `/kline/latest`（poll 轮询）、
   后出现新周期 `/kline/history`。根因是旧实时订阅只在 `init` **成功后**（`startRealtime` 内部退旧订新）才解除，
   而 `init` 有 `SWITCH_DEBOUNCE_MS` 防抖 + history 在途耗时，这段时间旧周期 poll 仍在每 3s 轮询一次。
   现在 `ChartDataBridge.init` 在拉历史**之前**先 `unsubscribe()`，控制器 `setPeriod` / `setSymbol` 值变化时也立即退订，

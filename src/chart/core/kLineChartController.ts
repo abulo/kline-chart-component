@@ -756,6 +756,23 @@ export class KLineChartController {
     }
   }
 
+  /**
+   * 清空图上已渲染的数据（周期 / 标的切换时调用）。
+   *
+   * @remarks
+   * 旧周期 / 旧标的的数据与新技术序不同轴，若保留到新 history 回来，图上会残留
+   * 旧蜡烛 / 分时线（旧数据的最后一根 time 还会参与 latest 判定）。整体清空：
+   * bars / barIndex 置空 → applyData 把 K 线与分时两套 series 各自写空，指标缓存
+   * 按空数据重建，自绘 primitive（柱体 / 最后价线 / 十字星）现取空 bars 自然不绘制。
+   * 视口不在此重置（无数据时 setVisibleLogicalRange 无意义），新数据到达后由
+   * setKlineData 统一铺视口。
+   */
+  clearChartData = (): void => {
+    this.bars = []
+    this.rebuildBarIndex()
+    this.applyData()
+  }
+
   // 实时指标缓存统一重建（节流关键）：单点入口（updateLastBar）与批量
   // flush（realtimePipeline）共用，高频推送窗口内只重建一次，避免逐点重建开销。
   private rebuildRealtimeIndicators = (): void => {
@@ -847,7 +864,12 @@ export class KLineChartController {
    * @param symbol 新股票代码。
    */
   setSymbol = (symbol: string): void => {
-    if (this.symbol !== symbol) this.dataBridge.unsubscribe()
+    // 同 setPeriod：标的切换同样退订旧订阅 + 清空图上数据 + 丢弃旧标的 latest 游标。
+    if (this.symbol !== symbol) {
+      this.dataBridge.unsubscribe()
+      this.clearChartData()
+      this.service?.resetLatest?.(this.symbol, this.period)
+    }
     this.symbol = symbol
     this.chart.applyOptions({})
   }
@@ -885,11 +907,17 @@ export class KLineChartController {
    */
   setPeriod = (period: PeriodValueOrEmpty): void => {
     if (this.period === period) return
+    const prevSymbol = this.symbol
+    const prevPeriod = this.period
     this.period = period
     this.applyTimeshareInteractions()
-    // 立即退订旧周期实时订阅：init 有防抖 + 历史请求耗时，期间旧周期 poll 仍在
-    // 轮询 /latest，会出现"先 latest 后 history"的错序；退订后等新 init 建新订阅。
+    // 切换三件事按序：① 立即退订旧实时订阅（init 有防抖 + history 在途，否则旧周期
+    // poll 继续打 /latest 抢跑）；② 清空图上旧周期数据（不留残影）；③ 丢弃旧周期
+    // 的 latest 游标（图表已清空，history 必须全量重拉，否则只回增量 → 图空白）。
+    // 新订阅由 bridge.init 在 history 回填成功后建立（首轮 latest 随之而来）。
     this.dataBridge.unsubscribe()
+    this.clearChartData()
+    this.service?.resetLatest?.(prevSymbol, prevPeriod)
   }
 
   /**

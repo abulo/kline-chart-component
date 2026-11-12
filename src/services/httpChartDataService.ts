@@ -290,6 +290,29 @@ export class HttpChartDataService implements ChartDataService {
     return this.knownTotals.get(`${symbol}|${period}`)
   }
 
+  /**
+   * 清空已持有的增量游标（实现 {@link ChartDataService.resetLatest}）。
+   *
+   * @remarks
+   * 周期 / 标的切换且图表已清空时调用：图表数据已丢弃，若 history 仍携带旧
+   * `latest`（"我已持有到该时间为止的数据"），后端只返回该时间之后的增量 →
+   * 清空后的图表几乎空白。清掉游标让下一次 history 全量拉取；ws / sse / poll
+   * 收到新点后会重新记录。历史缓存按 key 独立存在，不在此清除。
+   *
+   * @param symbol 证券代码（省略 = 清空全部）。
+   * @param period 周期标识（省略 = 清空全部）。
+   */
+  resetLatest = (symbol?: string, period?: string): void => {
+    if (symbol === undefined || period === undefined) {
+      this.knownLatest.clear()
+      this.knownTotals.clear()
+      return
+    }
+    const key = `${symbol}|${period}`
+    this.knownLatest.delete(key)
+    this.knownTotals.delete(key)
+  }
+
   // 记录（刷新）某 key 的已知总条数，并做 knownTotals 独立 LRU：
   //  - 已有 key：先 delete 再 set → 移到 Map 末尾（最近使用）；
   //  - 超过 maxKnownTotals 上限时淘汰最旧（Map 首个）记录。

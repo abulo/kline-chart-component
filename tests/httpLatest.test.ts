@@ -104,6 +104,33 @@ describe('HttpChartDataService.latest（历史）', () => {
     await service.fetchHistory({ symbol: '600000.SZ', period: 'day', limit: 3 })
     expect(urls[1]).not.toContain('latest=')
   })
+
+  it('resetLatest：清空指定 key 的游标后，history 重新全量（不携带 latest）', async () => {
+    const urls = stubFetch([PAGE, [{ time: 9000 }]])
+    const service = createService()
+    await service.fetchHistory({ symbol: '600000', period: 'day', limit: 3 })
+    await service.fetchHistory({ symbol: '600000', period: 'day', limit: 3 })
+    expect(urls[1]).toContain('latest=3000')
+    // 模拟周期 / 标的切换：图表已清空 → 丢弃游标，下一次 history 必须全量。
+    service.resetLatest('600000', 'day')
+    await service.fetchHistory({ symbol: '600000', period: 'day', limit: 3 })
+    expect(urls[2]).not.toContain('latest=')
+    // 全量拉回后重新记录最后一根时间，后续请求恢复携带。
+    await service.fetchHistory({ symbol: '600000', period: 'day', limit: 3 })
+    expect(urls[3]).toContain('latest=9000')
+  })
+
+  it('resetLatest：只清指定 key，其它 symbol / period 的游标保留', async () => {
+    const urls = stubFetch([PAGE])
+    const service = createService()
+    await service.fetchHistory({ symbol: '600000.SH', period: 'day', limit: 3 })
+    await service.fetchHistory({ symbol: '600000.SZ', period: 'week', limit: 3 })
+    service.resetLatest('600000.SH', 'day')
+    await service.fetchHistory({ symbol: '600000.SH', period: 'day', limit: 3 })
+    expect(urls[2]).not.toContain('latest=')
+    await service.fetchHistory({ symbol: '600000.SZ', period: 'week', limit: 3 })
+    expect(urls[3]).toContain('latest=3000')
+  })
 })
 
 describe('HttpChartDataService.latest（实时）', () => {
