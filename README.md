@@ -590,7 +590,21 @@ src/
 
 ## 版本记录
 
-- **v1.7.29（当前）**：修复「1 日分时刚进来能看到开盘第一根量柱，实时数据更新后就看不到了」。
+- **v1.7.30（当前）**：依赖升级 —— lightweight-charts `5.2.1 → 5.3.0`（minor，无破坏性 API 变更），
+  同步 vue `3.5.45`、vite `8.3.8`、vitest `5.1.0`、jsdom `31.0.1`、vue-tsc `3.3.14`、pnpm `12.18.0`。
+  对本项目直接受益的 4 处修复：① 非整数 DPR（1.25 / 1.5）下 panes + 分隔线 + 时间轴高度累加超过画布、
+  增删 pane 时时间轴位移 1px（本项目 5 pane + volume / 附图开关场景）；② 用户拖拽时新增 bar
+  导致时间轴跳动（实时轮询场景）；③ `setVisibleLogicalRange()` / `setVisibleRange()` 在放大到
+  少于最小可见 bar 数时的范围塌缩；④ 自定义 formatter 设为 `undefined` 时无法恢复默认
+  （`tickMarkFormatter` / `timeFormatter`）。
+  唯一行为收紧：`BusinessDay` 字符串时间在生产构建里也开始校验，必须零填充 `YYYY-MM-DD`
+  （`'2024-1-5'` / `'2024/01/05'` 会抛错）—— 本项目全链路走数字时间戳（`normalizeChartTime` 统一转秒），不受影响。
+  未使用 `LineType.Curved`、库内置 `priceFormat`（pane 均为 `type: 'custom'` 自绘刻度）、
+  `priceLineVisible`（最后价线为自绘 primitive），相关变更无影响。
+  验证：type-check 0 错、297 tests 全绿、build 通过；浏览器 1d / 5d 分时与 `5d ⇄ 日K` 反复切换无回归。
+  产物 348.00 → 338.12 kB（gzip 111.70 → 108.13 kB）。新增 `pnpm-workspace.yaml`
+  （pnpm 12.18 的 `minimumReleaseAgeExclude` 配置，保证 `jsdom@31.0.1` 可正常安装）。
+- **v1.7.29**：修复「1 日分时刚进来能看到开盘第一根量柱，实时数据更新后就看不到了」。
   根因：lightweight-charts 的 `shiftVisibleRangeOnNewBar` 默认为 `true` —— 只要最后一根在
   视口内，每追加一根新数据就把可视逻辑范围整体右移一根。分时视口是「整日槽位铺满」的固定
   窗口（`[-0.5, dayPoints-0.5]`），开盘第一根就压在最左一个槽位（实测中心距绘图区左界约
