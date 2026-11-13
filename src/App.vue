@@ -15,7 +15,8 @@ import { themeColors, type ChartThemeName } from './chart/core/theme'
 import { MainIndicatorOptions, SubIndicatorOptions } from './chart/indicator/options'
 import type { MainIndicatorType, SubIndicatorType } from './chart/indicator'
 import { Periods, isTimesharePeriod, type PeriodValueOrEmpty } from './chart/periods'
-import { HttpChartDataService } from './services/httpChartDataService'
+// import { HttpChartDataService } from './services/httpChartDataService'
+import { MockChartDataService } from './services/mockChartDataService'
 
 // 图表组件 ref（访问控制器）。
 const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
@@ -23,17 +24,19 @@ const chartRef = ref<InstanceType<typeof KLineChart> | null>(null)
 // 数据服务实例（v1.6.16）：App 层集中选择并注入组件，组件内部管理。
 // 当前接真实行情（HttpChartDataService）；无后端时换成 MockChartDataService
 // （内置模拟行情，组件 / 控制器零改动）。
-const chartDataService = new HttpChartDataService({
-  // 走 vite dev proxy（/api → 127.0.0.1:11000，见 vite.config.ts），同源无 CORS。
-  historyUrl: '/api/v1/quant/kline/history',
-  realtimeTransport: 'poll',
-  pollUrl: '/api/v1/quant/kline/latest',
-  fetchLimit: 200,
-  // v1.7.2：history 默认超时 8s 偏紧（首次冷加载 / 后端慢易 AbortError），放宽到 15s；
-  // 偶发超时另有 controller 层自动重试兜底（见 KLineChartController.fetchHistoryWithRetry）
-  timeoutMs: 15000,
-  headers: { 'x-access-token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsIm5hbWUiOiJhZG1pbnd3dyIsInVzZXJOYW1lIjoiYWRtaW4iLCJ0ZW5hbnRJZCI6MSwiaXNzIjoiQXV0aFNlcnZlciIsInN1YiI6IkF1dGgiLCJhdWQiOlsidXNlciJdLCJleHAiOjE3OTY3NDM4ODMsIm5iZiI6MTc5NDE1MTg4MywiaWF0IjoxNzk0MTUxODgzLCJqdGkiOiI3ZDE4ZTAzNy0yMjMxLTRlN2EtYWNmMy1mNDYzMTMzZTk0ZTUxNzk0MTUxODgzNTEyMDAyMjQ5In0.HCsIgngoRuyciSzoFv56fQIJsQubGS15pHjujgR7Tts' },
-})
+// const chartDataService = new HttpChartDataService({
+//   // 走 vite dev proxy（/api → 127.0.0.1:11000，见 vite.config.ts），同源无 CORS。
+//   historyUrl: '/api/v1/quant/kline/history',
+//   realtimeTransport: 'poll',
+//   pollUrl: '/api/v1/quant/kline/latest',
+//   fetchLimit: 200,
+//   // v1.7.2：history 默认超时 8s 偏紧（首次冷加载 / 后端慢易 AbortError），放宽到 15s；
+//   // 偶发超时另有 controller 层自动重试兜底（见 KLineChartController.fetchHistoryWithRetry）
+//   timeoutMs: 15000,
+//   headers: { 'x-access-token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsIm5hbWUiOiJhZG1pbnd3dyIsInVzZXJOYW1lIjoiYWRtaW4iLCJ0ZW5hbnRJZCI6MSwiaXNzIjoiQXV0aFNlcnZlciIsInN1YiI6IkF1dGgiLCJhdWQiOlsidXNlciJdLCJleHAiOjE3OTY3NDM4ODMsIm5iZiI6MTc5NDE1MTg4MywiaWF0IjoxNzk0MTUxODgzLCJqdGkiOiI3ZDE4ZTAzNy0yMjMxLTRlN2EtYWNmMy1mNDYzMTMzZTk0ZTUxNzk0MTUxODgzNTEyMDAyMjQ5In0.HCsIgngoRuyciSzoFv56fQIJsQubGS15pHjujgR7Tts' },
+// })
+
+const chartDataService = new MockChartDataService({ fetchLimit: 200 })
 
 // 图表加载状态（v1.6.18 示例：可从 controller.init 收到 loading / ready / error）。
 const onChartStatusChange = (status: string): void => {
@@ -233,8 +236,8 @@ const hoverColor = (): string => themeColors(theme.value).buttonHover
     <div class="chart-wrap">
       <KLineChart
         ref="chartRef"
-        symbol="600103.SH"
-        name="青山纸业"
+        symbol="300750.SZ"
+        name="宁德时代"
         :time-axis="showTimeAxis"
         :left-scale="showLeftScale"
         :right-scale="showRightScale"
