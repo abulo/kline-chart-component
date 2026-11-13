@@ -1007,6 +1007,16 @@ export class KLineChartController {
   // K 线恢复默认。setPeriod 与构造（默认周期即分时时，setPeriod 因周期相同
   // 直接 return，必须构造时应用）统一走此方法。
   private applyTimeshareInteractions = (): void => {
+    // 实时追加新点时的视口行为按周期区分（lightweight-charts 默认 shiftVisibleRangeOnNewBar=true，
+    // 只要最后一根在视口内，每来一根新数据就把可视范围整体右移一根）。
+    //  - 分时：视口是「整日槽位铺满」的固定窗口，右侧留白是设计；一旦随数据滚动，
+    //    开盘第一根就会被逐根推出左边缘（现象：1 日分时刚进来能看到第一根量柱，
+    //    实时更新几次后就看不到了）。此处关闭。
+    //  - K 线：保留库的自动前移，配合 followLastBarIfTracking 让最后 bar 与 priceLine
+    //    恒在视口内（用户左滑看历史时该方法会跳过，不抢回视口）。
+    this.chart.timeScale().applyOptions({
+      shiftVisibleRangeOnNewBar: !this.timeshareManager.isTimeshare,
+    })
     this.chart.applyOptions({
       handleScroll: this.timeshareManager.isTimeshare
         ? {
