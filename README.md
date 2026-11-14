@@ -1,12 +1,12 @@
 # KLineChart（kline-chart-component）
 
-> 仿东方财富 / 通达信风格的多 Pane K 线 + 分时（1d~5d）图表组件。基于 **Vue 3 + TypeScript + lightweight-charts v5.2.1** 深度定制，开箱即用、接口与实现分离，接入真实行情零改动。
+> 仿东方财富 / 通达信风格的多 Pane K 线 + 分时（1d~5d）图表组件。基于 **Vue 3 + TypeScript + lightweight-charts v5.3.0** 深度定制，开箱即用、接口与实现分离，接入真实行情零改动。
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-blue)](https://www.typescriptlang.org/)
-[![Vue](https://img.shields.io/badge/Vue-3.5.44-42b883)](https://vuejs.org/)
-[![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.2.1-0593ff)](https://github.com/tradingview/lightweight-charts)
-[![pnpm](https://img.shields.io/badge/pnpm-12.15.0-orange)](https://pnpm.io/)
-[![Tests](https://img.shields.io/badge/tests-257%20passed-brightgreen)](tests/)
+[![Vue](https://img.shields.io/badge/Vue-3.5.45-42b883)](https://vuejs.org/)
+[![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.3.0-0593ff)](https://github.com/tradingview/lightweight-charts)
+[![pnpm](https://img.shields.io/badge/pnpm-12.18.0-orange)](https://pnpm.io/)
+[![Tests](https://img.shields.io/badge/tests-297%20passed-brightgreen)](tests/)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-success)](https://abulo.github.io/kline-chart-component/)
 
 ---
@@ -58,13 +58,14 @@ pnpm install
 
 环境要求：
 
-| 项 | 要求 |
+| 项 | 本地开发使用版本 |
 |---|---|
-| Node.js | ≥ 24（开发环境锁定 24.16.0） |
-| pnpm | 12.15.0（`packageManager` 字段锁定 `pnpm@12.15.0`） |
-| TypeScript | 6.0.3（devDependency 锁定，`strict: true`） |
+| Node.js | **24.16.0**（`node -v`，由 nvm 管理；CI 的 `pages.yml` 与之对齐） |
+| pnpm | **12.18.0**（`pnpm -v`，`packageManager` 字段锁定 `pnpm@12.18.0`） |
+| TypeScript | **6.0.3**（devDependency 锁定，`strict: true`；暂不能用 TS 7，原因见版本记录 v1.7.31） |
+| lightweight-charts | **5.3.0**（图表内核，版本锁定防 API 漂移） |
 
-> 依赖锁定：`lightweight-charts@5.2.1`（图表内核，版本锁定防 API 漂移）、`vue@3.5.44`、`vite@8.3.5`、`vitest@5.0.5`、`vue-tsc@3.3.13`。
+> 其余锁定依赖：`vue@3.5.45`、`vite@8.3.8`、`vitest@5.1.0`、`jsdom@31.0.1`、`vue-tsc@3.3.14`。
 
 ---
 
@@ -478,10 +479,10 @@ const toggleRightScale = () => chartRef.value?.controller?.setRightScaleVisible(
 
 | 命令 | 说明 |
 |---|---|
-| `pnpm install` | 安装依赖（锁定 `pnpm-lock.yaml`，lightweight-charts 5.2.1） |
+| `pnpm install` | 安装依赖（锁定 `pnpm-lock.yaml`，lightweight-charts 5.3.0） |
 | `pnpm dev` | 开发预览 http://127.0.0.1:5199（`/api` 代理到后端，`ws: true` 代理 WebSocket） |
 | `pnpm type-check` | 类型检查（`vue-tsc --noEmit`，strict 零错误） |
-| `pnpm test` | 单元测试（vitest，27 文件 / 257 用例） |
+| `pnpm test` | 单元测试（vitest，32 文件 / 297 用例） |
 | `pnpm build` | 类型检查 + 构建（`vite build`，产物 `dist/`，base `/kline-chart-component/`） |
 | `pnpm preview` | 预览构建产物 http://127.0.0.1:4173/kline-chart-component/ |
 
@@ -590,7 +591,15 @@ src/
 
 ## 版本记录
 
-- **v1.7.31（当前）**：TypeScript 保持 `6.0.3`，不做 TS 7 升级 —— `typescript@7.0.2` 下
+- **v1.7.32（当前）**：把本地开发使用版本写进文档与 CI，消除三处版本漂移 ——
+  README（中英）环境表由「Node ≥ 24 / pnpm 12.15.0」改为实际的 **Node 24.16.0 / pnpm 12.18.0 /
+  TypeScript 6.0.3 / lightweight-charts 5.3.0**（并同步 `vue@3.5.45`、`vite@8.3.8`、`vitest@5.1.0`、
+  `vue-tsc@3.3.14` 等锁定依赖与 297 用例数），CONTRIBUTING.md 同步；
+  `.github/workflows/pages.yml` 的 `pnpm/action-setup` 12.15.0 → **12.18.0**（与 `packageManager`
+  字段对齐）、`actions/setup-node` 的 `node-version` 保持 **24.16.0**（与本地 nvm 版本一致，
+  只补充核对注释），注释写明"改 CI 版本前先核对本地 `node -v` / `pnpm -v` 并同步 README"，
+  保证 CI 与本地生成的 lockfile / 构建行为一致。
+- **v1.7.31**：TypeScript 保持 `6.0.3`，不做 TS 7 升级 —— `typescript@7.0.2` 下
   `pnpm build`（`vue-tsc --noEmit`）直接崩溃：`ERR_PACKAGE_PATH_NOT_EXPORTED`，
   `Package subpath './lib/tsc' is not defined by "exports"`。
   根因：TS 7 是 native（tsgo）版本，包的 `exports` 只暴露 `./package.json`、`.`（指向

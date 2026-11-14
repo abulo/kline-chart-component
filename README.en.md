@@ -1,12 +1,12 @@
 # KLineChart (kline-chart-component)
 
-> A multi-pane K-line + intraday (1d~5d) chart component in the style of East Money / TongDaXin desktop clients. Deeply customized on **Vue 3 + TypeScript + lightweight-charts v5.2.1**. Works out of the box, interface separated from implementation — plug in real market data with zero component changes.
+> A multi-pane K-line + intraday (1d~5d) chart component in the style of East Money / TongDaXin desktop clients. Deeply customized on **Vue 3 + TypeScript + lightweight-charts v5.3.0**. Works out of the box, interface separated from implementation — plug in real market data with zero component changes.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-blue)](https://www.typescriptlang.org/)
-[![Vue](https://img.shields.io/badge/Vue-3.5.44-42b883)](https://vuejs.org/)
-[![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.2.1-0593ff)](https://github.com/tradingview/lightweight-charts)
-[![pnpm](https://img.shields.io/badge/pnpm-12.15.0-orange)](https://pnpm.io/)
-[![Tests](https://img.shields.io/badge/tests-292%20passed-brightgreen)](tests/)
+[![Vue](https://img.shields.io/badge/Vue-3.5.45-42b883)](https://vuejs.org/)
+[![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.3.0-0593ff)](https://github.com/tradingview/lightweight-charts)
+[![pnpm](https://img.shields.io/badge/pnpm-12.18.0-orange)](https://pnpm.io/)
+[![Tests](https://img.shields.io/badge/tests-297%20passed-brightgreen)](tests/)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-success)](https://abulo.github.io/kline-chart-component/)
 
 ---
@@ -58,13 +58,14 @@ pnpm install
 
 Environment requirements:
 
-| Item | Requirement |
+| Item | Version used for local development |
 |---|---|
-| Node.js | ≥ 24 (dev environment pinned to 24.16.0) |
-| pnpm | 12.15.0 (locked via `packageManager: pnpm@12.15.0`) |
-| TypeScript | 6.0.3 (devDependency pinned, `strict: true`) |
+| Node.js | **24.16.0** (`node -v`, managed by nvm; the CI `pages.yml` is aligned with it) |
+| pnpm | **12.18.0** (`pnpm -v`, locked via `packageManager: pnpm@12.18.0`) |
+| TypeScript | **6.0.3** (devDependency pinned, `strict: true`; TS 7 is not usable yet, see v1.7.31 in Version History) |
+| lightweight-charts | **5.3.0** (chart engine, pinned to prevent API drift) |
 
-> Pinned dependencies: `lightweight-charts@5.2.1` (chart engine, pinned to prevent API drift), `vue@3.5.44`, `vite@8.3.5`, `vitest@5.0.5`, `vue-tsc@3.3.13`.
+> Other pinned dependencies: `vue@3.5.45`, `vite@8.3.8`, `vitest@5.1.0`, `jsdom@31.0.1`, `vue-tsc@3.3.14`.
 
 ---
 
@@ -477,10 +478,10 @@ const toggleRightScale = () => chartRef.value?.controller?.setRightScaleVisible(
 
 | Command | Description |
 |---|---|
-| `pnpm install` | install dependencies (locked via `pnpm-lock.yaml`, lightweight-charts 5.2.1) |
+| `pnpm install` | install dependencies (locked via `pnpm-lock.yaml`, lightweight-charts 5.3.0) |
 | `pnpm dev` | dev preview http://127.0.0.1:5199 (`/api` proxied to backend, `ws: true` proxies WebSocket) |
 | `pnpm type-check` | type check (`vue-tsc --noEmit`, strict zero errors) |
-| `pnpm test` | unit tests (vitest, 31 files / 292 cases) |
+| `pnpm test` | unit tests (vitest, 32 files / 297 cases) |
 | `pnpm build` | type check + build (`vite build`, output `dist/`, base `/kline-chart-component/`) |
 | `pnpm preview` | preview the build http://127.0.0.1:4173/kline-chart-component/ |
 
@@ -589,7 +590,8 @@ Licensed under the **MIT License**, see [LICENSE](LICENSE) (Copyright (c) 2026 a
 
 ## Version History
 
-- **v1.7.31 (current)**: TypeScript stays on `6.0.3` — no TS 7 upgrade. With `typescript@7.0.2`, `pnpm build` (`vue-tsc --noEmit`) crashes immediately with `ERR_PACKAGE_PATH_NOT_EXPORTED`: `Package subpath './lib/tsc' is not defined by "exports"`. Cause: TS 7 is the native (tsgo) build; its package `exports` only exposes `./package.json`, `.` (pointing at `lib/version.cjs`) and the new `./unstable/*` API, so `./lib/tsc` is gone and the full v6 compiler JS API is no longer shipped. `vue-tsc@3.3.14` (latest; its peer range still says `>=5.0.0`) boots TypeScript via `require.resolve('typescript/lib/tsc')`, and Volar's SFC type checking needs the old API — the two are incompatible. Resolution: `typescript` reverted to `6.0.3` (latest 6.x, the last major that keeps the full JS API); upgrade once vue-tsc / Volar support the TS 7 API. Verified: `pnpm type-check` clean, `pnpm build` passes, 297 tests green.
+- **v1.7.32 (current)**: the local development toolchain versions are now recorded in the docs and the CI, removing drift across three places — the README (zh/en) environment table changes from "Node ≥ 24 / pnpm 12.15.0" to the actual **Node 24.16.0 / pnpm 12.18.0 / TypeScript 6.0.3 / lightweight-charts 5.3.0** (with `vue@3.5.45`, `vite@8.3.8`, `vitest@5.1.0`, `vue-tsc@3.3.14` and the 297-case count kept in sync); CONTRIBUTING.md updated the same way; in `.github/workflows/pages.yml`, `pnpm/action-setup` goes 12.15.0 → **12.18.0** (matching the `packageManager` field) and `actions/setup-node` keeps `node-version` at **24.16.0** (matching the local nvm version; only a verification comment was added), with a comment telling maintainers to check local `node -v` / `pnpm -v` and update the README before changing CI, so lockfile generation and build behaviour stay identical between CI and local.
+- **v1.7.31**: TypeScript stays on `6.0.3` — no TS 7 upgrade. With `typescript@7.0.2`, `pnpm build` (`vue-tsc --noEmit`) crashes immediately with `ERR_PACKAGE_PATH_NOT_EXPORTED`: `Package subpath './lib/tsc' is not defined by "exports"`. Cause: TS 7 is the native (tsgo) build; its package `exports` only exposes `./package.json`, `.` (pointing at `lib/version.cjs`) and the new `./unstable/*` API, so `./lib/tsc` is gone and the full v6 compiler JS API is no longer shipped. `vue-tsc@3.3.14` (latest; its peer range still says `>=5.0.0`) boots TypeScript via `require.resolve('typescript/lib/tsc')`, and Volar's SFC type checking needs the old API — the two are incompatible. Resolution: `typescript` reverted to `6.0.3` (latest 6.x, the last major that keeps the full JS API); upgrade once vue-tsc / Volar support the TS 7 API. Verified: `pnpm type-check` clean, `pnpm build` passes, 297 tests green.
 - **v1.7.30**: dependency upgrade — lightweight-charts `5.2.1 → 5.3.0` (minor, no breaking API changes), together with vue `3.5.45`, vite `8.3.8`, vitest `5.1.0`, jsdom `31.0.1`, vue-tsc `3.3.14` and pnpm `12.18.0`. Four fixes in 5.3.0 benefit this project directly: (1) panes + separators + time axis no longer overflow the chart height at fractional DPR (1.25 / 1.5), which used to shift the time axis by a pixel when a pane was added or removed (our 5-pane layout with volume/indicator toggles); (2) the time scale no longer jumps when new bars arrive while the user is dragging (realtime polling); (3) `setVisibleLogicalRange()` / `setVisibleRange()` no longer collapse when zoomed below the minimum visible bar count; (4) custom formatters (`tickMarkFormatter` / `timeFormatter`) can now actually be reset to default with `undefined`. Only behaviour tightening: `BusinessDay` string times are now validated in production builds too and must be zero-padded `YYYY-MM-DD` (`'2024-1-5'` / `'2024/01/05'` throw) — this project uses numeric timestamps end to end (`normalizeChartTime` normalizes to seconds), so it is unaffected. `LineType.Curved`, the built-in `priceFormat` (all panes use `type: 'custom'` with self-drawn axis labels) and `priceLineVisible` (last-price line is a self-drawn primitive) are not used, so their changes do not apply. Verified: type-check clean, 297 tests green, build passes; 1d / 5d intraday and repeated `5d ⇄ day-K` switching show no regressions in the browser. Bundle 348.00 → 338.12 kB (gzip 111.70 → 108.13 kB). Added `pnpm-workspace.yaml` (pnpm 12.18 `minimumReleaseAgeExclude` entry so `jsdom@31.0.1` installs).
 - **v1.7.29**: fixes "the opening first volume bar of 1-day intraday is visible right after entering, but disappears once realtime data updates". Cause: lightweight-charts defaults `shiftVisibleRangeOnNewBar` to `true` — whenever the last bar is inside the viewport, every newly appended bar shifts the visible logical range one bar to the right. The intraday viewport is a fixed full-day slot window (`[-0.5, dayPoints-0.5]`) and the opening bar sits in the leftmost slot (measured ~1px from the plotting-area left edge), so each polled point pushes it further off-screen until it is gone. Fix: set `timeScale.shiftVisibleRangeOnNewBar` per period when switching — `false` for intraday (fixed window, the right-hand blank is intentional) and `true` for K-line (together with `followLastBarIfTracking` it keeps the last bar and priceLine in view; a user panned into history is not dragged back). Verified: after 70s of intraday realtime updates (2 appended points) the opening bar's pixel column is identical to entry time; the day-K stays at the latest 120 bars with priceLine visible after 45s; 2-day/5-day intraday grid splits unchanged; 32 files / 297 tests green, build passes.
 - **v1.7.28**: fixes the day-K chart showing only 120 bars from half a year ago (squeezed) after repeatedly toggling 5-day intraday ⇄ day-K. (1) K-line viewport used to call `setVisibleLogicalRange` in the same frame only; when switching across periods (intraday 1200+ slots → K-line 120 bars) the library still mapped through the previous period, turning 120 bars into an over-wide squeeze. A single entry point `setViewportRange` (same-frame set + next-frame re-apply) now serves both intraday and K-line. (2) The next-frame re-apply must not reuse the first frame's fixed `from/to`: a `prependHistory` (load-earlier, shifting all indices by `added`) can land in between, and the stale range drags the viewport back to an old data segment (observed `[280,399]` overwritten by `[80,199]`, showing 2025 data). It now takes a resolve function that recomputes against the current `bars.length`. (3) 5-day intraday needs 0.42px per slot across a 504px plotting area; lightweight-charts' default `minBarSpacing` 0.5 pushed the leftmost trading day out of view (only ~4 days visible, grid splits offset) → `timeScale.minBarSpacing` relaxed to 0.1. Verified: two rounds of 5-day intraday ⇄ day-K keep the K-line at the latest 120 bars (2026-06 ~ 2026-11), 2d/3d/5d grid splits and full-window fit correct; 32 files / 297 tests green, build passes.

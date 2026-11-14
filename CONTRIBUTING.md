@@ -9,11 +9,12 @@
 
 ## 1. 开发环境
 
-| 项 | 要求 |
+| 项 | 本地开发使用版本 |
 |---|---|
-| Node.js | ≥ 24（开发环境锁定 24.16.0） |
-| pnpm | 12.15.0（`packageManager` 字段锁定 `pnpm@12.15.0`） |
-| TypeScript | 6.0.3（devDependency 锁定，`strict: true`） |
+| Node.js | **24.16.0**（`node -v`，nvm 管理；`.github/workflows/pages.yml` 与之对齐） |
+| pnpm | **12.18.0**（`packageManager` 字段锁定 `pnpm@12.18.0`） |
+| TypeScript | **6.0.3**（devDependency 锁定，`strict: true`；暂不能用 TS 7，见 README 版本记录 v1.7.31） |
+| lightweight-charts | **5.3.0**（图表内核，锁定防 API 漂移） |
 
 > 仓库使用 **pnpm**（锁定 `pnpm-lock.yaml`）；请勿混用 npm/yarn 生成新的锁文件。
 
@@ -27,7 +28,7 @@ pnpm install
 |---|---|
 | `pnpm dev` | 开发预览 http://127.0.0.1:5199（`/api` 代理后端，`ws: true` 代理 WebSocket） |
 | `pnpm type-check` | 类型检查（`vue-tsc --noEmit`，**必须零错误**） |
-| `pnpm test` | 单元测试（vitest，27 文件 / 257 用例，**必须全绿**） |
+| `pnpm test` | 单元测试（vitest，32 文件 / 297 用例，**必须全绿**） |
 | `pnpm build` | 类型检查 + 构建（`vite build`，产物 `dist/`，base `/kline-chart-component/`） |
 | `pnpm preview` | 预览构建产物 http://127.0.0.1:4173/kline-chart-component/ |
 
