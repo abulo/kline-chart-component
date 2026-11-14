@@ -1,7 +1,7 @@
 {
   "name": "lightweight-charts-demo",
   "private": true,
-  "version": "1.7.30",
+  "version": "1.7.31",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "6.0.11",
     "jsdom": "^31.0.1",
-    "typescript": "7.0.2",
+    "typescript": "6.0.3",
     "vite": "8.3.8",
     "vitest": "^5.1.0",
     "vue-tsc": "3.3.14"

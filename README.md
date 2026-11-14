@@ -590,7 +590,17 @@ src/
 
 ## 版本记录
 
-- **v1.7.30（当前）**：依赖升级 —— lightweight-charts `5.2.1 → 5.3.0`（minor，无破坏性 API 变更），
+- **v1.7.31（当前）**：TypeScript 保持 `6.0.3`，不做 TS 7 升级 —— `typescript@7.0.2` 下
+  `pnpm build`（`vue-tsc --noEmit`）直接崩溃：`ERR_PACKAGE_PATH_NOT_EXPORTED`，
+  `Package subpath './lib/tsc' is not defined by "exports"`。
+  根因：TS 7 是 native（tsgo）版本，包的 `exports` 只暴露 `./package.json`、`.`（指向
+  `lib/version.cjs`）和 `./unstable/*` 新 API，不再导出 `./lib/tsc`，也不再提供 v6 那套完整的
+  编译器 JS API；而 `vue-tsc@3.3.14`（当前最新版，peer 写的是 `>=5.0.0`）内部通过
+  `require.resolve('typescript/lib/tsc')` 启动，且 Volar 的 SFC 类型检查依赖旧 API —— 二者不兼容。
+  处理：`typescript` 回退 `6.0.3`（6.x 最新正式版，也是最后一个保留完整 JS API 的大版本）；
+  待 vue-tsc / Volar 适配 TS 7 的 API 后再升级。
+  验证：`pnpm type-check` 0 错、`pnpm build` 通过、297 tests 全绿。
+- **v1.7.30**：依赖升级 —— lightweight-charts `5.2.1 → 5.3.0`（minor，无破坏性 API 变更），
   同步 vue `3.5.45`、vite `8.3.8`、vitest `5.1.0`、jsdom `31.0.1`、vue-tsc `3.3.14`、pnpm `12.18.0`。
   对本项目直接受益的 4 处修复：① 非整数 DPR（1.25 / 1.5）下 panes + 分隔线 + 时间轴高度累加超过画布、
   增删 pane 时时间轴位移 1px（本项目 5 pane + volume / 附图开关场景）；② 用户拖拽时新增 bar
