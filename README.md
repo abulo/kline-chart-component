@@ -6,7 +6,7 @@
 [![Vue](https://img.shields.io/badge/Vue-3.5.45-42b883)](https://vuejs.org/)
 [![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.3.0-0593ff)](https://github.com/tradingview/lightweight-charts)
 [![pnpm](https://img.shields.io/badge/pnpm-12.21.0-orange)](https://pnpm.io/)
-[![Tests](https://img.shields.io/badge/tests-306%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-308%20passed-brightgreen)](tests/)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-success)](https://abulo.github.io/kline-chart-component/)
 
 ---
@@ -482,7 +482,7 @@ const toggleRightScale = () => chartRef.value?.controller?.setRightScaleVisible(
 | `pnpm install` | 安装依赖（锁定 `pnpm-lock.yaml`，lightweight-charts 5.3.0） |
 | `pnpm dev` | 开发预览 http://127.0.0.1:5199（`/api` 代理到后端，`ws: true` 代理 WebSocket） |
 | `pnpm type-check` | 类型检查（`vue-tsc --noEmit`，strict 零错误） |
-| `pnpm test` | 单元测试（vitest，33 文件 / 306 用例） |
+| `pnpm test` | 单元测试（vitest，33 文件 / 308 用例） |
 | `pnpm build` | 类型检查 + 构建（`vite build`，产物 `dist/`，base `/kline-chart-component/`） |
 | `pnpm preview` | 预览构建产物 http://127.0.0.1:4173/kline-chart-component/ |
 
@@ -591,7 +591,16 @@ src/
 
 ## 版本记录
 
-- **v1.7.34（当前）**：分时视口首末根贴边（两侧各留 0.2 根 ≈ 1px）—— 原实现
+- **v1.7.35（当前）**：`setKlineData` 首载数据统一排序去重（修复 `data must be asc ordered by time`
+  导致的 init 失败）—— 数据源返回的 K 线时间戳偶发不单调（例：某根用交易日 `00:00`、相邻根用
+  收盘 `23:59`，交界处后一根比前一根小 1 天），lightweight-charts 的 `setData` 直接断言失败，
+  表现为首载即 `[KLineChart] init failed`、整块图表空白。原来只有 `prependHistory`（左滑翻页）
+  走 `mergeBars` 排序去重，全量首载是裸 set 的，这里把 `setKlineData` 也接入 `mergeBars([], incoming)`
+  —— 一次性兼容乱序与重复 time（同 time 保留后者）。新增 2 个单测（全量替换的乱序修复、
+  重复 time 去重），总计 33 文件 / 308 用例全绿。
+  顺带建议后端把同一周期的 `time` 口径统一（要么全用交易日 `00:00`，要么全用收盘时刻，
+  并与 `tradeDate` 对齐），否则时间轴日期标签会因 `23:59` 落在次日而偏移。
+- **v1.7.34**：分时视口首末根贴边（两侧各留 0.2 根 ≈ 1px）—— 原实现
   `from = -0.5` / `to = slots - 0.5` 两侧各留半根，1 日分时（barSpacing ≈ 5px）首根距左缘
   4.0px、末根距右缘 2.5px，一根 5px 的量柱有一半宽度被空档吃掉。初值收到 1/4 根
   （`from = -0.25` / `to = slots - 0.75`）后实测左侧仍有 2.5px 空档（库内 barSpacing 取整
@@ -607,7 +616,7 @@ src/
   `theme.ts` 新增 `timeshareAreaTop` / `timeshareAreaBottom` 两色（深系白 0.03 → 0.16、
   浅系深灰 0.03 → 0.12，均 ≤0.2 不透明度，深 / 浅系各自与背景低对比）。
   同期 pnpm 升级 `12.18.0 → 12.21.0`（`packageManager` 字段与 CI 一致）；
-  新增 9 个单测（多边形构造 + 配色口径），总计 33 文件 / 306 用例全绿。
+  新增 9 个单测（多边形构造 + 配色口径），总计 33 文件 / 308 用例全绿。
 - **v1.7.32**：把本地开发使用版本写进文档与 CI，消除三处版本漂移 ——
   README（中英）环境表由「Node ≥ 24 / pnpm 12.15.0」改为实际的 **Node 24.16.0 / pnpm 12.21.0 /
   TypeScript 6.0.3 / lightweight-charts 5.3.0**（并同步 `vue@3.5.45`、`vite@8.3.8`、`vitest@5.1.0`、

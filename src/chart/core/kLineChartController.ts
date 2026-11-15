@@ -805,9 +805,17 @@ export class KLineChartController {
    * @param points 外部数据点数组（未过滤，按当前周期语义筛选）。
    */
   setKlineData = (points: ChartDataPoint[]): void => {
-    this.bars = points.filter(point =>
-      this.timeshareManager.isTimeshare ? point.pointType === 'timeshare' : point.pointType === 'kline'
-    )
+    // 过滤后统一规范化：数据源偶发「时间戳不单调」（例：日 K 里某根用交易日 00:00、
+    // 相邻根用收盘 23:59，index 交界处 time 会比前一根小 1 天）或同 time 重复时，
+    // lightweight-charts 会直接断言失败（"data must be asc ordered by time, index=..."），
+    // 表现为首载即 init failed、整块图表空白。
+    // mergeBars(existing=[], incoming) 即「全量升序 + 去重（同 time 保留后者）」。
+    this.bars = mergeBars(
+      [],
+      points.filter(point =>
+        this.timeshareManager.isTimeshare ? point.pointType === 'timeshare' : point.pointType === 'kline'
+      ),
+    ).bars
     this.rebuildBarIndex()
     // 刻度显隐（Y 轴刻度区宽度）在数据写入前应用——与 X 轴视口完全解耦，
     // 避免 applyPriceScaleVisible 内部"保存/恢复 visibleRange"与下方数据 setData /

@@ -28,7 +28,7 @@ pnpm install
 |---|---|
 | `pnpm dev` | 开发预览 http://127.0.0.1:5199（`/api` 代理后端，`ws: true` 代理 WebSocket） |
 | `pnpm type-check` | 类型检查（`vue-tsc --noEmit`，**必须零错误**） |
-| `pnpm test` | 单元测试（vitest，33 文件 / 306 用例，**必须全绿**） |
+| `pnpm test` | 单元测试（vitest，33 文件 / 308 用例，**必须全绿**） |
 | `pnpm build` | 类型检查 + 构建（`vite build`，产物 `dist/`，base `/kline-chart-component/`） |
 | `pnpm preview` | 预览构建产物 http://127.0.0.1:4173/kline-chart-component/ |
 
