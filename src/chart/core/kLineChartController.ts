@@ -172,7 +172,7 @@ export class KLineChartController {
   // 使指标层左刻度随可见数据变化，修复"先缩小再放大刻度不变"）。
   private readonly handleVisibleLogicalRangeChange = (range: LogicalRange | null): void => {
     // 分时（1d~5d）按「交易日 × 每交易日点数」整窗展示、无更早分页语义，
-    // 且视口左边界固定为 -0.5（天然满足 <= 0）→ 不判周期会每次设视口都误触翻页
+    // 且视口左边界固定为 -0.25（天然满足 <= 0）→ 不判周期会每次设视口都误触翻页
     // （现象：1d 切换后多打一次 history 请求）。
     if (range && range.from <= 0 && !this.timeshareManager.isTimeshare) {
       void this.dataBridge.loadEarlier()
@@ -718,7 +718,7 @@ export class KLineChartController {
     })
   }
 
-  // 分时视口：按「交易日 × dayPoints」铺满全部槽位（from -0.5 起，数据左对齐），
+  // 分时视口：按「交易日 × dayPoints」铺满全部槽位（from -0.25 起，数据左对齐），
   // 而不是 fitContent —— fitContent 只按实际渲染行 fit，最后一个交易日盘中未满
   // （120/240）时 120 行被拉伸满窗。视口预留右侧槽位后，数据从左边开始画、
   // 右侧留白表示当日尚未交易（120/240 → 正好占半窗）。
@@ -728,28 +728,41 @@ export class KLineChartController {
     // 历史日用 dayPoints 补齐、最后一日不补 → rows 通常 < slots；
     // 数据本身超过槽位（dayPoints 配小于实际点数）时按数据量铺满，避免裁切。
     const rows = this.timeshareManager.renderRows.length
-    const from = -0.5
-    const to = Math.max(slots, rows) - 0.5
+    // 首末根两侧贴边（v1.7.34）：初值取 1/4 根，次帧再用像素回读闭环收敛到 0.2 根
+    // （1 日分时 barSpacing≈5px 时即 1 CSS px）。原实现两侧各留半根
+    // （from -0.5 / to slots - 0.5），一根 5px 的量柱有一半宽度被空档吃掉。
+    const from = -0.25
+    const to = Math.max(slots, rows) - 0.75
     this.setViewportRange(
       () => ({ from, to }),
       () => {
-      // 像素回读补偿：lightweight-charts 的 barSpacing 与逻辑槽位换算存在取整，
-      // 逻辑范围设为「整窗」后数据右端仍可能与绘图区右缘差出 1~2 根槽位
-      // （现象：1 日分时右侧空一格）。读末行实际坐标把差额折回逻辑槽位再设一次，
-      // 目标是「末行中心距右缘半根」（bar 完整可见且贴边）；收敛一次即可，误差 < 1px。
-      // 只在「数据已填满槽位」时补偿：rows < slots 表示最新交易日未收盘
-      // （120/241 占半窗），右侧留白是设计本身，不能被拉平。
-      if (rows <= 0 || rows < slots) return
+      // 两端像素回读闭环：理论 from/to 进库后会被 barSpacing 取整与半根内边距放大
+      // （实测 from=-0.25 在 1 日分时仍渲染出 0.5 根 ≈2.5px 的左空档），所以拿首末行
+      // 的真实像素坐标把偏差折回逻辑槽位，目标两端各留 0.2 根
+      // （barSpacing≈5px 时正好 1 CSS px，视觉上真正贴边且不裁线）。
+      const wantRatio = 0.2
       const ts = this.chart.timeScale()
-      const lastX = ts.logicalToCoordinate((rows - 1) as Logical)
       const bs = ts.options().barSpacing
-      if (lastX === null || bs <= 0) return
-      const gap = ts.width() - lastX
-      const expect = bs / 2
-        if (Math.abs(gap - expect) > 0.6) {
-          const nextTo = Math.max(from + 1, to - (gap - expect) / bs)
-          if (nextTo > from + 1) ts.setVisibleLogicalRange({ from, to: nextTo })
+      if (bs <= 0) return
+      const want = bs * wantRatio
+      let nextFrom = from
+      let nextTo = to
+      const firstX = ts.logicalToCoordinate(0 as Logical)
+      if (firstX !== null && Math.abs(firstX - want) > 0.6) {
+        nextFrom = from + (firstX - want) / bs
+      }
+      // 只在「数据已填满槽位」时补偿右端：rows < slots 表示最新交易日未收盘
+      // （120/241 占半窗），右侧留白是设计本身，不能被拉平。
+      if (rows > 0 && rows >= slots) {
+        const lastX = ts.logicalToCoordinate((rows - 1) as Logical)
+        if (lastX !== null) {
+          const gapR = ts.width() - lastX
+          if (Math.abs(gapR - want) > 0.6) nextTo = to - (gapR - want) / bs
         }
+      }
+      if (nextTo > nextFrom + 1 && (nextFrom !== from || nextTo !== to)) {
+        ts.setVisibleLogicalRange({ from: nextFrom, to: nextTo })
+      }
       },
     )
   }
