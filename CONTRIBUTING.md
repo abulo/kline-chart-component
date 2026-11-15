@@ -12,7 +12,7 @@
 | 项 | 本地开发使用版本 |
 |---|---|
 | Node.js | **24.16.0**（`node -v`，nvm 管理；`.github/workflows/pages.yml` 与之对齐） |
-| pnpm | **12.18.0**（`packageManager` 字段锁定 `pnpm@12.18.0`） |
+| pnpm | **12.21.0**（`packageManager` 字段锁定 `pnpm@12.21.0`） |
 | TypeScript | **6.0.3**（devDependency 锁定，`strict: true`；暂不能用 TS 7，见 README 版本记录 v1.7.31） |
 | lightweight-charts | **5.3.0**（图表内核，锁定防 API 漂移） |
 
@@ -28,7 +28,7 @@ pnpm install
 |---|---|
 | `pnpm dev` | 开发预览 http://127.0.0.1:5199（`/api` 代理后端，`ws: true` 代理 WebSocket） |
 | `pnpm type-check` | 类型检查（`vue-tsc --noEmit`，**必须零错误**） |
-| `pnpm test` | 单元测试（vitest，32 文件 / 297 用例，**必须全绿**） |
+| `pnpm test` | 单元测试（vitest，33 文件 / 306 用例，**必须全绿**） |
 | `pnpm build` | 类型检查 + 构建（`vite build`，产物 `dist/`，base `/kline-chart-component/`） |
 | `pnpm preview` | 预览构建产物 http://127.0.0.1:4173/kline-chart-component/ |
 

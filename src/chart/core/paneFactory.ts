@@ -29,6 +29,7 @@ import { AxisLabelPrimitive } from '../axis/axisLabelPrimitive'
 import { CrosshairAxisLabelPrimitive } from '../crosshair/crosshairAxisLabelPrimitive'
 import { CrosshairLinePrimitive } from '../crosshair/crosshairLinePrimitive'
 import { findLastKlineBar, PriceLinePrimitive } from '../overlay/priceLinePrimitive'
+import { TimeshareAreaPrimitive } from '../overlay/timeshareAreaPrimitive'
 import { TimeshareManager } from './timeshareManager'
 import type { IndicatorManager } from './indicatorManager'
 import type { CrosshairManager } from './crosshairManager'
@@ -169,6 +170,21 @@ export const createPanes = (deps: PaneFactoryDeps): PaneBundle => {
       color: initialThemeColors.timeshareAvgColor,
     },
     1,
+  )
+  // 分时价格区渐变背景（v1.7.33）：以 price 曲线为顶、pane 底边为底，铺一层
+  // "顶部淡 → 底部浓"的渐变（东财风格）。zOrder 'bottom' → 位于栅格（normal 层）
+  // 与价格线 / 均价线（series 层）之下，只当底色，不遮挡栅格与线体；
+  // 仅分时周期绘制，配色随主题（timeshareAreaTop / timeshareAreaBottom）。
+  timesharePriceSeries.attachPrimitive(
+    new TimeshareAreaPrimitive({
+      getVisible: () => timeshareManager.isTimeshare,
+      // 占位行（bar = null）不参与：背景只铺到真实数据末点，不提前铺进空白槽位。
+      getRows: () => timeshareManager.renderRows,
+      getTopColor: () => themeColors(getTheme()).timeshareAreaTop,
+      getBottomColor: () => themeColors(getTheme()).timeshareAreaBottom,
+      series: timesharePriceSeries,
+      getTimeScale: () => chart.timeScale(),
+    }),
   )
   // 分时右刻度承载 series：挂 pane1 right price scale（空数据透明锚点），
   // 仅提供右刻度 canvas（右刻度区开关打开时占位 72px）；右刻度百分比标签由下方

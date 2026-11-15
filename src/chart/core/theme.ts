@@ -78,6 +78,17 @@ export interface ChartThemeColors {
   timesharePriceColor: string
   /** 分时均价线颜色（pane1 分时模式 avgPrice 线，东财惯例黄色系，浅系加深）。 */
   timeshareAvgColor: string
+  /**
+   * 分时价格曲线下方渐变背景的顶部颜色（贴价格线处，最淡）。
+   *
+   * @remarks
+   * 与 {@link timeshareAreaBottom} 组成自上而下的渐变（顶部淡 → 底部浓），
+   * 铺满"价格线以下到底边"的淡色块（东财风格）。深系取白、浅系取深灰，
+   * 低不透明度保证既看出区域又不干扰价格线 / 栅格 / 十字星。
+   */
+  timeshareAreaTop: string
+  /** 分时价格曲线下方渐变背景的底部颜色（pane 底边处，最深）。 */
+  timeshareAreaBottom: string
 
   // ===== 页面布局（App.vue） =====
 
@@ -140,6 +151,9 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     // 分时双线：深系价格线白（醒目）、均价线亮黄
     timesharePriceColor: '#FFFFFF',
     timeshareAvgColor: '#F4AA0A',
+    // 分时价格区渐变：深系白（顶部 0.03 → 底部 0.16，深底上叠出淡淡光晕）
+    timeshareAreaTop: 'rgba(255, 255, 255, 0.03)',
+    timeshareAreaBottom: 'rgba(255, 255, 255, 0.16)',
 
     pageBackground: '#0B0E13',
     toolbarBackground: '#1E222D',
@@ -180,6 +194,9 @@ export const chartThemes: Record<ChartThemeName, ChartThemeColors> = {
     // 分时双线：浅系价格线深灰（白底清晰）、均价线深金黄（浅系下黄色需加深保证可读）
     timesharePriceColor: '#33373E',
     timeshareAvgColor: '#B8860B',
+    // 分时价格区渐变：浅系深灰（顶部 0.03 → 底部 0.12，白底不发雾、不压线体）
+    timeshareAreaTop: 'rgba(51, 55, 62, 0.03)',
+    timeshareAreaBottom: 'rgba(51, 55, 62, 0.12)',
 
     pageBackground: '#EDEFF3',
     toolbarBackground: '#F3F4F6',

@@ -31,13 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 工具链版本与本地开发环境保持一致：Node v24.16.0（nvm 管理）+ pnpm 12.18.0。
+      # 工具链版本与本地开发环境保持一致：Node v24.16.0（nvm 管理）+ pnpm 12.21.0。
       # 改动前先核对本地 `node -v` / `pnpm -v`，并同步 README 中「本地开发使用版本」表，
       # 避免 CI 与本地出现 lockfile 生成 / 构建行为不一致（pnpm 需与 package.json 的
-      # packageManager 字段 `pnpm@12.18.0` 对齐）。
+      # packageManager 字段 `pnpm@12.21.0` 对齐）。
       - uses: pnpm/action-setup@v4
         with:
-          version: 12.18.0
+          version: 12.21.0
 
       - uses: actions/setup-node@v4
         with:

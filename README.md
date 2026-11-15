@@ -5,8 +5,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-blue)](https://www.typescriptlang.org/)
 [![Vue](https://img.shields.io/badge/Vue-3.5.45-42b883)](https://vuejs.org/)
 [![lightweight-charts](https://img.shields.io/badge/lightweight--charts-5.3.0-0593ff)](https://github.com/tradingview/lightweight-charts)
-[![pnpm](https://img.shields.io/badge/pnpm-12.18.0-orange)](https://pnpm.io/)
-[![Tests](https://img.shields.io/badge/tests-297%20passed-brightgreen)](tests/)
+[![pnpm](https://img.shields.io/badge/pnpm-12.21.0-orange)](https://pnpm.io/)
+[![Tests](https://img.shields.io/badge/tests-306%20passed-brightgreen)](tests/)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-online-success)](https://abulo.github.io/kline-chart-component/)
 
 ---
@@ -61,7 +61,7 @@ pnpm install
 | 项 | 本地开发使用版本 |
 |---|---|
 | Node.js | **24.16.0**（`node -v`，由 nvm 管理；CI 的 `pages.yml` 与之对齐） |
-| pnpm | **12.18.0**（`pnpm -v`，`packageManager` 字段锁定 `pnpm@12.18.0`） |
+| pnpm | **12.21.0**（`pnpm -v`，`packageManager` 字段锁定 `pnpm@12.21.0`） |
 | TypeScript | **6.0.3**（devDependency 锁定，`strict: true`；暂不能用 TS 7，原因见版本记录 v1.7.31） |
 | lightweight-charts | **5.3.0**（图表内核，版本锁定防 API 漂移） |
 
@@ -482,7 +482,7 @@ const toggleRightScale = () => chartRef.value?.controller?.setRightScaleVisible(
 | `pnpm install` | 安装依赖（锁定 `pnpm-lock.yaml`，lightweight-charts 5.3.0） |
 | `pnpm dev` | 开发预览 http://127.0.0.1:5199（`/api` 代理到后端，`ws: true` 代理 WebSocket） |
 | `pnpm type-check` | 类型检查（`vue-tsc --noEmit`，strict 零错误） |
-| `pnpm test` | 单元测试（vitest，32 文件 / 297 用例） |
+| `pnpm test` | 单元测试（vitest，33 文件 / 306 用例） |
 | `pnpm build` | 类型检查 + 构建（`vite build`，产物 `dist/`，base `/kline-chart-component/`） |
 | `pnpm preview` | 预览构建产物 http://127.0.0.1:4173/kline-chart-component/ |
 
@@ -591,11 +591,20 @@ src/
 
 ## 版本记录
 
-- **v1.7.32（当前）**：把本地开发使用版本写进文档与 CI，消除三处版本漂移 ——
-  README（中英）环境表由「Node ≥ 24 / pnpm 12.15.0」改为实际的 **Node 24.16.0 / pnpm 12.18.0 /
+- **v1.7.33（当前）**：分时模式新增「价格区渐变背景」—— 以分时价格线为顶、pane 底边为底，
+  铺一层自上而下「顶部淡 → 底部浓」的渐变（东财风格）。实现为自绘 `TimeshareAreaPrimitive`：
+  zOrder `bottom` 绘制在栅格（normal 层）与价格线 / 均价线（series 层）之下，只当底色，
+  不遮挡栅格、线体与十字星；数据只取 `renderRows` 中带 bar 的真实分时点（占位行不参与，
+  开盘前不会提前铺进空白槽位）；颜色与数据每次 draw 现取 → 实时追加、周期切换、主题切换自动跟随。
+  `theme.ts` 新增 `timeshareAreaTop` / `timeshareAreaBottom` 两色（深系白 0.03 → 0.16、
+  浅系深灰 0.03 → 0.12，均 ≤0.2 不透明度，深 / 浅系各自与背景低对比）。
+  同期 pnpm 升级 `12.18.0 → 12.21.0`（`packageManager` 字段与 CI 一致）；
+  新增 9 个单测（多边形构造 + 配色口径），总计 33 文件 / 306 用例全绿。
+- **v1.7.32**：把本地开发使用版本写进文档与 CI，消除三处版本漂移 ——
+  README（中英）环境表由「Node ≥ 24 / pnpm 12.15.0」改为实际的 **Node 24.16.0 / pnpm 12.21.0 /
   TypeScript 6.0.3 / lightweight-charts 5.3.0**（并同步 `vue@3.5.45`、`vite@8.3.8`、`vitest@5.1.0`、
   `vue-tsc@3.3.14` 等锁定依赖与 297 用例数），CONTRIBUTING.md 同步；
-  `.github/workflows/pages.yml` 的 `pnpm/action-setup` 12.15.0 → **12.18.0**（与 `packageManager`
+  `.github/workflows/pages.yml` 的 `pnpm/action-setup` 12.15.0 → **12.21.0**（与 `packageManager`
   字段对齐）、`actions/setup-node` 的 `node-version` 保持 **24.16.0**（与本地 nvm 版本一致，
   只补充核对注释），注释写明"改 CI 版本前先核对本地 `node -v` / `pnpm -v` 并同步 README"，
   保证 CI 与本地生成的 lockfile / 构建行为一致。
